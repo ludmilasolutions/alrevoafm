@@ -14,7 +14,7 @@ if (!supabase) {
     console.error('1. Que el CDN de Supabase esté cargado en index.html');
     console.error('2. Que las credenciales SUPABASE_URL y SUPABASE_ANON_KEY sean correctas');
     console.error('3. Que no haya bloqueadores de scripts en el navegador');
-
+}
 // Estados y variables globales
 let currentUser = null;
 let currentPermissions = [];
@@ -2959,5 +2959,4 @@ async function buscarProductos() {
         console.error('Error buscando productos:', error);
         mostrarToast('Error', 'No se pudo realizar la búsqueda', 'error');
     }
-}
 }

@@ -5,10 +5,12 @@
 // Configuración de Supabase (REEMPLAZAR CON TUS DATOS REALES)
 const SUPABASE_URL = 'https://nptthngcshkbuavkjujf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wdHRobmdjc2hrYnVhdmtqdWpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyNTAyMTcsImV4cCI6MjA4NTgyNjIxN30.0P2Yf-wHtNzgoIFLEN-DYME85NFEjKtmz2cyIkyuZfg';
-// Crear cliente Supabase (usando la biblioteca global del CDN)
+// Crear cliente Supabase - usamos la variable global del CDN
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Estados y variables globales
+// ============================================
+// VARIABLES GLOBALES
+// ============================================
 let currentUser = null;
 let currentPermissions = [];
 let currentRole = null;
@@ -18,6 +20,8 @@ let productosCache = new Map();
 let modoOscuro = localStorage.getItem('theme') === 'dark';
 let currentSection = 'venta';
 let proximoTicketId = 'T-YYYYMMDD-0000';
+let selectedPagos = [];
+let descuentoAplicado = 0;
 
 // Medios de pago fijos
 const MEDIOS_PAGO = ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA/QR'];
@@ -49,7 +53,7 @@ const elementos = {
     carritoVacio: document.getElementById('carrito-vacio'),
     carritoCount: document.getElementById('carrito-count'),
     subtotal: document.getElementById('subtotal'),
-    descuentoAplicado: document.getElementById('descuento-aplicado'),
+    descuentoAplicadoElement: document.getElementById('descuento-aplicado'),
     total: document.getElementById('total'),
     descuentoInput: document.getElementById('descuento-input'),
     btnAplicarDescuento: document.getElementById('btn-aplicar-descuento'),

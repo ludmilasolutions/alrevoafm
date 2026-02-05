@@ -2960,3 +2960,4 @@ async function buscarProductos() {
         mostrarToast('Error', 'No se pudo realizar la búsqueda', 'error');
     }
 }
+}

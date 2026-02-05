@@ -1,16 +1,102 @@
 // ============================================
-// CONFIGURACIÓN SUPABASE Y CONSTANTES
-// ====================================================
+// CONFIGURACIÓN SUPABASE (SOLUCIÓN SIN CONFLICTOS)
+// ============================================
+
+// Primero, verificar si ya existe una variable 'supabase' global
+if (typeof supabase !== 'undefined') {
+    console.warn('ADVERTENCIA: La variable "supabase" ya está definida globalmente.');
+    console.warn('Posibles causas:');
+    console.warn('1. Múltiples scripts de Supabase cargados');
+    console.warn('2. Extensión del navegador inyectando código');
+    console.warn('3. Otra librería usando el mismo nombre');
+}
 
 // Configuración de Supabase - REEMPLAZAR CON TUS DATOS REALES
 const SUPABASE_URL = 'https://nptthngcshkbuavkjujf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wdHRobmdjc2hrYnVhdmtqdWpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyNTAyMTcsImV4cCI6MjA4NTgyNjIxN30.0P2Yf-wHtNzgoIFLEN-DYME85NFEjKtmz2cyIkyuZfg';
 
-// Crear cliente Supabase - usamos la variable global del CDN
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Crear cliente Supabase de forma segura
+let supabaseClient;
+try {
+    // Opción 1: Usar el objeto global si existe
+    if (window.supabase && typeof window.supabase.createClient === 'function') {
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        console.log('Supabase creado usando window.supabase');
+    }
+    // Opción 2: Si no existe, crear un error controlado
+    else {
+        throw new Error('SDK de Supabase no encontrado. Verifica que el CDN esté cargado.');
+    }
+} catch (error) {
+    console.error('Error inicializando Supabase:', error);
+    
+    // Crear un mock para desarrollo que muestre errores claros
+    supabaseClient = {
+        auth: {
+            signInWithPassword: () => Promise.reject(new Error('Supabase no configurado')),
+            signOut: () => Promise.reject(new Error('Supabase no configurado')),
+            getSession: () => Promise.reject(new Error('Supabase no configurado'))
+        },
+        from: () => ({
+            select: () => ({
+                eq: () => ({
+                    single: () => Promise.reject(new Error('Supabase no configurado'))
+                })
+            })
+        })
+    };
+    
+    // Mostrar alerta en producción
+    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        alert('ERROR CRÍTICO: Supabase no está configurado correctamente. Contacta al administrador.');
+    }
+}
+
+// Usar esta variable en todo el código
+const supabase = supabaseClient;
 
 // ============================================
-// VARIABLES GLOBALES
+// VERIFICACIÓN DE CONFIGURACIÓN
+// ============================================
+
+// Verificar que las credenciales no sean las predeterminadas
+if (SUPABASE_URL === 'https://tu-proyecto.supabase.co' || 
+    SUPABASE_ANON_KEY === 'tu-clave-anon-publica') {
+    console.error('❌ ERROR: Debes configurar tus credenciales de Supabase en app.js');
+    console.error('Ve a Project Settings > API en Supabase y copia:');
+    console.error('1. Project URL → SUPABASE_URL');
+    console.error('2. anon public → SUPABASE_ANON_KEY');
+    
+    // Mostrar alerta visual
+    document.addEventListener('DOMContentLoaded', () => {
+        const alertDiv = document.createElement('div');
+        alertDiv.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #dc3545;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            z-index: 9999;
+            font-family: Arial, sans-serif;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        `;
+        alertDiv.innerHTML = `
+            <strong>⚠️ CONFIGURACIÓN REQUERIDA:</strong> 
+            Reemplaza SUPABASE_URL y SUPABASE_ANON_KEY en app.js con tus credenciales de Supabase.
+            <button onclick="this.parentElement.remove()" 
+                    style="margin-left: 20px; background: white; color: #dc3545; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer;">
+                Cerrar
+            </button>
+        `;
+        document.body.appendChild(alertDiv);
+    });
+}
+
+// ============================================
+// VARIABLES GLOBALES DEL SISTEMA
 // ============================================
 let currentUser = null;
 let currentPermissions = [];
@@ -27,146 +113,308 @@ let descuentoAplicado = 0;
 // Medios de pago fijos
 const MEDIOS_PAGO = ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA/QR'];
 
-// Elementos DOM principales
-const elementos = {
-    // Modales
-    loginModal: document.getElementById('login-modal'),
-    mainApp: document.getElementById('main-app'),
-    
-    // Header y navegación
-    menuToggle: document.getElementById('menu-toggle'),
-    sidebar: document.getElementById('sidebar'),
-    username: document.getElementById('username'),
-    userRole: document.getElementById('user-role'),
-    logoutBtn: document.getElementById('logout-btn'),
-    themeToggle: document.getElementById('theme-toggle'),
-    liveClock: document.getElementById('live-clock'),
-    
-    // Navegación
-    navLinks: document.querySelectorAll('.nav-link'),
-    sections: document.querySelectorAll('.section'),
-    
-    // Scanner y venta
-    scannerInput: document.getElementById('scanner-input'),
-    btnBuscarManual: document.getElementById('btn-buscar-manual'),
-    btnLimpiarCarrito: document.getElementById('btn-limpiar-carrito'),
-    carritoBody: document.getElementById('carrito-body'),
-    carritoVacio: document.getElementById('carrito-vacio'),
-    carritoCount: document.getElementById('carrito-count'),
-    subtotal: document.getElementById('subtotal'),
-    descuentoAplicadoElement: document.getElementById('descuento-aplicado'),
-    total: document.getElementById('total'),
-    descuentoInput: document.getElementById('descuento-input'),
-    btnAplicarDescuento: document.getElementById('btn-aplicar-descuento'),
-    btnFinalizarVenta: document.getElementById('btn-finalizar-venta'),
-    pagosSeleccionados: document.getElementById('pagos-seleccionados'),
-    nextTicketId: document.getElementById('next-ticket-id'),
-    currentCajaId: document.getElementById('current-caja-id'),
-    statusCaja: document.getElementById('status-caja'),
-    
-    // Modales
-    modalBuscarProducto: document.getElementById('modal-buscar-producto'),
-    modalProducto: document.getElementById('modal-producto'),
-    modalPagos: document.getElementById('modal-pagos'),
-    modalDetalleVenta: document.getElementById('modal-detalle-venta'),
-    
-    // Productos
-    btnNuevoProducto: document.getElementById('btn-nuevo-producto'),
-    btnRefreshProductos: document.getElementById('btn-refresh-productos'),
-    productosBody: document.getElementById('productos-body'),
-    filtroProductos: document.getElementById('filtro-productos'),
-    filtroActivo: document.getElementById('filtro-activo'),
-    btnAplicarFiltros: document.getElementById('btn-aplicar-filtros'),
-    
-    // Historial
-    btnVentasHoy: document.getElementById('btn-ventas-hoy'),
-    fechaInicio: document.getElementById('fecha-inicio'),
-    fechaFin: document.getElementById('fecha-fin'),
-    btnFiltrarHistorial: document.getElementById('btn-filtrar-historial'),
-    historialBody: document.getElementById('historial-body'),
-    btnAnularVenta: document.getElementById('btn-anular-venta'),
-    
-    // Caja
-    cajaInfo: document.getElementById('caja-info'),
-    cajaFormContainer: document.getElementById('caja-form-container'),
-    cajaMovimientos: document.getElementById('caja-movimientos'),
-    btnRefreshCaja: document.getElementById('btn-refresh-caja'),
-    
-    // Reportes
-    reporteFechaInicio: document.getElementById('reporte-fecha-inicio'),
-    reporteFechaFin: document.getElementById('reporte-fecha-fin'),
-    reporteTipo: document.getElementById('reporte-tipo'),
-    btnGenerarReporte: document.getElementById('btn-generar-reporte'),
-    reporteResultados: document.getElementById('reporte-resultados'),
-    
-    // Configuración
-    configEncabezado: document.getElementById('config-encabezado'),
-    configPie: document.getElementById('config-pie'),
-    configMensaje: document.getElementById('config-mensaje'),
-    btnGuardarConfig: document.getElementById('btn-guardar-config'),
-    permisosContainer: document.getElementById('permisos-container'),
-    
-    // Toast container
-    toastContainer: document.getElementById('toast-container')
-};
-
 // ============================================
-// INICIALIZACIÓN
+// MANEJADOR DE ERRORES GLOBAL
 // ============================================
 
-// Inicializar la aplicación
+window.addEventListener('error', function(e) {
+    console.error('Error global capturado:', e.error);
+    
+    // Ignorar errores específicos de Supabase
+    if (e.message && e.message.includes('supabase')) {
+        console.warn('Error relacionado con Supabase:', e.message);
+        return;
+    }
+    
+    // Mostrar error amigable
+    if (e.error && e.error.message) {
+        mostrarToast('Error', e.error.message, 'error');
+    }
+});
+
+// ============================================
+// INICIALIZACIÓN SEGURA
+// ============================================
+
+// Inicializar la aplicación de forma segura
 async function init() {
-    console.log('Inicializando sistema POS AFMSOLUTIONS...');
+    console.log('🔧 Inicializando sistema POS AFMSOLUTIONS...');
     
-    // Configurar tema
-    configurarTema();
-    
-    // Configurar reloj
-    actualizarReloj();
-    setInterval(actualizarReloj, 1000);
-    
-    // Configurar eventos
-    configurarEventos();
-    
-    // Configurar atajos de teclado
-    configurarAtajosTeclado();
-    
-    // Verificar sesión
-    await checkSession();
-    
-    console.log('Sistema POS inicializado correctamente');
+    try {
+        // Configurar tema
+        configurarTema();
+        
+        // Configurar reloj
+        actualizarReloj();
+        setInterval(actualizarReloj, 1000);
+        
+        // Configurar eventos
+        configurarEventos();
+        
+        // Configurar atajos de teclado
+        configurarAtajosTeclado();
+        
+        // Verificar sesión
+        await checkSession();
+        
+        console.log('✅ Sistema POS inicializado correctamente');
+    } catch (error) {
+        console.error('❌ Error en inicialización:', error);
+        mostrarToast('Error de inicialización', error.message, 'error');
+    }
 }
 
-// Configurar eventos
+// ============================================
+// ELEMENTOS DOM (CARGADOS DINÁMICAMENTE PARA EVITAR NULL)
+// ============================================
+
+// Función para obtener elementos de forma segura
+function getElement(id) {
+    const element = document.getElementById(id);
+    if (!element) {
+        console.warn(`Elemento #${id} no encontrado`);
+    }
+    return element;
+}
+
+// Objeto para almacenar referencias a elementos DOM
+const elementos = {};
+
+// Función para inicializar elementos DOM
+function inicializarElementos() {
+    // Solo inicializar elementos que existen
+    const ids = [
+        'login-modal', 'main-app', 'menu-toggle', 'sidebar', 'username', 
+        'user-role', 'logout-btn', 'theme-toggle', 'live-clock',
+        'scanner-input', 'btn-buscar-manual', 'btn-limpiar-carrito',
+        'carrito-body', 'carrito-vacio', 'carrito-count', 'subtotal',
+        'descuento-aplicado', 'total', 'descuento-input', 'btn-aplicar-descuento',
+        'btn-finalizar-venta', 'pagos-seleccionados', 'next-ticket-id',
+        'current-caja-id', 'status-caja', 'modal-buscar-producto',
+        'modal-producto', 'modal-pagos', 'modal-detalle-venta',
+        'btn-nuevo-producto', 'btn-refresh-productos', 'productos-body',
+        'filtro-productos', 'filtro-activo', 'btn-aplicar-filtros',
+        'btn-ventas-hoy', 'fecha-inicio', 'fecha-fin', 'btn-filtrar-historial',
+        'historial-body', 'btn-anular-venta', 'caja-info', 'caja-form-container',
+        'caja-movimientos', 'btn-refresh-caja', 'reporte-fecha-inicio',
+        'reporte-fecha-fin', 'reporte-tipo', 'btn-generar-reporte',
+        'reporte-resultados', 'config-encabezado', 'config-pie', 'config-mensaje',
+        'btn-guardar-config', 'permisos-container', 'toast-container'
+    ];
+    
+    ids.forEach(id => {
+        elementos[id] = getElement(id);
+    });
+}
+
+// ============================================
+// INICIALIZAR CUANDO EL DOM ESTÉ LISTO
+// ============================================
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('📄 DOM cargado');
+    
+    // Inicializar elementos DOM
+    inicializarElementos();
+    
+    // Inicializar la aplicación
+    init();
+});
+
+// ============================================
+// FUNCIONES BÁSICAS DEL SISTEMA
+// ============================================
+
+// Función para mostrar toast (notificaciones)
+function mostrarToast(titulo, mensaje, tipo = 'info') {
+    // Crear contenedor si no existe
+    if (!elementos['toast-container']) {
+        const container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+        elementos['toast-container'] = container;
+    }
+    
+    const toast = document.createElement('div');
+    toast.className = `toast ${tipo}`;
+    
+    // Iconos por tipo
+    const icons = {
+        success: 'check-circle',
+        error: 'exclamation-circle',
+        warning: 'exclamation-triangle',
+        info: 'info-circle'
+    };
+    
+    toast.innerHTML = `
+        <div class="toast-icon">
+            <i class="fas fa-${icons[tipo] || 'info-circle'}"></i>
+        </div>
+        <div class="toast-content">
+            <div class="toast-title">${titulo}</div>
+            <div class="toast-message">${mensaje}</div>
+        </div>
+        <button class="toast-close">
+            <i class="fas fa-times"></i>
+        </button>
+    `;
+    
+    elementos['toast-container'].appendChild(toast);
+    
+    // Configurar botón cerrar
+    toast.querySelector('.toast-close').addEventListener('click', () => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+    });
+    
+    // Auto-remover después de 5 segundos
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 300);
+        }
+    }, 5000);
+}
+
+// Configurar tema claro/oscuro
+function configurarTema() {
+    if (modoOscuro) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        if (elementos['theme-toggle']) {
+            elementos['theme-toggle'].innerHTML = '<i class="fas fa-sun"></i>';
+        }
+    } else {
+        document.documentElement.setAttribute('data-theme', 'light');
+        if (elementos['theme-toggle']) {
+            elementos['theme-toggle'].innerHTML = '<i class="fas fa-moon"></i>';
+        }
+    }
+}
+
+// Toggle tema
+function toggleTema() {
+    modoOscuro = !modoOscuro;
+    localStorage.setItem('theme', modoOscuro ? 'dark' : 'light');
+    configurarTema();
+}
+
+// Actualizar reloj
+function actualizarReloj() {
+    if (elementos['live-clock']) {
+        const ahora = new Date();
+        elementos['live-clock'].textContent = ahora.toLocaleTimeString();
+    }
+}
+
+// Mostrar modal
+function mostrarModal(modalId) {
+    const modal = getElement(modalId);
+    if (modal) {
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+// Ocultar modal
+function ocultarModal(modalId) {
+    const modal = getElement(modalId);
+    if (modal) {
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+}
+
+// Mostrar sección
+function mostrarSeccion(seccionId) {
+    // Actualizar navegación
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.classList.remove('active');
+        if (link.dataset.section === seccionId) {
+            link.classList.add('active');
+        }
+    });
+    
+    // Mostrar sección correspondiente
+    document.querySelectorAll('.section').forEach(section => {
+        section.classList.remove('active');
+        if (section.id === `seccion-${seccionId}`) {
+            section.classList.add('active');
+        }
+    });
+    
+    currentSection = seccionId;
+    
+    // Enfocar scanner si es sección de venta
+    if (seccionId === 'venta' && elementos['scanner-input']) {
+        setTimeout(() => {
+            elementos['scanner-input'].focus();
+        }, 100);
+    }
+}
+
+// ============================================
+// CONFIGURACIÓN DE EVENTOS
+// ============================================
+
 function configurarEventos() {
     // Login
-    document.getElementById('login-form')?.addEventListener('submit', handleLogin);
+    const loginForm = getElement('login-form');
+    if (loginForm) {
+        loginForm.addEventListener('submit', handleLogin);
+    }
     
     // Navegación
-    elementos.menuToggle?.addEventListener('click', toggleSidebar);
-    elementos.navLinks.forEach(link => {
+    if (elementos['menu-toggle']) {
+        elementos['menu-toggle'].addEventListener('click', () => {
+            if (elementos['sidebar']) {
+                elementos['sidebar'].classList.toggle('active');
+            }
+        });
+    }
+    
+    // Links de navegación
+    document.querySelectorAll('.nav-link').forEach(link => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
             const section = link.dataset.section;
             mostrarSeccion(section);
-            if (window.innerWidth < 768) {
-                toggleSidebar();
+            if (window.innerWidth < 768 && elementos['sidebar']) {
+                elementos['sidebar'].classList.remove('active');
             }
         });
     });
     
     // Cerrar sesión
-    elementos.logoutBtn?.addEventListener('click', handleLogout);
+    if (elementos['logout-btn']) {
+        elementos['logout-btn'].addEventListener('click', handleLogout);
+    }
     
     // Toggle tema
-    elementos.themeToggle?.addEventListener('click', toggleTema);
+    if (elementos['theme-toggle']) {
+        elementos['theme-toggle'].addEventListener('click', toggleTema);
+    }
     
     // Scanner y venta
-    elementos.scannerInput?.addEventListener('keypress', handleScanner);
-    elementos.btnBuscarManual?.addEventListener('click', () => mostrarModal('modal-buscar-producto'));
-    elementos.btnLimpiarCarrito?.addEventListener('click', limpiarCarrito);
-    elementos.btnAplicarDescuento?.addEventListener('click', aplicarDescuento);
-    elementos.btnFinalizarVenta?.addEventListener('click', iniciarProcesoPago);
+    if (elementos['scanner-input']) {
+        elementos['scanner-input'].addEventListener('keypress', handleScanner);
+    }
+    
+    if (elementos['btn-buscar-manual']) {
+        elementos['btn-buscar-manual'].addEventListener('click', () => mostrarModal('modal-buscar-producto'));
+    }
+    
+    if (elementos['btn-limpiar-carrito']) {
+        elementos['btn-limpiar-carrito'].addEventListener('click', limpiarCarrito);
+    }
+    
+    if (elementos['btn-aplicar-descuento']) {
+        elementos['btn-aplicar-descuento'].addEventListener('click', aplicarDescuento);
+    }
+    
+    if (elementos['btn-finalizar-venta']) {
+        elementos['btn-finalizar-venta'].addEventListener('click', iniciarProcesoPago);
+    }
     
     // Medios de pago
     document.querySelectorAll('.btn-pago').forEach(btn => {
@@ -180,66 +428,41 @@ function configurarEventos() {
     document.querySelectorAll('.modal-close').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const modal = e.target.closest('.modal');
-            ocultarModal(modal.id);
-        });
-    });
-    
-    // Cerrar modal al hacer clic fuera
-    document.querySelectorAll('.modal').forEach(modal => {
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                ocultarModal(modal.id);
+            if (modal) {
+                modal.classList.remove('active');
+                document.body.style.overflow = '';
             }
         });
     });
     
-    // Productos
-    elementos.btnNuevoProducto?.addEventListener('click', () => mostrarFormularioProducto());
-    elementos.btnRefreshProductos?.addEventListener('click', cargarProductos);
-    elementos.btnAplicarFiltros?.addEventListener('click', cargarProductos);
-    
-    // Historial
-    elementos.btnVentasHoy?.addEventListener('click', cargarVentasHoy);
-    elementos.btnFiltrarHistorial?.addEventListener('click', cargarHistorial);
-    
-    // Configuración
-    elementos.btnGuardarConfig?.addEventListener('click', guardarConfiguracion);
-    
-    // Buscar productos
-    document.getElementById('btn-buscar-productos')?.addEventListener('click', buscarProductos);
-    
-    // Reportes
-    elementos.btnGenerarReporte?.addEventListener('click', generarReporte);
-    
-    // Caja
-    elementos.btnRefreshCaja?.addEventListener('click', cargarCajaActiva);
-    
-    // Evento para enviar formulario de producto
-    document.getElementById('form-producto')?.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        await guardarProducto();
-    });
+    // Configurar otros eventos según sea necesario
+    console.log('✅ Eventos configurados');
 }
 
-// Configurar atajos de teclado
+// ============================================
+// ATAJOS DE TECLADO
+// ============================================
+
 function configurarAtajosTeclado() {
     document.addEventListener('keydown', (e) => {
         // Ignorar si está en input (excepto scanner)
-        if (e.target.tagName === 'INPUT' && e.target.id !== 'scanner-input') {
+        const target = e.target;
+        if (target.tagName === 'INPUT' && target.id !== 'scanner-input' && 
+            target.type !== 'number') {
             return;
         }
         
         switch(e.key) {
             case 'F1':
                 e.preventDefault();
-                if (currentSection === 'venta' && elementos.btnFinalizarVenta) {
-                    elementos.btnFinalizarVenta.click();
+                if (currentSection === 'venta' && elementos['btn-finalizar-venta']) {
+                    elementos['btn-finalizar-venta'].click();
                 }
                 break;
             case 'F2':
                 e.preventDefault();
-                if (currentSection === 'venta' && elementos.descuentoInput) {
-                    elementos.descuentoInput.focus();
+                if (currentSection === 'venta' && elementos['descuento-input']) {
+                    elementos['descuento-input'].focus();
                 }
                 break;
             case 'F3':
@@ -255,7 +478,7 @@ function configurarAtajosTeclado() {
             case 'F5':
                 e.preventDefault();
                 mostrarSeccion('historial');
-                cargarVentasHoy();
+                setTimeout(() => cargarVentasHoy(), 100);
                 break;
             case 'F6':
                 e.preventDefault();
@@ -266,7 +489,8 @@ function configurarAtajosTeclado() {
             case 'Escape':
                 e.preventDefault();
                 document.querySelectorAll('.modal.active').forEach(modal => {
-                    ocultarModal(modal.id);
+                    modal.classList.remove('active');
+                    document.body.style.overflow = '';
                 });
                 break;
             case '1':
@@ -289,133 +513,15 @@ function configurarAtajosTeclado() {
 }
 
 // ============================================
-// UTILIDADES
+// AUTENTICACIÓN Y SESIÓN
 // ============================================
 
-// Mostrar notificación toast
-function mostrarToast(titulo, mensaje, tipo = 'info') {
-    const toast = document.createElement('div');
-    toast.className = `toast ${tipo}`;
-    toast.innerHTML = `
-        <div class="toast-icon">
-            <i class="fas fa-${tipo === 'success' ? 'check-circle' : tipo === 'error' ? 'exclamation-circle' : tipo === 'warning' ? 'exclamation-triangle' : 'info-circle'}"></i>
-        </div>
-        <div class="toast-content">
-            <div class="toast-title">${titulo}</div>
-            <div class="toast-message">${mensaje}</div>
-        </div>
-        <button class="toast-close">
-            <i class="fas fa-times"></i>
-        </button>
-    `;
-    
-    elementos.toastContainer.appendChild(toast);
-    
-    toast.querySelector('.toast-close').addEventListener('click', () => {
-        toast.remove();
-    });
-    
-    setTimeout(() => {
-        if (toast.parentNode) {
-            toast.style.opacity = '0';
-            setTimeout(() => toast.remove(), 300);
-        }
-    }, 5000);
-}
-
-// Mostrar modal
-function mostrarModal(modalId) {
-    const modal = document.getElementById(modalId);
-    if (modal) {
-        modal.classList.add('active');
-        document.body.style.overflow = 'hidden';
-    }
-}
-
-// Ocultar modal
-function ocultarModal(modalId) {
-    const modal = document.getElementById(modalId);
-    if (modal) {
-        modal.classList.remove('active');
-        document.body.style.overflow = '';
-    }
-}
-
-// Mostrar sección
-function mostrarSeccion(seccionId) {
-    elementos.navLinks.forEach(link => {
-        link.classList.remove('active');
-        if (link.dataset.section === seccionId) {
-            link.classList.add('active');
-        }
-    });
-    
-    elementos.sections.forEach(section => {
-        section.classList.remove('active');
-        if (section.id === `seccion-${seccionId}`) {
-            section.classList.add('active');
-        }
-    });
-    
-    currentSection = seccionId;
-    
-    if (seccionId === 'venta' && elementos.scannerInput) {
-        setTimeout(() => {
-            elementos.scannerInput.focus();
-        }, 100);
-    }
-}
-
-// Configurar tema
-function configurarTema() {
-    if (modoOscuro) {
-        document.documentElement.setAttribute('data-theme', 'dark');
-        elementos.themeToggle.innerHTML = '<i class="fas fa-sun"></i>';
-    } else {
-        document.documentElement.setAttribute('data-theme', 'light');
-        elementos.themeToggle.innerHTML = '<i class="fas fa-moon"></i>';
-    }
-}
-
-// Toggle tema
-function toggleTema() {
-    modoOscuro = !modoOscuro;
-    localStorage.setItem('theme', modoOscuro ? 'dark' : 'light');
-    configurarTema();
-}
-
-// Toggle sidebar
-function toggleSidebar() {
-    elementos.sidebar.classList.toggle('active');
-}
-
-// Actualizar reloj
-function actualizarReloj() {
-    if (elementos.liveClock) {
-        const ahora = new Date();
-        elementos.liveClock.textContent = ahora.toLocaleTimeString();
-    }
-}
-
-// Formatear moneda
-function formatoMoneda(valor) {
-    return new Intl.NumberFormat('es-MX', {
-        style: 'currency',
-        currency: 'MXN'
-    }).format(valor);
-}
-
-// ============================================
-// AUTENTICACIÓN
-// ============================================
-
-// Verificar sesión
 async function checkSession() {
     try {
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
-            mostrarToast('Error', 'No se pudo verificar la sesión', 'error');
+            console.error('Error en sesión:', error);
             return;
         }
         
@@ -424,30 +530,28 @@ async function checkSession() {
             await cargarUsuarioInfo();
             await cargarPermisos();
             
-            if (elementos.loginModal && elementos.mainApp) {
-                elementos.loginModal.classList.remove('active');
-                elementos.mainApp.classList.remove('hidden');
+            if (elementos['login-modal'] && elementos['main-app']) {
+                elementos['login-modal'].classList.remove('active');
+                elementos['main-app'].classList.remove('hidden');
             }
             
             await inicializarSistema();
         } else {
-            if (elementos.loginModal && elementos.mainApp) {
-                elementos.loginModal.classList.add('active');
-                elementos.mainApp.classList.add('hidden');
+            if (elementos['login-modal'] && elementos['main-app']) {
+                elementos['login-modal'].classList.add('active');
+                elementos['main-app'].classList.add('hidden');
             }
         }
     } catch (error) {
-        console.error('Error en checkSession:', error);
-        mostrarToast('Error', 'Error al verificar sesión', 'error');
+        console.error('Error checkSession:', error);
     }
 }
 
-// Manejar login
 async function handleLogin(e) {
     e.preventDefault();
     
-    const email = document.getElementById('login-email')?.value;
-    const password = document.getElementById('login-password')?.value;
+    const email = getElement('login-email')?.value;
+    const password = getElement('login-password')?.value;
     
     if (!email || !password) {
         mostrarToast('Error', 'Email y contraseña requeridos', 'error');
@@ -466,19 +570,20 @@ async function handleLogin(e) {
         await cargarUsuarioInfo();
         await cargarPermisos();
         
-        elementos.loginModal.classList.remove('active');
-        elementos.mainApp.classList.remove('hidden');
+        if (elementos['login-modal'] && elementos['main-app']) {
+            elementos['login-modal'].classList.remove('active');
+            elementos['main-app'].classList.remove('hidden');
+        }
         
         await inicializarSistema();
         
         mostrarToast('¡Bienvenido!', 'Sesión iniciada correctamente', 'success');
     } catch (error) {
-        console.error('Error en login:', error);
-        mostrarToast('Error de inicio de sesión', error.message, 'error');
+        console.error('Error login:', error);
+        mostrarToast('Error', error.message, 'error');
     }
 }
 
-// Cargar información del usuario
 async function cargarUsuarioInfo() {
     try {
         const { data, error } = await supabase
@@ -489,15 +594,14 @@ async function cargarUsuarioInfo() {
         
         if (error) throw error;
         
-        elementos.username.textContent = data.username;
-        elementos.userRole.textContent = data.rol;
+        if (elementos['username']) elementos['username'].textContent = data.username;
+        if (elementos['user-role']) elementos['user-role'].textContent = data.rol;
         currentRole = data.rol;
     } catch (error) {
         console.error('Error cargando usuario:', error);
     }
 }
 
-// Cargar permisos
 async function cargarPermisos() {
     try {
         const { data, error } = await supabase
@@ -514,7 +618,6 @@ async function cargarPermisos() {
     }
 }
 
-// Verificar permiso
 async function tienePermiso(permiso) {
     if (currentRole === 'Administrador') return true;
     
@@ -536,7 +639,6 @@ async function tienePermiso(permiso) {
     }
 }
 
-// Cerrar sesión
 async function handleLogout() {
     try {
         const { error } = await supabase.auth.signOut();
@@ -547,14 +649,17 @@ async function handleLogout() {
         carrito = [];
         cajaActiva = null;
         
-        elementos.mainApp.classList.add('hidden');
-        elementos.loginModal.classList.add('active');
+        if (elementos['main-app'] && elementos['login-modal']) {
+            elementos['main-app'].classList.add('hidden');
+            elementos['login-modal'].classList.add('active');
+        }
         
-        document.getElementById('login-form')?.reset();
+        const loginForm = getElement('login-form');
+        if (loginForm) loginForm.reset();
         
         mostrarToast('Sesión cerrada', 'Has cerrado sesión correctamente', 'info');
     } catch (error) {
-        console.error('Error en logout:', error);
+        console.error('Error logout:', error);
         mostrarToast('Error', 'No se pudo cerrar sesión', 'error');
     }
 }
@@ -572,16 +677,16 @@ async function inicializarSistema() {
         
         mostrarSeccion('venta');
         
-        if (elementos.scannerInput) {
-            elementos.scannerInput.focus();
+        if (elementos['scanner-input']) {
+            setTimeout(() => elementos['scanner-input'].focus(), 500);
         }
         
-        console.log('Sistema inicializado correctamente');
+        console.log('✅ Sistema inicializado');
     } catch (error) {
-        console.error('Error inicializando sistema:', error);
-        mostrarToast('Error', 'Error al inicializar sistema', 'error');
+        console.error('Error inicializando:', error);
     }
 }
+
 
 // ============================================
 // GESTIÓN DE PRODUCTOS

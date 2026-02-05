@@ -4,7 +4,7 @@
 
 // Configuración de Supabase (REEMPLAZAR CON TUS DATOS REALES)
 const SUPABASE_URL = 'https://nptthngcshkbuavkjujf.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_aCH1aSqexxgF5ZsDTlKEeA_O4un4Rq-';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wdHRobmdjc2hrYnVhdmtqdWpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyNTAyMTcsImV4cCI6MjA4NTgyNjIxN30.0P2Yf-wHtNzgoIFLEN-DYME85NFEjKtmz2cyIkyuZfg';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Estados y variables globales

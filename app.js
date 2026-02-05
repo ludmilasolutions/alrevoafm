@@ -8,13 +8,6 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // Crear cliente Supabase (usando la biblioteca global del CDN)
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Verificar que Supabase esté configurado
-if (!supabase) {
-    console.error('Error: No se pudo inicializar Supabase. Verifica:');
-    console.error('1. Que el CDN de Supabase esté cargado en index.html');
-    console.error('2. Que las credenciales SUPABASE_URL y SUPABASE_ANON_KEY sean correctas');
-    console.error('3. Que no haya bloqueadores de scripts en el navegador');
-}
 // Estados y variables globales
 let currentUser = null;
 let currentPermissions = [];

@@ -1756,7 +1756,7 @@ async function recargarEstadoPostVenta() {
 // Cargar caja activa
 async function cargarCajaActiva() {
     try {
-        const { data: cajas, error } = await supabase
+        const { data: cajas, error } = await supabaseClient
             .from('caja')
             .select('*')
             .is('fecha_cierre', null)
@@ -1899,7 +1899,7 @@ async function abrirCaja() {
             throw new Error('Monto inicial inválido');
         }
         
-        const { data: caja, error } = await supabase
+        const { data: caja, error } = await supabaseClient
             .from('caja')
             .insert([{
                 usuario_id: currentUser.id,
@@ -1940,7 +1940,7 @@ async function cerrarCaja() {
         }
         
         // Calcular totales de ventas no anuladas
-        const { data: ventas, error: errorVentas } = await supabase
+        const { data: ventas, error: errorVentas } = await supabaseClient
             .from('ventas')
             .select('id, total')
             .eq('caja_id', cajaActiva.id)
@@ -1955,7 +1955,7 @@ async function cerrarCaja() {
         let totalTransferencia = 0;
         
         if (ventasIds.length > 0) {
-            const { data: pagos, error: errorPagos } = await supabase
+            const { data: pagos, error: errorPagos } = await supabaseClient
                 .from('pagos_venta')
                 .select('medio_pago, monto')
                 .in('venta_id', ventasIds);
@@ -1983,7 +1983,7 @@ async function cerrarCaja() {
         const diferencia = montoReal - totalEsperado;
         
         // Actualizar caja
-        const { error } = await supabase
+        const { error } = await supabaseClient
             .from('caja')
             .update({
                 fecha_cierre: new Date().toISOString(),
@@ -2014,7 +2014,7 @@ async function cargarMovimientosCaja() {
     if (!cajaActiva || !elementos.cajaMovimientos) return;
     
     try {
-        const { data: ventas, error } = await supabase
+        const { data: ventas, error } = await supabaseClient
             .from('ventas')
             .select(`
                 id,
@@ -2121,7 +2121,7 @@ async function cargarHistorial() {
         const inicio = new Date(fechaInicio + 'T00:00:00');
         const fin = new Date(fechaFin + 'T23:59:59');
         
-        const { data: ventas, error } = await supabase
+        const { data: ventas, error } = await supabaseClient
             .from('ventas')
             .select(`
                 *,
@@ -2281,7 +2281,7 @@ function calcularTotalesPeriodo(ventas) {
 // Ver detalle de venta
 async function verDetalleVenta(id) {
     try {
-        const { data: venta, error } = await supabase
+        const { data: venta, error } = await supabaseClient
             .from('ventas')
             .select(`
                 *,
@@ -2391,7 +2391,7 @@ async function anularVenta(id) {
             return;
         }
         
-        const { data: venta, error: errorVenta } = await supabase
+        const { data: venta, error: errorVenta } = await supabaseClient
             .from('ventas')
             .select(`
                 *,
@@ -2413,7 +2413,7 @@ async function anularVenta(id) {
         }
         
         // Marcar venta como anulada
-        const { error: errorAnular } = await supabase
+        const { error: errorAnular } = await supabaseClient
             .from('ventas')
             .update({
                 anulada: true,
@@ -2475,7 +2475,7 @@ async function anularVenta(id) {
 // Cargar configuración
 async function cargarConfiguracion() {
     try {
-        const { data: config, error } = await supabase
+        const { data: config, error } = await supabaseClient
             .from('configuracion')
             .select('clave, valor')
             .in('clave', ['ticket_encabezado', 'ticket_pie', 'ticket_mensaje']);
@@ -2523,7 +2523,7 @@ async function cargarConfiguracion() {
 // Cargar usuarios y permisos
 async function cargarUsuariosPermisos() {
     try {
-        const { data: usuarios, error } = await supabase
+        const { data: usuarios, error } = await supabaseClient
             .from('usuarios')
             .select('id, username, rol, activo')
             .neq('rol', 'Administrador')
@@ -2545,7 +2545,7 @@ async function cargarUsuariosPermisos() {
         
         const permisosUsuarios = await Promise.all(
             usuarios.map(async (usuario) => {
-                const { data: permisos } = await supabase
+                const { data: permisos } = await supabaseClient
                     .from('permisos')
                     .select('permiso')
                     .eq('usuario_id', usuario.id)
@@ -2630,7 +2630,7 @@ async function actualizarPermiso(usuarioId, permiso, activo) {
         }
         
         if (activo) {
-            const { error } = await supabase
+            const { error } = await supabaseClient
                 .from('permisos')
                 .upsert({
                     usuario_id: usuarioId,
@@ -2645,7 +2645,7 @@ async function actualizarPermiso(usuarioId, permiso, activo) {
             
             mostrarToast('Permiso asignado', 'Permiso actualizado correctamente', 'success');
         } else {
-            const { error } = await supabase
+            const { error } = await supabaseClient
                 .from('permisos')
                 .update({ activo: false })
                 .eq('usuario_id', usuarioId)
@@ -2742,7 +2742,7 @@ async function generarReporte() {
 
 // Reporte de ventas
 async function generarReporteVentas(inicio, fin) {
-    const { data: ventas, error } = await supabase
+    const { data: ventas, error } = await supabaseClient
         .from('ventas')
         .select(`
             *,
@@ -2827,7 +2827,7 @@ async function generarReporteVentas(inicio, fin) {
 
 // Reporte de ganancias
 async function generarReporteGanancias(inicio, fin) {
-    const { data: detalles, error } = await supabase
+    const { data: detalles, error } = await supabaseClient
         .from('detalle_ventas')
         .select(`
             cantidad,
@@ -2885,7 +2885,7 @@ async function generarReporteGanancias(inicio, fin) {
 
 // Reporte de productos más vendidos
 async function generarReporteProductos(inicio, fin) {
-    const { data: detalles, error } = await supabase
+    const { data: detalles, error } = await supabaseClient
         .from('detalle_ventas')
         .select(`
             producto_id,

@@ -1,510 +1,474 @@
-// ============================================
-// CONFIGURACIÓN SUPABASE (SOLUCIÓN SIN CONFLICTOS)
-// ============================================
-
-// Primero, verificar si ya existe una variable 'supabase' global
-if (typeof supabase !== 'undefined') {
-    console.warn('ADVERTENCIA: La variable "supabase" ya está definida globalmente.');
-    console.warn('Posibles causas:');
-    console.warn('1. Múltiples scripts de Supabase cargados');
-    console.warn('2. Extensión del navegador inyectando código');
-    console.warn('3. Otra librería usando el mismo nombre');
-}
-
-// Configuración de Supabase - REEMPLAZAR CON TUS DATOS REALES
+// Configuración de Supabase - REEMPLAZAR con tus credenciales
 const SUPABASE_URL = 'https://nptthngcshkbuavkjujf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wdHRobmdjc2hrYnVhdmtqdWpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyNTAyMTcsImV4cCI6MjA4NTgyNjIxN30.0P2Yf-wHtNzgoIFLEN-DYME85NFEjKtmz2cyIkyuZfg';
 
-// Crear cliente Supabase de forma segura
-let supabaseClient;
-try {
-    // Opción 1: Usar el objeto global si existe
-    if (window.supabase && typeof window.supabase.createClient === 'function') {
-        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        console.log('Supabase creado usando window.supabase');
-    }
-    // Opción 2: Si no existe, crear un error controlado
-    else {
-        throw new Error('SDK de Supabase no encontrado. Verifica que el CDN esté cargado.');
-    }
-} catch (error) {
-    console.error('Error inicializando Supabase:', error);
+// Inicialización única de Supabase
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Estado global de la aplicación
+let appState = {
+    usuario: null,
+    permisos: [],
+    carrito: [],
+    pagos: [],
+    descuento: { tipo: 'porcentaje', valor: 0 },
+    productoActual: null,
+    cajaActiva: null,
+    modoOscuro: window.matchMedia('(prefers-color-scheme: dark)').matches
+};
+
+// Inicialización cuando el DOM está listo
+document.addEventListener('DOMContentLoaded', function() {
+    initApp();
+});
+
+// Función principal de inicialización
+async function initApp() {
+    // Verificar sesión activa
+    await checkSession();
     
-    // Crear un mock para desarrollo que muestre errores claros
-    supabaseClient = {
-        auth: {
-            signInWithPassword: () => Promise.reject(new Error('Supabase no configurado')),
-            signOut: () => Promise.reject(new Error('Supabase no configurado')),
-            getSession: () => Promise.reject(new Error('Supabase no configurado'))
-        },
-        from: () => ({
-            select: () => ({
-                eq: () => ({
-                    single: () => Promise.reject(new Error('Supabase no configurado'))
-                })
-            })
-        })
-    };
+    // Configurar eventos globales
+    setupEventListeners();
     
-    // Mostrar alerta en producción
-    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-        alert('ERROR CRÍTICO: Supabase no está configurado correctamente. Contacta al administrador.');
+    // Configurar atajos de teclado
+    setupKeyboardShortcuts();
+    
+    // Cargar configuración inicial
+    await cargarConfiguracion();
+    
+    // Verificar estado de caja
+    await verificarCajaActiva();
+    
+    console.log('Sistema POS inicializado correctamente');
+}
+
+// ==================== AUTENTICACIÓN ====================
+async function checkSession() {
+    try {
+        const { data: { session }, error } = await supabaseClient.auth.getSession();
+        
+        if (error) throw error;
+        
+        if (session) {
+            // Cargar datos del usuario
+            await cargarUsuario(session.user.id);
+            // Mostrar aplicación
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('app').style.display = 'flex';
+            
+            // Actualizar UI
+            document.getElementById('user-name').textContent = appState.usuario?.username || 'Usuario';
+            updateNavigationPermissions();
+            
+            // Enfocar campo scanner si estamos en sección venta
+            if (document.getElementById('seccion-venta').classList.contains('active')) {
+                document.getElementById('scanner-input').focus();
+            }
+        }
+    } catch (error) {
+        console.error('Error verificando sesión:', error);
+        showNotification('Error al verificar sesión', 'error');
     }
 }
 
-// Usar esta variable en todo el código
-const supabase = supabaseClient;
-
-// ============================================
-// VERIFICACIÓN DE CONFIGURACIÓN
-// ============================================
-
-// Verificar que las credenciales no sean las predeterminadas
-if (SUPABASE_URL === 'https://tu-proyecto.supabase.co' || 
-    SUPABASE_ANON_KEY === 'tu-clave-anon-publica') {
-    console.error('❌ ERROR: Debes configurar tus credenciales de Supabase en app.js');
-    console.error('Ve a Project Settings > API en Supabase y copia:');
-    console.error('1. Project URL → SUPABASE_URL');
-    console.error('2. anon public → SUPABASE_ANON_KEY');
-    
-    // Mostrar alerta visual
-    document.addEventListener('DOMContentLoaded', () => {
-        const alertDiv = document.createElement('div');
-        alertDiv.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            background: #dc3545;
-            color: white;
-            padding: 15px;
-            text-align: center;
-            z-index: 9999;
-            font-family: Arial, sans-serif;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-        `;
-        alertDiv.innerHTML = `
-            <strong>⚠️ CONFIGURACIÓN REQUERIDA:</strong> 
-            Reemplaza SUPABASE_URL y SUPABASE_ANON_KEY en app.js con tus credenciales de Supabase.
-            <button onclick="this.parentElement.remove()" 
-                    style="margin-left: 20px; background: white; color: #dc3545; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer;">
-                Cerrar
-            </button>
-        `;
-        document.body.appendChild(alertDiv);
-    });
+async function cargarUsuario(userId) {
+    try {
+        const { data: usuario, error } = await supabaseClient
+            .from('usuarios')
+            .select('*')
+            .eq('id', userId)
+            .single();
+        
+        if (error) throw error;
+        
+        if (usuario) {
+            appState.usuario = usuario;
+            await cargarPermisosUsuario(userId);
+        }
+    } catch (error) {
+        console.error('Error cargando usuario:', error);
+    }
 }
 
-// ============================================
-// VARIABLES GLOBALES DEL SISTEMA
-// ============================================
-let currentUser = null;
-let currentPermissions = [];
-let currentRole = null;
-let carrito = [];
-let cajaActiva = null;
-let productosCache = new Map();
-let modoOscuro = localStorage.getItem('theme') === 'dark';
-let currentSection = 'venta';
-let proximoTicketId = 'T-YYYYMMDD-0000';
-let selectedPagos = [];
-let descuentoAplicado = 0;
+async function cargarPermisosUsuario(userId) {
+    try {
+        const { data: permisos, error } = await supabaseClient
+            .from('permisos')
+            .select('permiso')
+            .eq('usuario_id', userId)
+            .eq('activo', true);
+        
+        if (error) throw error;
+        
+        appState.permisos = permisos.map(p => p.permiso);
+    } catch (error) {
+        console.error('Error cargando permisos:', error);
+    }
+}
 
-// Medios de pago fijos
-const MEDIOS_PAGO = ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA/QR'];
-
-// ============================================
-// MANEJADOR DE ERRORES GLOBAL
-// ============================================
-
-window.addEventListener('error', function(e) {
-    console.error('Error global capturado:', e.error);
+// Login
+document.getElementById('login-btn').addEventListener('click', async function() {
+    const email = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
     
-    // Ignorar errores específicos de Supabase
-    if (e.message && e.message.includes('supabase')) {
-        console.warn('Error relacionado con Supabase:', e.message);
+    if (!email || !password) {
+        showNotification('Por favor ingrese email y contraseña', 'warning');
         return;
     }
     
-    // Mostrar error amigable
-    if (e.error && e.error.message) {
-        mostrarToast('Error', e.error.message, 'error');
-    }
-});
-
-// ============================================
-// INICIALIZACIÓN SEGURA
-// ============================================
-
-// Inicializar la aplicación de forma segura
-async function init() {
-    console.log('🔧 Inicializando sistema POS AFMSOLUTIONS...');
+    this.classList.add('loading');
     
     try {
-        // Configurar tema
-        configurarTema();
+        const { data, error } = await supabaseClient.auth.signInWithPassword({
+            email,
+            password
+        });
         
-        // Configurar reloj
-        actualizarReloj();
-        setInterval(actualizarReloj, 1000);
+        if (error) throw error;
         
-        // Configurar eventos
-        configurarEventos();
-        
-        // Configurar atajos de teclado
-        configurarAtajosTeclado();
-        
-        // Verificar sesión
-        await checkSession();
-        
-        console.log('✅ Sistema POS inicializado correctamente');
+        if (data.user) {
+            await cargarUsuario(data.user.id);
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('app').style.display = 'flex';
+            document.getElementById('user-name').textContent = appState.usuario?.username || 'Usuario';
+            updateNavigationPermissions();
+            showNotification('Sesión iniciada correctamente', 'success');
+            
+            // Enfocar campo scanner
+            document.getElementById('scanner-input').focus();
+        }
     } catch (error) {
-        console.error('❌ Error en inicialización:', error);
-        mostrarToast('Error de inicialización', error.message, 'error');
+        console.error('Error en login:', error);
+        document.getElementById('login-error').textContent = error.message;
+        document.getElementById('login-error').style.display = 'block';
+        showNotification('Error en inicio de sesión', 'error');
+    } finally {
+        this.classList.remove('loading');
     }
-}
-
-// ============================================
-// ELEMENTOS DOM (CARGADOS DINÁMICAMENTE PARA EVITAR NULL)
-// ============================================
-
-// Función para obtener elementos de forma segura
-function getElement(id) {
-    const element = document.getElementById(id);
-    if (!element) {
-        console.warn(`Elemento #${id} no encontrado`);
-    }
-    return element;
-}
-
-// Objeto para almacenar referencias a elementos DOM
-const elementos = {};
-
-// Función para inicializar elementos DOM
-function inicializarElementos() {
-    // Solo inicializar elementos que existen
-    const ids = [
-        'login-modal', 'main-app', 'menu-toggle', 'sidebar', 'username', 
-        'user-role', 'logout-btn', 'theme-toggle', 'live-clock',
-        'scanner-input', 'btn-buscar-manual', 'btn-limpiar-carrito',
-        'carrito-body', 'carrito-vacio', 'carrito-count', 'subtotal',
-        'descuento-aplicado', 'total', 'descuento-input', 'btn-aplicar-descuento',
-        'btn-finalizar-venta', 'pagos-seleccionados', 'next-ticket-id',
-        'current-caja-id', 'status-caja', 'modal-buscar-producto',
-        'modal-producto', 'modal-pagos', 'modal-detalle-venta',
-        'btn-nuevo-producto', 'btn-refresh-productos', 'productos-body',
-        'filtro-productos', 'filtro-activo', 'btn-aplicar-filtros',
-        'btn-ventas-hoy', 'fecha-inicio', 'fecha-fin', 'btn-filtrar-historial',
-        'historial-body', 'btn-anular-venta', 'caja-info', 'caja-form-container',
-        'caja-movimientos', 'btn-refresh-caja', 'reporte-fecha-inicio',
-        'reporte-fecha-fin', 'reporte-tipo', 'btn-generar-reporte',
-        'reporte-resultados', 'config-encabezado', 'config-pie', 'config-mensaje',
-        'btn-guardar-config', 'permisos-container', 'toast-container'
-    ];
-    
-    ids.forEach(id => {
-        elementos[id] = getElement(id);
-    });
-}
-
-// ============================================
-// INICIALIZAR CUANDO EL DOM ESTÉ LISTO
-// ============================================
-
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('📄 DOM cargado');
-    
-    // Inicializar elementos DOM
-    inicializarElementos();
-    
-    // Inicializar la aplicación
-    init();
 });
 
-// ============================================
-// FUNCIONES BÁSICAS DEL SISTEMA
-// ============================================
+// Logout
+document.getElementById('logout-btn').addEventListener('click', async function() {
+    try {
+        const { error } = await supabaseClient.auth.signOut();
+        if (error) throw error;
+        
+        // Resetear estado
+        appState = {
+            usuario: null,
+            permisos: [],
+            carrito: [],
+            pagos: [],
+            descuento: { tipo: 'porcentaje', valor: 0 },
+            productoActual: null,
+            cajaActiva: null
+        };
+        
+        // Mostrar login
+        document.getElementById('app').style.display = 'none';
+        document.getElementById('login-screen').style.display = 'flex';
+        document.getElementById('login-error').style.display = 'none';
+        
+        showNotification('Sesión cerrada correctamente', 'success');
+    } catch (error) {
+        console.error('Error en logout:', error);
+        showNotification('Error al cerrar sesión', 'error');
+    }
+});
 
-// Función para mostrar toast (notificaciones)
-function mostrarToast(titulo, mensaje, tipo = 'info') {
-    // Crear contenedor si no existe
-    if (!elementos['toast-container']) {
-        const container = document.createElement('div');
-        container.id = 'toast-container';
-        container.className = 'toast-container';
-        document.body.appendChild(container);
-        elementos['toast-container'] = container;
+// ==================== PERMISOS DINÁMICOS ====================
+async function hasPermission(permiso) {
+    // Si es administrador, tiene todos los permisos
+    if (appState.usuario?.rol === 'Administrador') {
+        return true;
     }
     
-    const toast = document.createElement('div');
-    toast.className = `toast ${tipo}`;
+    // Consultar permisos en tiempo real
+    try {
+        const { data, error } = await supabaseClient
+            .from('permisos')
+            .select('activo')
+            .eq('usuario_id', appState.usuario?.id)
+            .eq('permiso', permiso)
+            .single();
+        
+        if (error || !data) return false;
+        
+        return data.activo;
+    } catch (error) {
+        console.error('Error verificando permiso:', error);
+        return false;
+    }
+}
+
+function updateNavigationPermissions() {
+    const navLinks = document.querySelectorAll('.nav-link');
     
-    // Iconos por tipo
-    const icons = {
-        success: 'check-circle',
-        error: 'exclamation-circle',
-        warning: 'exclamation-triangle',
-        info: 'info-circle'
-    };
-    
-    toast.innerHTML = `
-        <div class="toast-icon">
-            <i class="fas fa-${icons[tipo] || 'info-circle'}"></i>
-        </div>
-        <div class="toast-content">
-            <div class="toast-title">${titulo}</div>
-            <div class="toast-message">${mensaje}</div>
-        </div>
-        <button class="toast-close">
-            <i class="fas fa-times"></i>
-        </button>
-    `;
-    
-    elementos['toast-container'].appendChild(toast);
-    
-    // Configurar botón cerrar
-    toast.querySelector('.toast-close').addEventListener('click', () => {
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 300);
+    navLinks.forEach(link => {
+        const section = link.dataset.section;
+        
+        // Mostrar/ocultar según permisos
+        switch(section) {
+            case 'caja':
+                if (!appState.usuario || (appState.usuario.rol !== 'Administrador' && !appState.permisos.includes('acceder_caja'))) {
+                    link.style.display = 'none';
+                }
+                break;
+            case 'reportes':
+                if (!appState.usuario || (appState.usuario.rol !== 'Administrador' && !appState.permisos.includes('ver_reportes'))) {
+                    link.style.display = 'none';
+                }
+                break;
+            case 'configuracion':
+                if (!appState.usuario || appState.usuario.rol !== 'Administrador') {
+                    link.style.display = 'none';
+                }
+                break;
+        }
+    });
+}
+
+// ==================== NAVEGACIÓN RESPONSIVA ====================
+function setupEventListeners() {
+    // Navegación entre secciones
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            const targetSection = this.dataset.section;
+            showSection(targetSection);
+            
+            // Cerrar menú en móvil
+            if (window.innerWidth < 768) {
+                document.getElementById('main-nav').classList.remove('active');
+            }
+        });
     });
     
-    // Auto-remover después de 5 segundos
-    setTimeout(() => {
-        if (toast.parentNode) {
-            toast.style.opacity = '0';
-            setTimeout(() => toast.remove(), 300);
+    // Menú hamburguesa
+    document.getElementById('menu-toggle').addEventListener('click', function() {
+        document.getElementById('main-nav').classList.toggle('active');
+    });
+    
+    // Cerrar menú al hacer clic fuera (en móvil)
+    document.addEventListener('click', function(e) {
+        const nav = document.getElementById('main-nav');
+        const toggle = document.getElementById('menu-toggle');
+        
+        if (window.innerWidth < 768 && 
+            nav.classList.contains('active') && 
+            !nav.contains(e.target) && 
+            !toggle.contains(e.target)) {
+            nav.classList.remove('active');
         }
-    }, 5000);
-}
-
-// Configurar tema claro/oscuro
-function configurarTema() {
-    if (modoOscuro) {
-        document.documentElement.setAttribute('data-theme', 'dark');
-        if (elementos['theme-toggle']) {
-            elementos['theme-toggle'].innerHTML = '<i class="fas fa-sun"></i>';
+    });
+    
+    // Campo scanner
+    const scannerInput = document.getElementById('scanner-input');
+    scannerInput.addEventListener('input', handleScannerInput);
+    scannerInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            buscarProductoPorCodigo(this.value);
+            this.value = '';
         }
-    } else {
-        document.documentElement.setAttribute('data-theme', 'light');
-        if (elementos['theme-toggle']) {
-            elementos['theme-toggle'].innerHTML = '<i class="fas fa-moon"></i>';
-        }
-    }
+    });
+    
+    // Buscador manual (F6)
+    document.getElementById('btn-buscar-manual').addEventListener('click', showBuscadorManual);
+    
+    // Carrito
+    document.getElementById('btn-agregar-carrito').addEventListener('click', agregarAlCarrito);
+    document.getElementById('btn-limpiar-carrito').addEventListener('click', limpiarCarrito);
+    
+    // Cantidad
+    document.getElementById('btn-cantidad-menos').addEventListener('click', () => cambiarCantidad(-1));
+    document.getElementById('btn-cantidad-mas').addEventListener('click', () => cambiarCantidad(1));
+    document.getElementById('cantidad-producto').addEventListener('change', actualizarCantidad);
+    
+    // Descuento
+    document.getElementById('btn-aplicar-descuento').addEventListener('click', aplicarDescuento);
+    
+    // Pagos
+    document.querySelectorAll('.btn-pago').forEach(btn => {
+        btn.addEventListener('click', function() {
+            seleccionarMedioPago(this.dataset.medio);
+        });
+    });
+    
+    document.getElementById('btn-agregar-pago').addEventListener('click', agregarPago);
+    document.getElementById('btn-finalizar-venta').addEventListener('click', finalizarVenta);
+    document.getElementById('btn-cancelar-venta').addEventListener('click', cancelarVenta);
+    
+    // Productos
+    document.getElementById('btn-nuevo-producto').addEventListener('click', () => mostrarModalProducto());
+    document.getElementById('btn-refrescar-productos').addEventListener('click', cargarProductos);
+    document.getElementById('btn-filtrar-productos').addEventListener('click', cargarProductos);
+    document.getElementById('filtro-productos').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') cargarProductos();
+    });
+    
+    // Historial
+    document.getElementById('btn-ventas-hoy').addEventListener('click', cargarVentasHoy);
+    document.getElementById('btn-filtrar-historial').addEventListener('click', cargarHistorial);
+    
+    // Caja
+    document.getElementById('btn-abrir-caja').addEventListener('click', mostrarModalAperturaCaja);
+    document.getElementById('btn-cerrar-caja').addEventListener('click', cerrarCaja);
+    
+    // Reportes
+    document.getElementById('btn-generar-reporte').addEventListener('click', generarReporte);
+    
+    // Configuración
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const tabId = this.dataset.tab;
+            mostrarTabConfiguracion(tabId);
+        });
+    });
+    
+    // Modales
+    document.querySelectorAll('.modal-close').forEach(btn => {
+        btn.addEventListener('click', function() {
+            this.closest('.modal').classList.remove('active');
+        });
+    });
+    
+    // Cerrar modal al hacer clic fuera
+    document.querySelectorAll('.modal').forEach(modal => {
+        modal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                this.classList.remove('active');
+            }
+        });
+    });
+    
+    // Buscador de productos
+    document.getElementById('btn-buscar-productos').addEventListener('click', buscarProductosManual);
+    
+    // Formulario producto
+    document.getElementById('form-producto').addEventListener('submit', guardarProducto);
+    
+    // Cálculo automático de precio
+    document.getElementById('producto-precio-costo').addEventListener('input', calcularPrecioVenta);
+    document.getElementById('producto-margen').addEventListener('input', calcularPrecioVenta);
+    document.getElementById('producto-precio-venta').addEventListener('input', calcularMargen);
+    
+    // Apertura caja
+    document.getElementById('form-apertura-caja').addEventListener('submit', abrirCaja);
 }
 
-// Toggle tema
-function toggleTema() {
-    modoOscuro = !modoOscuro;
-    localStorage.setItem('theme', modoOscuro ? 'dark' : 'light');
-    configurarTema();
-}
-
-// Actualizar reloj
-function actualizarReloj() {
-    if (elementos['live-clock']) {
-        const ahora = new Date();
-        elementos['live-clock'].textContent = ahora.toLocaleTimeString();
-    }
-}
-
-// Mostrar modal
-function mostrarModal(modalId) {
-    const modal = getElement(modalId);
-    if (modal) {
-        modal.classList.add('active');
-        document.body.style.overflow = 'hidden';
-    }
-}
-
-// Ocultar modal
-function ocultarModal(modalId) {
-    const modal = getElement(modalId);
-    if (modal) {
-        modal.classList.remove('active');
-        document.body.style.overflow = '';
-    }
-}
-
-// Mostrar sección
-function mostrarSeccion(seccionId) {
-    // Actualizar navegación
+function showSection(sectionId) {
+    // Ocultar todas las secciones
+    document.querySelectorAll('.content-section').forEach(section => {
+        section.classList.remove('active');
+    });
+    
+    // Desactivar todos los enlaces
     document.querySelectorAll('.nav-link').forEach(link => {
         link.classList.remove('active');
-        if (link.dataset.section === seccionId) {
-            link.classList.add('active');
-        }
     });
     
-    // Mostrar sección correspondiente
-    document.querySelectorAll('.section').forEach(section => {
-        section.classList.remove('active');
-        if (section.id === `seccion-${seccionId}`) {
-            section.classList.add('active');
-        }
-    });
+    // Mostrar sección seleccionada
+    document.getElementById(`seccion-${sectionId}`).classList.add('active');
     
-    currentSection = seccionId;
+    // Activar enlace correspondiente
+    document.querySelector(`.nav-link[data-section="${sectionId}"]`).classList.add('active');
     
-    // Enfocar scanner si es sección de venta
-    if (seccionId === 'venta' && elementos['scanner-input']) {
+    // Actualizar título
+    document.getElementById('current-section').textContent = sectionId.toUpperCase();
+    
+    // Enfocar scanner si es sección venta
+    if (sectionId === 'venta') {
         setTimeout(() => {
-            elementos['scanner-input'].focus();
+            document.getElementById('scanner-input').focus();
         }, 100);
     }
+    
+    // Cargar datos según sección
+    switch(sectionId) {
+        case 'productos':
+            cargarProductos();
+            break;
+        case 'historial':
+            cargarVentasHoy();
+            break;
+        case 'caja':
+            cargarEstadoCaja();
+            break;
+        case 'reportes':
+            // Resetear fechas a hoy
+            const hoy = new Date().toISOString().split('T')[0];
+            document.getElementById('reporte-fecha-inicio').value = hoy;
+            document.getElementById('reporte-fecha-fin').value = hoy;
+            break;
+        case 'configuracion':
+            cargarConfiguracionTicket();
+            break;
+    }
 }
 
-// ============================================
-// CONFIGURACIÓN DE EVENTOS
-// ============================================
-
-function configurarEventos() {
-    // Login
-    const loginForm = getElement('login-form');
-    if (loginForm) {
-        loginForm.addEventListener('submit', handleLogin);
-    }
-    
-    // Navegación
-    if (elementos['menu-toggle']) {
-        elementos['menu-toggle'].addEventListener('click', () => {
-            if (elementos['sidebar']) {
-                elementos['sidebar'].classList.toggle('active');
-            }
-        });
-    }
-    
-    // Links de navegación
-    document.querySelectorAll('.nav-link').forEach(link => {
-        link.addEventListener('click', (e) => {
-            e.preventDefault();
-            const section = link.dataset.section;
-            mostrarSeccion(section);
-            if (window.innerWidth < 768 && elementos['sidebar']) {
-                elementos['sidebar'].classList.remove('active');
-            }
-        });
-    });
-    
-    // Cerrar sesión
-    if (elementos['logout-btn']) {
-        elementos['logout-btn'].addEventListener('click', handleLogout);
-    }
-    
-    // Toggle tema
-    if (elementos['theme-toggle']) {
-        elementos['theme-toggle'].addEventListener('click', toggleTema);
-    }
-    
-    // Scanner y venta
-    if (elementos['scanner-input']) {
-        elementos['scanner-input'].addEventListener('keypress', handleScanner);
-    }
-    
-    if (elementos['btn-buscar-manual']) {
-        elementos['btn-buscar-manual'].addEventListener('click', () => mostrarModal('modal-buscar-producto'));
-    }
-    
-    if (elementos['btn-limpiar-carrito']) {
-        elementos['btn-limpiar-carrito'].addEventListener('click', limpiarCarrito);
-    }
-    
-    if (elementos['btn-aplicar-descuento']) {
-        elementos['btn-aplicar-descuento'].addEventListener('click', aplicarDescuento);
-    }
-    
-    if (elementos['btn-finalizar-venta']) {
-        elementos['btn-finalizar-venta'].addEventListener('click', iniciarProcesoPago);
-    }
-    
-    // Medios de pago
-    document.querySelectorAll('.btn-pago').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const medio = e.currentTarget.dataset.medio;
-            seleccionarMedioPago(medio);
-        });
-    });
-    
-    // Cerrar modales
-    document.querySelectorAll('.modal-close').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const modal = e.target.closest('.modal');
-            if (modal) {
-                modal.classList.remove('active');
-                document.body.style.overflow = '';
-            }
-        });
-    });
-    
-    // Configurar otros eventos según sea necesario
-    console.log('✅ Eventos configurados');
-}
-
-// ============================================
-// ATAJOS DE TECLADO
-// ============================================
-
-function configurarAtajosTeclado() {
-    document.addEventListener('keydown', (e) => {
-        // Ignorar si está en input (excepto scanner)
-        const target = e.target;
-        if (target.tagName === 'INPUT' && target.id !== 'scanner-input' && 
-            target.type !== 'number') {
+// ==================== ATAJOS DE TECLADO ====================
+function setupKeyboardShortcuts() {
+    document.addEventListener('keydown', function(e) {
+        // Solo atajos en desktop y cuando no estemos en inputs
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || window.innerWidth < 768) {
             return;
         }
         
         switch(e.key) {
             case 'F1':
                 e.preventDefault();
-                if (currentSection === 'venta' && elementos['btn-finalizar-venta']) {
-                    elementos['btn-finalizar-venta'].click();
+                if (document.getElementById('btn-finalizar-venta') && !document.getElementById('btn-finalizar-venta').disabled) {
+                    finalizarVenta();
                 }
                 break;
             case 'F2':
                 e.preventDefault();
-                if (currentSection === 'venta' && elementos['descuento-input']) {
-                    elementos['descuento-input'].focus();
-                }
+                document.getElementById('descuento-input').focus();
                 break;
             case 'F3':
                 e.preventDefault();
-                if (currentSection === 'venta' && carrito.length > 0) {
-                    eliminarDelCarrito(carrito.length - 1);
+                // Eliminar último item del carrito
+                if (appState.carrito.length > 0) {
+                    appState.carrito.pop();
+                    actualizarCarritoUI();
                 }
                 break;
             case 'F4':
                 e.preventDefault();
-                mostrarSeccion('caja');
+                showSection('caja');
                 break;
             case 'F5':
                 e.preventDefault();
-                mostrarSeccion('historial');
-                setTimeout(() => cargarVentasHoy(), 100);
+                if (document.getElementById('seccion-historial').classList.contains('active')) {
+                    cargarVentasHoy();
+                } else {
+                    showSection('historial');
+                }
                 break;
             case 'F6':
                 e.preventDefault();
-                if (currentSection === 'venta') {
-                    mostrarModal('modal-buscar-producto');
-                }
+                showBuscadorManual();
                 break;
             case 'Escape':
                 e.preventDefault();
+                // Cerrar modales abiertos
                 document.querySelectorAll('.modal.active').forEach(modal => {
                     modal.classList.remove('active');
-                    document.body.style.overflow = '';
                 });
                 break;
             case '1':
-                if (currentSection === 'venta') {
+                if (document.getElementById('seccion-venta').classList.contains('active')) {
                     seleccionarMedioPago('EFECTIVO');
                 }
                 break;
             case '2':
-                if (currentSection === 'venta') {
+                if (document.getElementById('seccion-venta').classList.contains('active')) {
                     seleccionarMedioPago('TARJETA');
                 }
                 break;
             case '3':
-                if (currentSection === 'venta') {
+                if (document.getElementById('seccion-venta').classList.contains('active')) {
                     seleccionarMedioPago('TRANSFERENCIA/QR');
                 }
                 break;
@@ -512,308 +476,168 @@ function configurarAtajosTeclado() {
     });
 }
 
-// ============================================
-// AUTENTICACIÓN Y SESIÓN
-// ============================================
-
-async function checkSession() {
-    try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (error) {
-            console.error('Error en sesión:', error);
-            return;
-        }
-        
-        if (session) {
-            currentUser = session.user;
-            await cargarUsuarioInfo();
-            await cargarPermisos();
-            
-            if (elementos['login-modal'] && elementos['main-app']) {
-                elementos['login-modal'].classList.remove('active');
-                elementos['main-app'].classList.remove('hidden');
-            }
-            
-            await inicializarSistema();
-        } else {
-            if (elementos['login-modal'] && elementos['main-app']) {
-                elementos['login-modal'].classList.add('active');
-                elementos['main-app'].classList.add('hidden');
-            }
-        }
-    } catch (error) {
-        console.error('Error checkSession:', error);
-    }
-}
-
-async function handleLogin(e) {
-    e.preventDefault();
-    
-    const email = getElement('login-email')?.value;
-    const password = getElement('login-password')?.value;
-    
-    if (!email || !password) {
-        mostrarToast('Error', 'Email y contraseña requeridos', 'error');
-        return;
-    }
+// ==================== GESTIÓN DE PRODUCTOS ====================
+async function buscarProductoPorCodigo(codigo) {
+    if (!codigo || codigo.trim() === '') return;
     
     try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-            email,
-            password
-        });
-        
-        if (error) throw error;
-        
-        currentUser = data.user;
-        await cargarUsuarioInfo();
-        await cargarPermisos();
-        
-        if (elementos['login-modal'] && elementos['main-app']) {
-            elementos['login-modal'].classList.remove('active');
-            elementos['main-app'].classList.remove('hidden');
-        }
-        
-        await inicializarSistema();
-        
-        mostrarToast('¡Bienvenido!', 'Sesión iniciada correctamente', 'success');
-    } catch (error) {
-        console.error('Error login:', error);
-        mostrarToast('Error', error.message, 'error');
-    }
-}
-
-async function cargarUsuarioInfo() {
-    try {
-        const { data, error } = await supabase
-            .from('usuarios')
-            .select('username, rol')
-            .eq('id', currentUser.id)
-            .single();
-        
-        if (error) throw error;
-        
-        if (elementos['username']) elementos['username'].textContent = data.username;
-        if (elementos['user-role']) elementos['user-role'].textContent = data.rol;
-        currentRole = data.rol;
-    } catch (error) {
-        console.error('Error cargando usuario:', error);
-    }
-}
-
-async function cargarPermisos() {
-    try {
-        const { data, error } = await supabase
-            .from('permisos')
-            .select('permiso')
-            .eq('usuario_id', currentUser.id)
-            .eq('activo', true);
-        
-        if (error) throw error;
-        
-        currentPermissions = data.map(p => p.permiso);
-    } catch (error) {
-        console.error('Error cargando permisos:', error);
-    }
-}
-
-async function tienePermiso(permiso) {
-    if (currentRole === 'Administrador') return true;
-    
-    try {
-        const { data, error } = await supabase
-            .from('permisos')
-            .select('permiso')
-            .eq('usuario_id', currentUser.id)
-            .eq('permiso', permiso)
+        const { data: producto, error } = await supabaseClient
+            .from('productos')
+            .select('*')
+            .eq('codigo_barra', codigo.trim())
             .eq('activo', true)
             .single();
         
-        if (error && error.code !== 'PGRST116') throw error;
-        
-        return !!data;
-    } catch (error) {
-        console.error('Error verificando permiso:', error);
-        return false;
-    }
-}
-
-async function handleLogout() {
-    try {
-        const { error } = await supabase.auth.signOut();
         if (error) throw error;
         
-        currentUser = null;
-        currentPermissions = [];
-        carrito = [];
-        cajaActiva = null;
-        
-        if (elementos['main-app'] && elementos['login-modal']) {
-            elementos['main-app'].classList.add('hidden');
-            elementos['login-modal'].classList.add('active');
+        if (producto) {
+            mostrarProductoEncontrado(producto);
+        } else {
+            showNotification('Producto no encontrado', 'warning');
         }
-        
-        const loginForm = getElement('login-form');
-        if (loginForm) loginForm.reset();
-        
-        mostrarToast('Sesión cerrada', 'Has cerrado sesión correctamente', 'info');
     } catch (error) {
-        console.error('Error logout:', error);
-        mostrarToast('Error', 'No se pudo cerrar sesión', 'error');
+        console.error('Error buscando producto:', error);
+        showNotification('Error buscando producto', 'error');
     }
 }
 
-// ============================================
-// INICIALIZACIÓN DEL SISTEMA
-// ============================================
+function mostrarProductoEncontrado(producto) {
+    appState.productoActual = producto;
+    
+    const productoInfo = document.getElementById('producto-info');
+    document.getElementById('producto-nombre').textContent = producto.nombre;
+    document.getElementById('producto-precio').textContent = `S/ ${parseFloat(producto.precio_venta).toFixed(2)}`;
+    document.getElementById('producto-stock').textContent = producto.stock;
+    document.getElementById('cantidad-producto').value = 1;
+    document.getElementById('cantidad-producto').max = producto.stock;
+    
+    productoInfo.style.display = 'block';
+    
+    // Resaltar visualmente
+    productoInfo.style.animation = 'none';
+    setTimeout(() => {
+        productoInfo.style.animation = 'fadeIn 0.5s ease';
+    }, 10);
+}
 
-async function inicializarSistema() {
-    try {
-        await cargarCajaActiva();
-        await cargarProductos();
-        await cargarConfiguracion();
-        await actualizarProximoTicketId();
-        
-        mostrarSeccion('venta');
-        
-        if (elementos['scanner-input']) {
-            setTimeout(() => elementos['scanner-input'].focus(), 500);
-        }
-        
-        console.log('✅ Sistema inicializado');
-    } catch (error) {
-        console.error('Error inicializando:', error);
+function handleScannerInput(e) {
+    // En móvil, enfocar automáticamente el campo
+    if (window.innerWidth < 768) {
+        e.target.focus();
     }
 }
 
-// ============================================
-// GESTIÓN DE PRODUCTOS
-// ============================================
-
-// Cargar productos
 async function cargarProductos() {
     try {
-        let query = supabase
+        const filtro = document.getElementById('filtro-productos').value;
+        const proveedor = document.getElementById('filtro-proveedor').value;
+        const estado = document.getElementById('filtro-estado').value;
+        
+        let query = supabaseClient
             .from('productos')
-            .select('*', { count: 'exact' });
+            .select('*')
+            .order('nombre');
         
         // Aplicar filtros
-        const filtroTexto = elementos.filtroProductos.value;
-        const filtroActivo = elementos.filtroActivo.value;
-        
-        if (filtroTexto) {
-            query = query.or(`codigo_barra.ilike.%${filtroTexto}%,nombre.ilike.%${filtroTexto}%,proveedor.ilike.%${filtroTexto}%`);
+        if (filtro) {
+            query = query.or(`codigo_barra.ilike.%${filtro}%,nombre.ilike.%${filtro}%`);
         }
         
-        if (filtroActivo !== 'all') {
-            query = query.eq('activo', filtroActivo === 'true');
+        if (proveedor) {
+            query = query.eq('proveedor', proveedor);
         }
         
-        const { data: productos, error, count } = await query
-            .order('nombre')
-            .limit(50);
+        if (estado === 'activos') {
+            query = query.eq('activo', true);
+        } else if (estado === 'inactivos') {
+            query = query.eq('activo', false);
+        }
+        
+        const { data: productos, error } = await query;
         
         if (error) throw error;
         
-        // Actualizar cache
-        productosCache.clear();
-        productos.forEach(p => productosCache.set(p.id, p));
+        const tbody = document.getElementById('productos-body');
+        tbody.innerHTML = '';
         
-        // Renderizar productos
-        renderizarProductos(productos);
+        if (productos.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center">No se encontraron productos</td></tr>';
+            return;
+        }
         
-        // Actualizar paginación
-        // Nota: Implementar paginación completa según necesidades
+        productos.forEach(producto => {
+            const tr = document.createElement('tr');
+            const margen = producto.margen_ganancia ? 
+                `${parseFloat(producto.margen_ganancia).toFixed(2)}%` : 'N/A';
+            
+            tr.innerHTML = `
+                <td>${producto.codigo_barra}</td>
+                <td>${producto.nombre}</td>
+                <td>S/ ${parseFloat(producto.precio_venta).toFixed(2)}</td>
+                <td>S/ ${parseFloat(producto.precio_costo).toFixed(2)}</td>
+                <td>${margen}</td>
+                <td>${producto.stock}</td>
+                <td>${producto.proveedor || '-'}</td>
+                <td>
+                    <span class="${producto.activo ? 'text-success' : 'text-danger'}">
+                        ${producto.activo ? 'Activo' : 'Inactivo'}
+                    </span>
+                </td>
+                <td class="acciones">
+                    <button class="btn btn-sm" onclick="editarProducto('${producto.id}')">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="eliminarProducto('${producto.id}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            `;
+            
+            tbody.appendChild(tr);
+        });
         
+        // Cargar proveedores únicos para el filtro
+        await cargarProveedores();
     } catch (error) {
         console.error('Error cargando productos:', error);
-        mostrarToast('Error', 'No se pudieron cargar los productos', 'error');
+        showNotification('Error cargando productos', 'error');
     }
 }
 
-// Renderizar productos en tabla
-function renderizarProductos(productos) {
-    elementos.productosBody.innerHTML = '';
-    
-    if (!productos || productos.length === 0) {
-        elementos.productosBody.innerHTML = `
-            <tr>
-                <td colspan="9" class="empty-state">
-                    <i class="fas fa-box-open"></i>
-                    <p>No hay productos registrados</p>
-                </td>
-            </tr>
-        `;
-        return;
-    }
-    
-    productos.forEach(producto => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td><code>${producto.codigo_barra}</code></td>
-            <td><strong>${producto.nombre}</strong></td>
-            <td>$${producto.precio_costo.toFixed(2)}</td>
-            <td>$${producto.precio_venta.toFixed(2)}</td>
-            <td>${producto.margen_ganancia ? producto.margen_ganancia.toFixed(1) + '%' : '-'}</td>
-            <td>
-                <span class="${producto.stock < 10 ? 'text-danger' : 'text-success'}">
-                    ${producto.stock}
-                </span>
-            </td>
-            <td>${producto.proveedor || '-'}</td>
-            <td>
-                <span class="badge ${producto.activo ? 'bg-success' : 'bg-danger'}">
-                    ${producto.activo ? 'Activo' : 'Inactivo'}
-                </span>
-            </td>
-            <td>
-                <button class="btn btn-small btn-secondary btn-editar-producto" data-id="${producto.id}">
-                    <i class="fas fa-edit"></i>
-                </button>
-                <button class="btn btn-small btn-danger btn-eliminar-producto" data-id="${producto.id}">
-                    <i class="fas fa-trash"></i>
-                </button>
-            </td>
-        `;
-        elementos.productosBody.appendChild(tr);
-    });
-    
-    // Configurar eventos de botones
-    document.querySelectorAll('.btn-editar-producto').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const id = btn.dataset.id;
-            mostrarFormularioProducto(id);
-        });
-    });
-    
-    document.querySelectorAll('.btn-eliminar-producto').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const id = btn.dataset.id;
-            if (await tienePermiso('modificar_productos')) {
-                await eliminarProducto(id);
-            } else {
-                mostrarToast('Permiso denegado', 'No tienes permiso para eliminar productos', 'error');
+async function cargarProveedores() {
+    try {
+        const { data, error } = await supabaseClient
+            .from('productos')
+            .select('proveedor')
+            .not('proveedor', 'is', null)
+            .order('proveedor');
+        
+        if (error) throw error;
+        
+        const proveedores = [...new Set(data.map(p => p.proveedor))];
+        const select = document.getElementById('filtro-proveedor');
+        select.innerHTML = '<option value="">Todos los proveedores</option>';
+        
+        proveedores.forEach(proveedor => {
+            if (proveedor) {
+                const option = document.createElement('option');
+                option.value = proveedor;
+                option.textContent = proveedor;
+                select.appendChild(option);
             }
         });
-    });
+    } catch (error) {
+        console.error('Error cargando proveedores:', error);
+    }
 }
 
-// Mostrar formulario de producto
-async function mostrarFormularioProducto(id = null) {
-    const esNuevo = !id;
-    const titulo = esNuevo ? 'Nuevo Producto' : 'Editar Producto';
-    const producto = id ? productosCache.get(id) : null;
-    
-    // Actualizar título
-    document.getElementById('modal-producto-titulo').textContent = titulo;
-    
-    // Configurar formulario
+function mostrarModalProducto(producto = null) {
+    const modal = document.getElementById('modal-producto');
+    const titulo = document.getElementById('modal-producto-titulo');
     const form = document.getElementById('form-producto');
-    form.dataset.id = id || '';
     
     if (producto) {
-        // Llenar formulario con datos existentes
+        titulo.innerHTML = '<i class="fas fa-edit"></i> Editar Producto';
         document.getElementById('producto-codigo').value = producto.codigo_barra;
         document.getElementById('producto-nombre').value = producto.nombre;
         document.getElementById('producto-precio-costo').value = producto.precio_costo;
@@ -821,346 +645,301 @@ async function mostrarFormularioProducto(id = null) {
         document.getElementById('producto-precio-venta').value = producto.precio_venta;
         document.getElementById('producto-stock').value = producto.stock;
         document.getElementById('producto-proveedor').value = producto.proveedor || '';
-        document.getElementById('producto-activo').checked = producto.activo;
+        document.getElementById('producto-activo').value = producto.activo;
+        
+        form.dataset.productoId = producto.id;
     } else {
-        // Limpiar formulario
+        titulo.innerHTML = '<i class="fas fa-box"></i> Nuevo Producto';
         form.reset();
-        document.getElementById('producto-activo').checked = true;
+        delete form.dataset.productoId;
     }
     
-    // Configurar eventos para cálculo automático
-    const precioCostoInput = document.getElementById('producto-precio-costo');
-    const margenInput = document.getElementById('producto-margen');
-    const precioVentaInput = document.getElementById('producto-precio-venta');
-    
-    // Función para calcular precio venta
-    const calcularPrecioVenta = () => {
-        const costo = parseFloat(precioCostoInput.value) || 0;
-        const margen = parseFloat(margenInput.value) || 0;
-        
-        if (costo > 0 && margen > 0) {
-            const precioVenta = costo * (1 + margen / 100);
-            precioVentaInput.value = precioVenta.toFixed(2);
-        }
-    };
-    
-    // Función para calcular margen
-    const calcularMargen = () => {
-        const costo = parseFloat(precioCostoInput.value) || 0;
-        const venta = parseFloat(precioVentaInput.value) || 0;
-        
-        if (costo > 0 && venta > 0) {
-            const margen = ((venta - costo) / costo) * 100;
-            margenInput.value = margen.toFixed(2);
-        }
-    };
-    
-    // Limpiar eventos anteriores
-    precioCostoInput.removeEventListener('input', calcularPrecioVenta);
-    margenInput.removeEventListener('input', calcularPrecioVenta);
-    precioVentaInput.removeEventListener('input', calcularMargen);
-    
-    // Agregar nuevos eventos
-    precioCostoInput.addEventListener('input', calcularPrecioVenta);
-    margenInput.addEventListener('input', calcularPrecioVenta);
-    precioVentaInput.addEventListener('input', calcularMargen);
-    
-    // Configurar submit del formulario
-    form.onsubmit = async (e) => {
-        e.preventDefault();
-        await guardarProducto();
-    };
-    
-    // Mostrar modal
-    mostrarModal('modal-producto');
+    modal.classList.add('active');
+    document.getElementById('producto-codigo').focus();
 }
 
-// Guardar producto
-async function guardarProducto() {
-    try {
-        const form = document.getElementById('form-producto');
-        const id = form.dataset.id;
-        const esNuevo = !id;
-        
-        // Validar permisos
-        if (esNuevo && !(await tienePermiso('cargar_productos'))) {
-            mostrarToast('Permiso denegado', 'No tienes permiso para crear productos', 'error');
-            return;
-        }
-        
-        if (!esNuevo && !(await tienePermiso('modificar_productos'))) {
-            mostrarToast('Permiso denegado', 'No tienes permiso para modificar productos', 'error');
-            return;
-        }
-        
-        // Obtener datos del formulario
-        const producto = {
-            codigo_barra: document.getElementById('producto-codigo').value.trim(),
-            nombre: document.getElementById('producto-nombre').value.trim(),
-            precio_costo: parseFloat(document.getElementById('producto-precio-costo').value),
-            margen_ganancia: parseFloat(document.getElementById('producto-margen').value) || null,
-            precio_venta: parseFloat(document.getElementById('producto-precio-venta').value),
-            stock: parseInt(document.getElementById('producto-stock').value),
-            proveedor: document.getElementById('producto-proveedor').value.trim() || null,
-            activo: document.getElementById('producto-activo').checked
-        };
-        
-        // Validaciones
-        if (!producto.codigo_barra) throw new Error('El código de barras es obligatorio');
-        if (!producto.nombre) throw new Error('El nombre es obligatorio');
-        if (producto.precio_costo <= 0) throw new Error('El precio costo debe ser mayor a 0');
-        if (producto.precio_venta <= 0) throw new Error('El precio de venta debe ser mayor a 0');
-        if (producto.stock < 0) throw new Error('El stock no puede ser negativo');
-        
-        let result;
-        if (esNuevo) {
-            // Verificar que el código no exista
-            const { data: existe } = await supabase
-                .from('productos')
-                .select('id')
-                .eq('codigo_barra', producto.codigo_barra)
-                .single();
-            
-            if (existe) throw new Error('El código de barras ya existe');
-            
-            // Crear nuevo producto
-            const { data, error } = await supabase
-                .from('productos')
-                .insert([producto])
-                .select()
-                .single();
-            
-            if (error) throw error;
-            result = data;
-            
-            mostrarToast('Producto creado', 'El producto se creó correctamente', 'success');
-        } else {
-            // Actualizar producto existente
-            const { data, error } = await supabase
-                .from('productos')
-                .update(producto)
-                .eq('id', id)
-                .select()
-                .single();
-            
-            if (error) throw error;
-            result = data;
-            
-            mostrarToast('Producto actualizado', 'El producto se actualizó correctamente', 'success');
-        }
-        
-        // Actualizar cache
-        productosCache.set(result.id, result);
-        
-        // Recargar lista de productos
-        await cargarProductos();
-        
-        // Cerrar modal
-        ocultarModal('modal-producto');
-        
-    } catch (error) {
-        console.error('Error guardando producto:', error);
-        mostrarToast('Error', error.message, 'error');
+function calcularPrecioVenta() {
+    const costo = parseFloat(document.getElementById('producto-precio-costo').value) || 0;
+    const margen = parseFloat(document.getElementById('producto-margen').value) || 0;
+    
+    if (costo > 0 && margen > 0) {
+        const precioVenta = costo * (1 + margen / 100);
+        document.getElementById('producto-precio-venta').value = precioVenta.toFixed(2);
     }
 }
 
-// Eliminar producto (baja lógica)
-async function eliminarProducto(id) {
-    try {
-        if (!confirm('¿Estás seguro de desactivar este producto?')) return;
-        
-        const { error } = await supabase
-            .from('productos')
-            .update({ activo: false })
-            .eq('id', id);
-        
-        if (error) throw error;
-        
-        // Actualizar cache
-        const producto = productosCache.get(id);
-        if (producto) {
-            producto.activo = false;
-            productosCache.set(id, producto);
-        }
-        
-        // Recargar productos
-        await cargarProductos();
-        
-        mostrarToast('Producto desactivado', 'El producto se desactivó correctamente', 'success');
-    } catch (error) {
-        console.error('Error eliminando producto:', error);
-        mostrarToast('Error', 'No se pudo desactivar el producto', 'error');
+function calcularMargen() {
+    const costo = parseFloat(document.getElementById('producto-precio-costo').value) || 0;
+    const venta = parseFloat(document.getElementById('producto-precio-venta').value) || 0;
+    
+    if (costo > 0 && venta > 0) {
+        const margen = ((venta - costo) / costo) * 100;
+        document.getElementById('producto-margen').value = margen.toFixed(2);
     }
 }
 
-// ============================================
-// PROCESO DE VENTA - LÓGICA CRÍTICA
-// ============================================
-
-// Manejar entrada del scanner
-async function handleScanner(e) {
-    if (e.key !== 'Enter') return;
+async function guardarProducto(e) {
+    e.preventDefault();
     
-    const codigo = elementos.scannerInput.value.trim();
-    if (!codigo) return;
+    // Verificar permiso
+    const permiso = e.target.dataset.productoId ? 'modificar_productos' : 'cargar_productos';
+    const tienePermiso = await hasPermission(permiso);
     
-    try {
-        // Buscar producto por código
-        const { data: producto, error } = await supabase
-            .from('productos')
-            .select('*')
-            .eq('codigo_barra', codigo)
-            .eq('activo', true)
-            .single();
-        
-        if (error) {
-            if (error.code === 'PGRST116') {
-                mostrarToast('Producto no encontrado', 'Escanea otro código o usa búsqueda manual', 'warning');
-            } else {
-                throw error;
-            }
-            return;
-        }
-        
-        // Verificar stock
-        if (producto.stock <= 0) {
-            mostrarToast('Sin stock', `No hay stock disponible de ${producto.nombre}`, 'error');
-            return;
-        }
-        
-        // Agregar al carrito
-        agregarAlCarrito(producto);
-        
-        // Limpiar scanner
-        elementos.scannerInput.value = '';
-        
-        // Enfocar scanner nuevamente
-        elementos.scannerInput.focus();
-        
-    } catch (error) {
-        console.error('Error procesando scanner:', error);
-        mostrarToast('Error', 'No se pudo procesar el código escaneado', 'error');
-    }
-}
-
-// Agregar producto al carrito
-function agregarAlCarrito(producto, cantidad = 1) {
-    // Buscar si ya está en el carrito
-    const index = carrito.findIndex(item => item.producto.id === producto.id);
-    
-    if (index >= 0) {
-        // Actualizar cantidad
-        carrito[index].cantidad += cantidad;
-        
-        // Verificar stock máximo
-        if (carrito[index].cantidad > producto.stock) {
-            carrito[index].cantidad = producto.stock;
-            mostrarToast('Stock limitado', `Solo hay ${producto.stock} unidades disponibles`, 'warning');
-        }
-    } else {
-        // Agregar nuevo item
-        if (cantidad > producto.stock) {
-            cantidad = producto.stock;
-            mostrarToast('Stock limitado', `Solo hay ${producto.stock} unidades disponibles`, 'warning');
-        }
-        
-        carrito.push({
-            producto,
-            cantidad,
-            precio_unitario: producto.precio_venta,
-            subtotal: producto.precio_venta * cantidad
-        });
-    }
-    
-    // Actualizar interfaz
-    renderizarCarrito();
-    calcularTotales();
-    
-    // Mostrar notificación
-    mostrarToast('Producto agregado', `${producto.nombre} agregado al carrito`, 'success');
-}
-
-// Renderizar carrito
-function renderizarCarrito() {
-    elementos.carritoBody.innerHTML = '';
-    
-    if (carrito.length === 0) {
-        elementos.carritoVacio.classList.remove('hidden');
-        elementos.carritoCount.textContent = '0 items';
+    if (!tienePermiso) {
+        showNotification('No tiene permisos para esta acción', 'error');
         return;
     }
     
-    elementos.carritoVacio.classList.add('hidden');
-    elementos.carritoCount.textContent = `${carrito.length} ${carrito.length === 1 ? 'item' : 'items'}`;
+    const producto = {
+        codigo_barra: document.getElementById('producto-codigo').value.trim(),
+        nombre: document.getElementById('producto-nombre').value.trim(),
+        precio_costo: parseFloat(document.getElementById('producto-precio-costo').value),
+        precio_venta: parseFloat(document.getElementById('producto-precio-venta').value),
+        stock: parseInt(document.getElementById('producto-stock').value),
+        proveedor: document.getElementById('producto-proveedor').value.trim() || null,
+        activo: document.getElementById('producto-activo').value === 'true',
+        margen_ganancia: document.getElementById('producto-margen').value ? 
+            parseFloat(document.getElementById('producto-margen').value) : null
+    };
     
-    carrito.forEach((item, index) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${index + 1}</td>
-            <td>
-                <strong>${item.producto.nombre}</strong><br>
-                <small class="text-muted">${item.producto.codigo_barra}</small>
-            </td>
-            <td>$${item.precio_unitario.toFixed(2)}</td>
-            <td>
-                <div class="cantidad-control">
-                    <button class="btn-cantidad btn-cantidad-restar" data-index="${index}">
-                        <i class="fas fa-minus"></i>
-                    </button>
-                    <input type="number" class="input-cantidad" 
-                           value="${item.cantidad}" min="1" max="${item.producto.stock}"
-                           data-index="${index}">
-                    <button class="btn-cantidad btn-cantidad-sumar" data-index="${index}">
-                        <i class="fas fa-plus"></i>
-                    </button>
-                </div>
-            </td>
-            <td>$${item.subtotal.toFixed(2)}</td>
-            <td>
-                <button class="btn btn-small btn-danger btn-eliminar-item" data-index="${index}">
-                    <i class="fas fa-trash"></i>
-                </button>
-            </td>
-        `;
-        elementos.carritoBody.appendChild(tr);
-    });
+    // Validaciones
+    if (!producto.codigo_barra || !producto.nombre) {
+        showNotification('Código y nombre son obligatorios', 'warning');
+        return;
+    }
     
-    // Configurar eventos de cantidad
-    document.querySelectorAll('.btn-cantidad-restar').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const index = parseInt(e.target.closest('button').dataset.index);
-            actualizarCantidadCarrito(index, -1);
-        });
-    });
+    if (producto.precio_costo < 0 || producto.precio_venta < 0) {
+        showNotification('Los precios deben ser positivos', 'warning');
+        return;
+    }
     
-    document.querySelectorAll('.btn-cantidad-sumar').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const index = parseInt(e.target.closest('button').dataset.index);
-            actualizarCantidadCarrito(index, 1);
-        });
-    });
+    if (producto.stock < 0) {
+        showNotification('El stock no puede ser negativo', 'warning');
+        return;
+    }
     
-    document.querySelectorAll('.input-cantidad').forEach(input => {
-        input.addEventListener('change', (e) => {
-            const index = parseInt(e.target.dataset.index);
-            const nuevaCantidad = parseInt(e.target.value);
-            if (nuevaCantidad > 0) {
-                actualizarCantidadCarrito(index, nuevaCantidad - carrito[index].cantidad);
-            }
-        });
-    });
-    
-    document.querySelectorAll('.btn-eliminar-item').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const index = parseInt(e.target.closest('button').dataset.index);
-            eliminarDelCarrito(index);
-        });
-    });
+    try {
+        let error;
+        
+        if (e.target.dataset.productoId) {
+            // Actualizar producto existente
+            const { error: updateError } = await supabaseClient
+                .from('productos')
+                .update(producto)
+                .eq('id', e.target.dataset.productoId);
+            
+            error = updateError;
+        } else {
+            // Crear nuevo producto
+            const { error: insertError } = await supabaseClient
+                .from('productos')
+                .insert([producto]);
+            
+            error = insertError;
+        }
+        
+        if (error) throw error;
+        
+        showNotification('Producto guardado correctamente', 'success');
+        document.getElementById('modal-producto').classList.remove('active');
+        cargarProductos();
+    } catch (error) {
+        console.error('Error guardando producto:', error);
+        
+        if (error.code === '23505') {
+            showNotification('El código de barras ya existe', 'error');
+        } else {
+            showNotification('Error guardando producto', 'error');
+        }
+    }
 }
 
-// Actualizar cantidad en carrito
+async function editarProducto(productoId) {
+    try {
+        const { data: producto, error } = await supabaseClient
+            .from('productos')
+            .select('*')
+            .eq('id', productoId)
+            .single();
+        
+        if (error) throw error;
+        
+        mostrarModalProducto(producto);
+    } catch (error) {
+        console.error('Error cargando producto:', error);
+        showNotification('Error cargando producto', 'error');
+    }
+}
+
+async function eliminarProducto(productoId) {
+    if (!await hasPermission('modificar_productos')) {
+        showNotification('No tiene permisos para eliminar productos', 'error');
+        return;
+    }
+    
+    if (!confirm('¿Está seguro de eliminar este producto? Se marcará como inactivo.')) {
+        return;
+    }
+    
+    try {
+        const { error } = await supabaseClient
+            .from('productos')
+            .update({ activo: false })
+            .eq('id', productoId);
+        
+        if (error) throw error;
+        
+        showNotification('Producto eliminado correctamente', 'success');
+        cargarProductos();
+    } catch (error) {
+        console.error('Error eliminando producto:', error);
+        showNotification('Error eliminando producto', 'error');
+    }
+}
+
+// ==================== PROCESO DE VENTA ====================
+function cambiarCantidad(delta) {
+    const input = document.getElementById('cantidad-producto');
+    let nuevaCantidad = parseInt(input.value) + delta;
+    
+    if (nuevaCantidad < 1) nuevaCantidad = 1;
+    if (nuevaCantidad > parseInt(input.max)) nuevaCantidad = parseInt(input.max);
+    
+    input.value = nuevaCantidad;
+}
+
+function actualizarCantidad() {
+    const input = document.getElementById('cantidad-producto');
+    let cantidad = parseInt(input.value);
+    
+    if (isNaN(cantidad) || cantidad < 1) cantidad = 1;
+    if (cantidad > parseInt(input.max)) cantidad = parseInt(input.max);
+    
+    input.value = cantidad;
+}
+
+function agregarAlCarrito() {
+    if (!appState.productoActual) {
+        showNotification('No hay producto seleccionado', 'warning');
+        return;
+    }
+    
+    const cantidad = parseInt(document.getElementById('cantidad-producto').value);
+    
+    if (cantidad > appState.productoActual.stock) {
+        showNotification('Stock insuficiente', 'error');
+        return;
+    }
+    
+    // Buscar si el producto ya está en el carrito
+    const index = appState.carrito.findIndex(item => 
+        item.producto.id === appState.productoActual.id);
+    
+    if (index !== -1) {
+        // Actualizar cantidad
+        appState.carrito[index].cantidad += cantidad;
+    } else {
+        // Agregar nuevo item
+        appState.carrito.push({
+            producto: appState.productoActual,
+            cantidad: cantidad,
+            precioUnitario: appState.productoActual.precio_venta
+        });
+    }
+    
+    // Actualizar UI
+    actualizarCarritoUI();
+    
+    // Resetear producto actual
+    appState.productoActual = null;
+    document.getElementById('producto-info').style.display = 'none';
+    document.getElementById('scanner-input').value = '';
+    document.getElementById('scanner-input').focus();
+    
+    showNotification('Producto agregado al carrito', 'success');
+}
+
+function actualizarCarritoUI() {
+    const container = document.getElementById('carrito-items');
+    const subtotalEl = document.getElementById('carrito-subtotal');
+    const totalEl = document.getElementById('carrito-total');
+    const btnFinalizar = document.getElementById('btn-finalizar-venta');
+    
+    if (appState.carrito.length === 0) {
+        container.innerHTML = `
+            <div class="empty-carrito">
+                <i class="fas fa-shopping-cart fa-2x"></i>
+                <p>El carrito está vacío</p>
+                <p>Escanee un producto o use F6 para buscar</p>
+            </div>
+        `;
+        
+        btnFinalizar.disabled = true;
+        return;
+    }
+    
+    // Calcular subtotal
+    let subtotal = 0;
+    
+    container.innerHTML = '';
+    appState.carrito.forEach((item, index) => {
+        const itemTotal = item.cantidad * item.precioUnitario;
+        subtotal += itemTotal;
+        
+        const div = document.createElement('div');
+        div.className = 'carrito-item';
+        div.innerHTML = `
+            <div class="carrito-item-info">
+                <div class="carrito-item-nombre">${item.producto.nombre}</div>
+                <div class="carrito-item-codigo">${item.producto.codigo_barra}</div>
+            </div>
+            <div class="carrito-item-precio">S/ ${item.precioUnitario.toFixed(2)}</div>
+            <div class="carrito-item-cantidad">
+                <button class="btn btn-sm" onclick="actualizarCantidadCarrito(${index}, -1)">
+                    <i class="fas fa-minus"></i>
+                </button>
+                <span>${item.cantidad}</span>
+                <button class="btn btn-sm" onclick="actualizarCantidadCarrito(${index}, 1)">
+                    <i class="fas fa-plus"></i>
+                </button>
+            </div>
+            <div class="carrito-item-total">S/ ${itemTotal.toFixed(2)}</div>
+            <button class="carrito-item-remove" onclick="eliminarDelCarrito(${index})">
+                <i class="fas fa-trash"></i>
+            </button>
+        `;
+        
+        container.appendChild(div);
+    });
+    
+    // Calcular descuento
+    let descuento = 0;
+    if (appState.descuento.valor > 0) {
+        if (appState.descuento.tipo === 'porcentaje') {
+            descuento = subtotal * (appState.descuento.valor / 100);
+        } else {
+            descuento = appState.descuento.valor;
+        }
+        
+        if (descuento > subtotal) descuento = subtotal;
+    }
+    
+    // Actualizar totales
+    const total = subtotal - descuento;
+    
+    subtotalEl.textContent = `S/ ${subtotal.toFixed(2)}`;
+    document.getElementById('carrito-descuento').textContent = `S/ ${descuento.toFixed(2)}`;
+    totalEl.textContent = `S/ ${total.toFixed(2)}`;
+    
+    // Actualizar total a pagar
+    document.getElementById('total-a-pagar').textContent = `S/ ${total.toFixed(2)}`;
+    
+    // Habilitar botón finalizar si hay productos
+    btnFinalizar.disabled = appState.carrito.length === 0 || appState.pagos.length === 0;
+}
+
 function actualizarCantidadCarrito(index, delta) {
-    const item = carrito[index];
+    const item = appState.carrito[index];
     const nuevaCantidad = item.cantidad + delta;
     
     if (nuevaCantidad < 1) {
@@ -1169,240 +948,200 @@ function actualizarCantidadCarrito(index, delta) {
     }
     
     if (nuevaCantidad > item.producto.stock) {
-        mostrarToast('Stock limitado', `Solo hay ${item.producto.stock} unidades disponibles`, 'warning');
+        showNotification('Stock insuficiente', 'error');
         return;
     }
     
     item.cantidad = nuevaCantidad;
-    item.subtotal = item.precio_unitario * nuevaCantidad;
-    
-    renderizarCarrito();
-    calcularTotales();
+    actualizarCarritoUI();
 }
 
-// Eliminar item del carrito
 function eliminarDelCarrito(index) {
-    carrito.splice(index, 1);
-    renderizarCarrito();
-    calcularTotales();
-    
-    if (carrito.length === 0) {
-        mostrarToast('Carrito vacío', 'El carrito está vacío', 'info');
-    }
+    appState.carrito.splice(index, 1);
+    actualizarCarritoUI();
+    showNotification('Producto eliminado del carrito', 'info');
 }
 
-// Limpiar carrito
 function limpiarCarrito() {
-    if (carrito.length === 0) return;
+    if (appState.carrito.length === 0) return;
     
-    if (!confirm('¿Estás seguro de limpiar el carrito?')) return;
+    if (!confirm('¿Está seguro de vaciar el carrito?')) {
+        return;
+    }
     
-    carrito = [];
-    renderizarCarrito();
-    calcularTotales();
-    elementos.pagosSeleccionados.innerHTML = '';
+    appState.carrito = [];
+    appState.pagos = [];
+    appState.descuento = { tipo: 'porcentaje', valor: 0 };
     
-    mostrarToast('Carrito limpiado', 'Todos los productos fueron removidos', 'info');
+    document.getElementById('descuento-input').value = '';
+    document.getElementById('descuento-tipo').value = 'porcentaje';
+    
+    actualizarCarritoUI();
+    actualizarPagosUI();
+    showNotification('Carrito vaciado', 'info');
 }
 
-// Calcular totales del carrito
-function calcularTotales() {
-    let subtotal = 0;
-    
-    carrito.forEach(item => {
-        subtotal += item.subtotal;
-    });
-    
-    const descuento = parseFloat(elementos.descuentoAplicado.textContent.replace('-$', '')) || 0;
-    const total = subtotal - descuento;
-    
-    elementos.subtotal.textContent = `$${subtotal.toFixed(2)}`;
-    elementos.total.textContent = `$${total.toFixed(2)}`;
-}
-
-// Aplicar descuento
 function aplicarDescuento() {
-    const descuentoStr = elementos.descuentoInput.value.trim();
+    const valor = parseFloat(document.getElementById('descuento-input').value) || 0;
+    const tipo = document.getElementById('descuento-tipo').value;
     
-    if (!descuentoStr) {
-        mostrarToast('Error', 'Ingresa un valor de descuento', 'error');
+    if (valor <= 0) {
+        showNotification('Ingrese un valor válido para el descuento', 'warning');
         return;
     }
     
-    let descuento = 0;
-    const subtotal = parseFloat(elementos.subtotal.textContent.replace('$', '')) || 0;
-    
-    if (subtotal === 0) {
-        mostrarToast('Error', 'No hay productos en el carrito', 'error');
+    if (tipo === 'porcentaje' && valor > 100) {
+        showNotification('El descuento porcentual no puede ser mayor a 100%', 'warning');
         return;
     }
     
-    if (descuentoStr.endsWith('%')) {
-        // Descuento porcentual
-        const porcentaje = parseFloat(descuentoStr.slice(0, -1));
-        if (isNaN(porcentaje) || porcentaje < 0 || porcentaje > 100) {
-            mostrarToast('Error', 'Porcentaje inválido (0-100%)', 'error');
-            return;
-        }
-        descuento = subtotal * (porcentaje / 100);
-    } else {
-        // Descuento fijo
-        descuento = parseFloat(descuentoStr);
-        if (isNaN(descuento) || descuento < 0 || descuento > subtotal) {
-            mostrarToast('Error', `Descuento inválido (máx: $${subtotal.toFixed(2)})`, 'error');
-            return;
-        }
-    }
-    
-    elementos.descuentoAplicado.textContent = `-$${descuento.toFixed(2)}`;
-    elementos.descuentoInput.value = '';
-    
-    calcularTotales();
-    mostrarToast('Descuento aplicado', `Descuento de $${descuento.toFixed(2)} aplicado`, 'success');
+    appState.descuento = { tipo, valor };
+    actualizarCarritoUI();
+    showNotification('Descuento aplicado correctamente', 'success');
 }
 
-// ============================================
-// MEDIOS DE PAGO Y FINALIZACIÓN DE VENTA
-// ============================================
-
-// Seleccionar medio de pago
+// ==================== MEDIOS DE PAGO ====================
 function seleccionarMedioPago(medio) {
-    // Verificar que haya productos en el carrito
-    if (carrito.length === 0) {
-        mostrarToast('Error', 'No hay productos en el carrito', 'error');
+    // Actualizar UI de botones
+    document.querySelectorAll('.btn-pago').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.dataset.medio === medio) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Establecer medio seleccionado
+    document.getElementById('pago-monto').placeholder = `Monto en ${medio}`;
+    document.getElementById('pago-monto').focus();
+}
+
+function agregarPago() {
+    const medioElement = document.querySelector('.btn-pago.active');
+    if (!medioElement) {
+        showNotification('Seleccione un medio de pago primero', 'warning');
         return;
     }
     
-    // Mostrar modal de pagos
-    const total = parseFloat(elementos.total.textContent.replace('$', ''));
-    document.getElementById('pago-total').textContent = `$${total.toFixed(2)}`;
-    document.getElementById('pago-saldo').textContent = `$${total.toFixed(2)}`;
+    const medio = medioElement.dataset.medio;
+    const monto = parseFloat(document.getElementById('pago-monto').value);
     
-    // Configurar eventos del formulario de pagos
-    const formPagos = document.getElementById('form-pagos');
-    const inputsPago = formPagos.querySelectorAll('input[type="number"]');
-    
-    inputsPago.forEach(input => {
-        input.value = '';
-        input.addEventListener('input', actualizarSaldoPendiente);
-    });
-    
-    // Configurar botón de confirmar pagos
-    const btnConfirmar = document.getElementById('btn-confirmar-pagos');
-    btnConfirmar.onclick = () => procesarPagos();
-    
-    // Mostrar modal
-    mostrarModal('modal-pagos');
-}
-
-// Actualizar saldo pendiente en modal de pagos
-function actualizarSaldoPendiente() {
-    const total = parseFloat(elementos.total.textContent.replace('$', ''));
-    let pagado = 0;
-    
-    const inputs = document.querySelectorAll('#form-pagos input[type="number"]');
-    inputs.forEach(input => {
-        pagado += parseFloat(input.value) || 0;
-    });
-    
-    const saldo = total - pagado;
-    const saldoElement = document.getElementById('pago-saldo');
-    
-    saldoElement.textContent = `$${saldo.toFixed(2)}`;
-    
-    if (Math.abs(saldo) < 0.01) {
-        saldoElement.className = 'text-success';
-    } else if (saldo > 0) {
-        saldoElement.className = 'text-danger';
-    } else {
-        saldoElement.className = 'text-warning';
+    if (!monto || monto <= 0) {
+        showNotification('Ingrese un monto válido', 'warning');
+        return;
     }
+    
+    // Verificar que no exceda el total
+    const totalAPagar = parseFloat(document.getElementById('carrito-total').textContent.replace('S/ ', ''));
+    const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
+    
+    if (totalPagado + monto > totalAPagar) {
+        showNotification('El monto excede el total a pagar', 'warning');
+        return;
+    }
+    
+    // Agregar pago
+    appState.pagos.push({ medio, monto });
+    
+    // Actualizar UI
+    actualizarPagosUI();
+    
+    // Resetear campos
+    document.getElementById('pago-monto').value = '';
+    showNotification('Pago agregado correctamente', 'success');
 }
 
-// Procesar pagos seleccionados
-async function procesarPagos() {
-    const total = parseFloat(elementos.total.textContent.replace('$', ''));
-    let pagos = [];
-    let pagado = 0;
+function actualizarPagosUI() {
+    const container = document.getElementById('pagos-lista');
+    const totalPagadoEl = document.getElementById('total-pagado');
+    const cambioEl = document.getElementById('total-cambio');
+    const btnFinalizar = document.getElementById('btn-finalizar-venta');
     
-    // Obtener montos de cada medio
-    const efectivo = parseFloat(document.getElementById('pago-efectivo').value) || 0;
-    const tarjeta = parseFloat(document.getElementById('pago-tarjeta').value) || 0;
-    const transferencia = parseFloat(document.getElementById('pago-transferencia').value) || 0;
-    
-    if (efectivo > 0) pagos.push({ medio: 'EFECTIVO', monto: efectivo });
-    if (tarjeta > 0) pagos.push({ medio: 'TARJETA', monto: tarjeta });
-    if (transferencia > 0) pagos.push({ medio: 'TRANSFERENCIA/QR', monto: transferencia });
+    if (appState.pagos.length === 0) {
+        container.innerHTML = `
+            <div class="empty-pagos">
+                <i class="fas fa-receipt fa-2x"></i>
+                <p>No hay pagos registrados</p>
+            </div>
+        `;
+        
+        totalPagadoEl.textContent = 'S/ 0.00';
+        cambioEl.textContent = 'S/ 0.00';
+        btnFinalizar.disabled = true;
+        return;
+    }
     
     // Calcular total pagado
-    pagado = efectivo + tarjeta + transferencia;
+    const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
+    const totalAPagar = parseFloat(document.getElementById('carrito-total').textContent.replace('S/ ', ''));
+    const cambio = totalPagado - totalAPagar;
     
-    // Validar pagos
-    if (pagos.length === 0) {
-        mostrarToast('Error', 'Debes seleccionar al menos un medio de pago', 'error');
+    // Mostrar pagos
+    container.innerHTML = '';
+    appState.pagos.forEach((pago, index) => {
+        const div = document.createElement('div');
+        div.className = 'pago-item';
+        div.innerHTML = `
+            <div>
+                <strong>${pago.medio}</strong>
+            </div>
+            <div>
+                S/ ${pago.monto.toFixed(2)}
+            </div>
+            <button class="pago-item-remove" onclick="eliminarPago(${index})">
+                <i class="fas fa-times"></i>
+            </button>
+        `;
+        
+        container.appendChild(div);
+    });
+    
+    // Actualizar totales
+    totalPagadoEl.textContent = `S/ ${totalPagado.toFixed(2)}`;
+    cambioEl.textContent = `S/ ${cambio >= 0 ? cambio.toFixed(2) : '0.00'}`;
+    
+    // Habilitar botón finalizar si se cubrió el total
+    btnFinalizar.disabled = appState.carrito.length === 0 || totalPagado < totalAPagar;
+}
+
+function eliminarPago(index) {
+    appState.pagos.splice(index, 1);
+    actualizarPagosUI();
+    showNotification('Pago eliminado', 'info');
+}
+
+// ==================== FINALIZACIÓN DE VENTA (ATÓMICA) ====================
+async function finalizarVenta() {
+    // Verificar caja activa
+    if (!appState.cajaActiva) {
+        showNotification('No hay caja activa. Abra una caja primero.', 'error');
+        showSection('caja');
         return;
     }
     
-    // Verificar que el total pagado sea igual al total (con tolerancia de centavos)
-    if (Math.abs(pagado - total) > 0.01) {
-        const confirmar = confirm(`El total pagado ($${pagado.toFixed(2)}) no coincide con el total ($${total.toFixed(2)}). ¿Deseas continuar de todas formas?`);
-        if (!confirmar) return;
-    }
-    
-    // Guardar pagos y proceder con la venta
-    elementos.pagosSeleccionados.innerHTML = pagos.map(p => `
-        <div class="pago-item">
-            <span>${p.medio}:</span>
-            <span>$${p.monto.toFixed(2)}</span>
-        </div>
-    `).join('');
-    
-    // Cerrar modal y proceder con la venta
-    ocultarModal('modal-pagos');
-    
-    // Finalizar venta con los pagos
-    await finalizarVenta(pagos);
-}
-
-// Iniciar proceso de pago
-function iniciarProcesoPago() {
-    if (carrito.length === 0) {
-        mostrarToast('Error', 'No hay productos en el carrito', 'error');
+    // Verificar que hay productos en el carrito
+    if (appState.carrito.length === 0) {
+        showNotification('El carrito está vacío', 'warning');
         return;
     }
     
-    // Mostrar modal de pagos
-    seleccionarMedioPago();
-}
-
-// ============================================
-// FINALIZAR VENTA - TRANSACCIÓN ATÓMICA
-// ============================================
-
-// Finalizar venta (transacción atómica)
-async function finalizarVenta(pagos) {
+    // Verificar que el total pagado cubre el total
+    const totalAPagar = parseFloat(document.getElementById('carrito-total').textContent.replace('S/ ', ''));
+    const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
+    
+    if (totalPagado < totalAPagar) {
+        showNotification('El pago no cubre el total de la venta', 'error');
+        return;
+    }
+    
+    // Deshabilitar botón para evitar múltiples clics
+    const btnFinalizar = document.getElementById('btn-finalizar-venta');
+    btnFinalizar.disabled = true;
+    btnFinalizar.classList.add('loading');
+    
     try {
-        // Validar permisos
-        if (!(await tienePermiso('acceder_caja'))) {
-            mostrarToast('Permiso denegado', 'No tienes permiso para acceder a caja', 'error');
-            return;
-        }
-        
-        // Validar caja activa
-        if (!cajaActiva) {
-            mostrarToast('Error', 'No hay una caja abierta', 'error');
-            mostrarSeccion('caja');
-            return;
-        }
-        
-        // Calcular totales
-        const subtotal = parseFloat(elementos.subtotal.textContent.replace('$', ''));
-        const descuento = parseFloat(elementos.descuentoAplicado.textContent.replace('-$', '')) || 0;
-        const total = subtotal - descuento;
-        
-        // 1. Revalidar stock en tiempo real
-        for (const item of carrito) {
-            const { data: productoActual, error } = await supabase
+        // PASO 1: Revalidar stock en tiempo real
+        for (const item of appState.carrito) {
+            const { data: producto, error } = await supabaseClient
                 .from('productos')
                 .select('stock')
                 .eq('id', item.producto.id)
@@ -1410,1702 +1149,324 @@ async function finalizarVenta(pagos) {
             
             if (error) throw error;
             
-            if (productoActual.stock < item.cantidad) {
-                throw new Error(`Stock insuficiente para ${item.producto.nombre}. Stock actual: ${productoActual.stock}`);
+            if (producto.stock < item.cantidad) {
+                throw new Error(`Stock insuficiente para ${item.producto.nombre}. Stock actual: ${producto.stock}`);
             }
         }
         
-        // 2. Generar Ticket ID correlativo y secuencial diario
-        const ticketId = await generarTicketId();
+        // PASO 2: Generar ticket ID atómico
+        const ticketId = await generarTicketIdAtomico();
         
-        // 3. Registrar venta (transacción atómica)
+        // PASO 3: Calcular subtotal y total
+        const subtotal = appState.carrito.reduce((sum, item) => 
+            sum + (item.cantidad * item.precioUnitario), 0);
+        
+        const descuento = appState.descuento.valor > 0 ? 
+            (appState.descuento.tipo === 'porcentaje' ? 
+                subtotal * (appState.descuento.valor / 100) : 
+                appState.descuento.valor) : 0;
+        
+        const total = subtotal - descuento;
+        
+        // PASO 4: Crear venta en transacción
         const ventaData = {
             ticket_id: ticketId,
-            caja_id: cajaActiva.id,
-            usuario_id: currentUser.id,
+            caja_id: appState.cajaActiva.id,
+            usuario_id: appState.usuario.id,
             subtotal: subtotal,
             descuento: descuento,
-            total: total,
-            anulada: false
+            total: total
         };
         
         // Insertar venta
-        const { data: venta, error: errorVenta } = await supabase
+        const { data: venta, error: ventaError } = await supabaseClient
             .from('ventas')
             .insert([ventaData])
             .select()
             .single();
         
-        if (errorVenta) throw errorVenta;
+        if (ventaError) throw ventaError;
         
-        // 4. Insertar detalles de venta y actualizar stock
-        const detallesPromises = carrito.map(async (item) => {
-            // Insertar detalle
-            const detalleData = {
-                venta_id: venta.id,
-                producto_id: item.producto.id,
-                cantidad: item.cantidad,
-                precio_unitario: item.precio_unitario,
-                subtotal: item.subtotal
-            };
-            
-            const { error: errorDetalle } = await supabase
-                .from('detalle_ventas')
-                .insert([detalleData]);
-            
-            if (errorDetalle) throw errorDetalle;
-            
-            // Actualizar stock (decremento atómico)
-            const { error: errorStock } = await supabase.rpc('decrementar_stock', {
-                producto_id: item.producto.id,
-                cantidad: item.cantidad
-            });
-            
-            if (errorStock) throw errorStock;
-        });
+        // Insertar detalles de venta
+        const detalles = appState.carrito.map(item => ({
+            venta_id: venta.id,
+            producto_id: item.producto.id,
+            cantidad: item.cantidad,
+            precio_unitario: item.precioUnitario,
+            subtotal: item.cantidad * item.precioUnitario
+        }));
         
-        await Promise.all(detallesPromises);
+        const { error: detallesError } = await supabaseClient
+            .from('detalle_ventas')
+            .insert(detalles);
         
-        // 5. Insertar pagos
-        const pagosPromises = pagos.map(async (pago) => {
-            const pagoData = {
-                venta_id: venta.id,
-                medio_pago: pago.medio,
-                monto: pago.monto
-            };
-            
-            const { error: errorPago } = await supabase
-                .from('pagos_venta')
-                .insert([pagoData]);
-            
-            if (errorPago) throw errorPago;
-        });
+        if (detallesError) throw detallesError;
         
-        await Promise.all(pagosPromises);
+        // Insertar pagos
+        const pagosData = appState.pagos.map(pago => ({
+            venta_id: venta.id,
+            medio_pago: pago.medio,
+            monto: pago.monto
+        }));
         
-        // 6. Generar ticket imprimible
+        const { error: pagosError } = await supabaseClient
+            .from('pagos_venta')
+            .insert(pagosData);
+        
+        if (pagosError) throw pagosError;
+        
+        // PASO 5: Generar ticket
         await generarTicket(venta);
         
-        // 7. Consistencia post-operación
+        // PASO 6: Recargar estado desde BD
         await recargarEstadoPostVenta();
         
-        // 8. Resetear carrito y mostrar éxito
-        carrito = [];
-        renderizarCarrito();
-        calcularTotales();
-        elementos.pagosSeleccionados.innerHTML = '';
-        elementos.descuentoAplicado.textContent = '-$0.00';
+        // PASO 7: Resetear venta actual
+        appState.carrito = [];
+        appState.pagos = [];
+        appState.descuento = { tipo: 'porcentaje', valor: 0 };
         
-        // Actualizar próximo ticket ID
-        await actualizarProximoTicketId();
+        document.getElementById('descuento-input').value = '';
+        document.getElementById('descuento-tipo').value = 'porcentaje';
         
-        // Enfocar scanner para nueva venta
-        elementos.scannerInput.focus();
+        actualizarCarritoUI();
+        actualizarPagosUI();
         
-        mostrarToast('¡Venta exitosa!', `Ticket ${ticketId} generado`, 'success');
+        showNotification(`Venta finalizada correctamente: ${ticketId}`, 'success');
+        
+        // Enfocar scanner para próxima venta
+        document.getElementById('scanner-input').focus();
         
     } catch (error) {
         console.error('Error finalizando venta:', error);
-        mostrarToast('Error en venta', error.message, 'error');
+        showNotification(`Error: ${error.message}`, 'error');
+    } finally {
+        btnFinalizar.disabled = false;
+        btnFinalizar.classList.remove('loading');
     }
 }
 
-// Generar Ticket ID único y secuencial
-async function generarTicketId() {
+async function generarTicketIdAtomico() {
     try {
-        const hoy = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        const prefix = `T-${hoy}-`;
+        // Llamar a la función de BD que genera el ticket ID atómico
+        const { data, error } = await supabaseClient.rpc('generar_ticket_id');
         
-        // Obtener el último ticket del día
-        const { data: ultimoTicket, error } = await supabase
-            .from('ventas')
-            .select('ticket_id')
-            .like('ticket_id', `${prefix}%`)
-            .order('ticket_id', { ascending: false })
-            .limit(1)
-            .single();
+        if (error) throw error;
         
-        let numero = 1;
-        if (!error && ultimoTicket) {
-            const ultimoNumero = parseInt(ultimoTicket.ticket_id.slice(-4));
-            numero = ultimoNumero + 1;
-        }
-        
-        return `${prefix}${numero.toString().padStart(4, '0')}`;
+        return data;
     } catch (error) {
         console.error('Error generando ticket ID:', error);
-        throw new Error('No se pudo generar el ID del ticket');
+        throw new Error('No se pudo generar el número de ticket');
     }
 }
 
-// Actualizar próximo ticket ID
-async function actualizarProximoTicketId() {
-    try {
-        const ticketId = await generarTicketId();
-        elementos.nextTicketId.textContent = ticketId;
-    } catch (error) {
-        console.error('Error actualizando próximo ticket:', error);
-        elementos.nextTicketId.textContent = 'ERROR';
-    }
-}
-
-// Generar ticket imprimible
 async function generarTicket(venta) {
     try {
-        // Obtener configuración del ticket
-        const { data: config, error: errorConfig } = await supabase
+        // Cargar configuración del ticket
+        const { data: config, error } = await supabaseClient
             .from('configuracion')
-            .select('clave, valor');
+            .select('*');
         
-        if (errorConfig) throw errorConfig;
+        if (error) throw error;
         
         const configMap = {};
         config.forEach(item => {
             configMap[item.clave] = item.valor;
         });
         
-        // Obtener detalles de la venta
-        const { data: detalles, error: errorDetalles } = await supabase
-            .from('detalle_ventas')
-            .select(`
-                cantidad,
-                precio_unitario,
-                subtotal,
-                productos (nombre, codigo_barra)
-            `)
-            .eq('venta_id', venta.id);
+        // Construir ticket
+        const ticketContent = document.getElementById('ticket-content');
+        const fecha = new Date(venta.fecha).toLocaleString('es-ES');
         
-        if (errorDetalles) throw errorDetalles;
-        
-        // Obtener pagos
-        const { data: pagos, error: errorPagos } = await supabase
-            .from('pagos_venta')
-            .select('medio_pago, monto')
-            .eq('venta_id', venta.id);
-        
-        if (errorPagos) throw errorPagos;
-        
-        // Construir contenido del ticket
-        const contenido = document.getElementById('ticket-contenido');
-        contenido.innerHTML = '';
-        
-        // Marca AFMSOLUTIONS
-        const marca = document.createElement('div');
-        marca.className = 'ticket-header';
-        marca.innerHTML = `
-            <h1>AFMSOLUTIONS</h1>
-            <p>Sistema de Punto de Venta</p>
-        `;
-        contenido.appendChild(marca);
-        
-        // Encabezado configurable
-        if (configMap['ticket_encabezado']) {
-            const encabezado = document.createElement('div');
-            encabezado.className = 'ticket-encabezado';
-            encabezado.textContent = configMap['ticket_encabezado'];
-            contenido.appendChild(encabezado);
-        }
-        
-        // Información de la venta
-        const info = document.createElement('div');
-        info.className = 'ticket-info';
-        info.innerHTML = `
-            <p><strong>Ticket:</strong> ${venta.ticket_id}</p>
-            <p><strong>Fecha:</strong> ${new Date().toLocaleString()}</p>
-            <p><strong>Cajero:</strong> ${elementos.username.textContent}</p>
-            <hr>
-        `;
-        contenido.appendChild(info);
-        
-        // Detalles de productos
-        const detalleDiv = document.createElement('div');
-        detalleDiv.className = 'ticket-body';
-        
-        detalles.forEach(det => {
-            const item = document.createElement('div');
-            item.className = 'ticket-item';
-            item.innerHTML = `
-                <div>
-                    <strong>${det.productos.nombre}</strong><br>
-                    <small>${det.productos.codigo_barra}</small>
+        let itemsHTML = '';
+        appState.carrito.forEach(item => {
+            const totalItem = item.cantidad * item.precioUnitario;
+            itemsHTML += `
+                <div class="ticket-item">
+                    <div>${item.producto.nombre} x${item.cantidad}</div>
+                    <div>S/ ${totalItem.toFixed(2)}</div>
                 </div>
-                <div style="text-align: right;">
-                    ${det.cantidad} x $${det.precio_unitario.toFixed(2)}<br>
-                    <strong>$${det.subtotal.toFixed(2)}</strong>
+                <div style="font-size: 10px; margin-bottom: 5px;">
+                    ${item.producto.codigo_barra} @ S/ ${item.precioUnitario.toFixed(2)}
                 </div>
             `;
-            detalleDiv.appendChild(item);
         });
         
-        contenido.appendChild(detalleDiv);
-        
-        // Totales
-        const totales = document.createElement('div');
-        totales.className = 'ticket-totales';
-        totales.innerHTML = `
-            <p><strong>Subtotal:</strong> $${venta.subtotal.toFixed(2)}</p>
-            <p><strong>Descuento:</strong> $${venta.descuento.toFixed(2)}</p>
-            <p><strong>TOTAL:</strong> $${venta.total.toFixed(2)}</p>
+        ticketContent.innerHTML = `
+            <div class="ticket-header">
+                <h1>${configMap.ticket_encabezado || 'AFMSOLUTIONS'}</h1>
+                <div>${configMap.ticket_encabezado_extra || ''}</div>
+                <div>${configMap.empresa_direccion || ''}</div>
+                <div>${configMap.empresa_telefono || ''}</div>
+                <div>${fecha}</div>
+                <div><strong>Ticket: ${venta.ticket_id}</strong></div>
+                <div>Atendido por: ${appState.usuario?.username || ''}</div>
+            </div>
+            
+            <div class="ticket-items">
+                ${itemsHTML}
+            </div>
+            
+            <div class="ticket-totals">
+                <div class="ticket-item">
+                    <div>Subtotal:</div>
+                    <div>S/ ${venta.subtotal.toFixed(2)}</div>
+                </div>
+                <div class="ticket-item">
+                    <div>Descuento:</div>
+                    <div>S/ ${venta.descuento.toFixed(2)}</div>
+                </div>
+                <div class="ticket-item">
+                    <div><strong>TOTAL:</strong></div>
+                    <div><strong>S/ ${venta.total.toFixed(2)}</strong></div>
+                </div>
+                
+                <div style="margin-top: 10px; border-top: 1px dashed #000; padding-top: 10px;">
+                    <strong>PAGOS:</strong>
+                    ${appState.pagos.map(pago => `
+                        <div class="ticket-item">
+                            <div>${pago.medio}:</div>
+                            <div>S/ ${pago.monto.toFixed(2)}</div>
+                        </div>
+                    `).join('')}
+                    
+                    <div class="ticket-item">
+                        <div>Cambio:</div>
+                        <div>S/ ${(appState.pagos.reduce((s, p) => s + p.monto, 0) - venta.total).toFixed(2)}</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="ticket-footer">
+                <div>${configMap.ticket_pie || '¡Gracias por su compra!'}</div>
+                <div>${configMap.ticket_legal || ''}</div>
+                <div>${configMap.ticket_contacto || ''}</div>
+            </div>
         `;
-        contenido.appendChild(totales);
-        
-        // Pagos
-        const pagosDiv = document.createElement('div');
-        pagosDiv.className = 'ticket-pagos';
-        pagosDiv.innerHTML = '<hr><strong>PAGOS:</strong>';
-        
-        pagos.forEach(pago => {
-            const pagoItem = document.createElement('p');
-            pagoItem.innerHTML = `${pago.medio_pago}: $${pago.monto.toFixed(2)}`;
-            pagosDiv.appendChild(pagoItem);
-        });
-        
-        contenido.appendChild(pagosDiv);
-        
-        // Pie configurable
-        if (configMap['ticket_pie']) {
-            const pie = document.createElement('div');
-            pie.className = 'ticket-pie';
-            pie.textContent = configMap['ticket_pie'];
-            contenido.appendChild(pie);
-        }
-        
-        // Mensaje configurable
-        if (configMap['ticket_mensaje']) {
-            const mensaje = document.createElement('div');
-            mensaje.className = 'ticket-footer';
-            mensaje.textContent = configMap['ticket_mensaje'];
-            contenido.appendChild(mensaje);
-        }
         
         // Imprimir ticket
-        const ventanaImpresion = window.open('', '_blank');
-        ventanaImpresion.document.write(`
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+            <!DOCTYPE html>
             <html>
-                <head>
-                    <title>Ticket ${venta.ticket_id}</title>
-                    <style>
-                        body { 
-                            font-family: 'Courier New', monospace; 
-                            font-size: 12px; 
-                            width: 80mm; 
-                            margin: 0; 
-                            padding: 10px; 
-                            line-height: 1.2;
-                        }
-                        h1 { 
-                            text-align: center; 
-                            font-size: 18px; 
-                            font-weight: bold; 
-                            margin: 0 0 10px 0;
-                        }
-                        hr { 
-                            border: none; 
-                            border-top: 1px dashed #000; 
-                            margin: 10px 0;
-                        }
-                        .ticket-item { 
-                            display: flex; 
-                            justify-content: space-between; 
-                            margin-bottom: 5px;
-                        }
-                        .ticket-totales { 
-                            border-top: 2px solid #000; 
-                            padding-top: 10px; 
-                            margin-top: 10px;
-                        }
-                        .ticket-footer { 
-                            text-align: center; 
-                            margin-top: 15px; 
-                            font-size: 10px;
-                        }
-                        @media print {
-                            body { margin: 0; padding: 0; }
-                        }
-                    </style>
-                </head>
-                <body>
-                    ${contenido.innerHTML}
-                    <script>
-                        window.onload = function() {
-                            window.print();
-                            setTimeout(function() {
-                                window.close();
-                            }, 1000);
-                        };
-                    </script>
-                </body>
+            <head>
+                <title>Ticket ${venta.ticket_id}</title>
+                <style>
+                    body { font-family: 'Courier New', monospace; font-size: 12px; width: 80mm; margin: 0; padding: 10px; }
+                    .ticket-header { text-align: center; margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
+                    .ticket-header h1 { font-size: 18px; font-weight: bold; margin-bottom: 5px; }
+                    .ticket-item { display: flex; justify-content: space-between; margin-bottom: 5px; }
+                    .ticket-totals { border-top: 1px dashed #000; padding-top: 10px; margin-top: 10px; }
+                    .ticket-footer { text-align: center; margin-top: 15px; font-size: 10px; border-top: 1px dashed #000; padding-top: 10px; }
+                    @media print { body { width: 80mm; } }
+                </style>
+            </head>
+            <body>
+                ${ticketContent.innerHTML}
+                <script>
+                    window.onload = function() {
+                        window.print();
+                        setTimeout(function() { window.close(); }, 1000);
+                    };
+                </script>
+            </body>
             </html>
         `);
-        ventanaImpresion.document.close();
         
     } catch (error) {
         console.error('Error generando ticket:', error);
-        mostrarToast('Error', 'No se pudo generar el ticket', 'error');
+        // No fallar la venta si hay error en el ticket
+        showNotification('Venta registrada pero error generando ticket', 'warning');
     }
 }
 
-// Recargar estado post-venta
 async function recargarEstadoPostVenta() {
-    try {
-        // Recargar productos vendidos
-        await cargarProductos();
-        
-        // Recargar caja activa
-        await cargarCajaActiva();
-        
-        // Recargar cache de productos
-        productosCache.clear();
-        
-    } catch (error) {
-        console.error('Error recargando estado:', error);
-    }
-}
-
-// ============================================
-// GESTIÓN DE CAJA
-// ============================================
-
-// Cargar caja activa
-async function cargarCajaActiva() {
-    try {
-        const { data: cajas, error } = await supabase
-            .from('caja')
-            .select('*')
-            .is('fecha_cierre', null)
-            .order('fecha_apertura', { ascending: false })
-            .limit(1);
-        
-        if (error) throw error;
-        
-        if (cajas && cajas.length > 0) {
-            cajaActiva = cajas[0];
-            renderizarCajaInfo();
+    // Recargar productos del carrito para actualizar stock
+    for (const item of appState.carrito) {
+        try {
+            const { data: producto, error } = await supabaseClient
+                .from('productos')
+                .select('stock')
+                .eq('id', item.producto.id)
+                .single();
             
-            // Actualizar estado en header
-            const statusDot = elementos.statusCaja.querySelector('.status-dot');
-            const statusText = elementos.statusCaja.querySelector('.status-text');
-            
-            statusDot.className = 'status-dot';
-            statusText.textContent = 'Caja abierta';
-            
-            elementos.currentCajaId.textContent = `#${cajaActiva.id}`;
-        } else {
-            cajaActiva = null;
-            renderizarCajaInfo();
-            
-            // Actualizar estado en header
-            const statusDot = elementos.statusCaja.querySelector('.status-dot');
-            const statusText = elementos.statusCaja.querySelector('.status-text');
-            
-            statusDot.className = 'status-dot cerrada';
-            statusText.textContent = 'Caja cerrada';
-            
-            elementos.currentCajaId.textContent = 'Sin caja';
-        }
-    } catch (error) {
-        console.error('Error cargando caja activa:', error);
-        cajaActiva = null;
-        elementos.statusCaja.querySelector('.status-text').textContent = 'Error';
-    }
-}
-
-// Renderizar información de caja
-function renderizarCajaInfo() {
-    if (!cajaActiva) {
-        elementos.cajaInfo.innerHTML = `
-            <div class="alert alert-warning">
-                <h3><i class="fas fa-exclamation-triangle"></i> Caja Cerrada</h3>
-                <p>No hay una caja abierta. Debes abrir una caja para poder realizar ventas.</p>
-            </div>
-        `;
-        
-        elementos.cajaFormContainer.innerHTML = `
-            <form id="form-abrir-caja" class="form-container">
-                <h3><i class="fas fa-cash-register"></i> Abrir Caja</h3>
-                <div class="form-group">
-                    <label for="monto-inicial">Monto Inicial *</label>
-                    <input type="number" id="monto-inicial" step="0.01" min="0" required 
-                           placeholder="Ej: 1000.00">
-                </div>
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-lock-open"></i> Abrir Caja
-                </button>
-            </form>
-        `;
-        
-        // Configurar evento para abrir caja
-        const form = document.getElementById('form-abrir-caja');
-        if (form) {
-            form.onsubmit = async (e) => {
-                e.preventDefault();
-                await abrirCaja();
-            };
-        }
-        
-        return;
-    }
-    
-    // Caja está abierta
-    elementos.cajaInfo.innerHTML = `
-        <div class="alert alert-success">
-            <h3><i class="fas fa-cash-register"></i> Caja Abierta</h3>
-            <div class="caja-detalle">
-                <p><strong>ID:</strong> #${cajaActiva.id}</p>
-                <p><strong>Abierta por:</strong> ${elementos.username.textContent}</p>
-                <p><strong>Fecha apertura:</strong> ${new Date(cajaActiva.fecha_apertura).toLocaleString()}</p>
-                <p><strong>Monto inicial:</strong> $${cajaActiva.monto_inicial.toFixed(2)}</p>
-            </div>
-        </div>
-    `;
-    
-    elementos.cajaFormContainer.innerHTML = `
-        <form id="form-cerrar-caja" class="form-container">
-            <h3><i class="fas fa-lock"></i> Cerrar Caja</h3>
-            <div class="form-group">
-                <label for="observaciones">Observaciones</label>
-                <textarea id="observaciones" rows="3" 
-                          placeholder="Observaciones del cierre de caja"></textarea>
-            </div>
-            <div class="form-group">
-                <label for="monto-real">Monto Real en Caja *</label>
-                <input type="number" id="monto-real" step="0.01" min="0" required 
-                       placeholder="Total físico contado">
-            </div>
-            <button type="submit" class="btn btn-danger">
-                <i class="fas fa-lock"></i> Cerrar Caja
-            </button>
-        </form>
-    `;
-    
-    // Configurar evento para cerrar caja
-    const form = document.getElementById('form-cerrar-caja');
-    if (form) {
-        form.onsubmit = async (e) => {
-            e.preventDefault();
-            await cerrarCaja();
-        };
-    }
-    
-    // Cargar movimientos de la caja
-    cargarMovimientosCaja();
-}
-
-// Abrir caja
-async function abrirCaja() {
-    try {
-        // Validar permisos
-        if (!(await tienePermiso('acceder_caja'))) {
-            mostrarToast('Permiso denegado', 'No tienes permiso para abrir caja', 'error');
-            return;
-        }
-        
-        // Verificar que no exista caja activa
-        const { data: cajasActivas, error: errorCheck } = await supabase
-            .from('caja')
-            .select('id')
-            .is('fecha_cierre', null);
-        
-        if (errorCheck) throw errorCheck;
-        
-        if (cajasActivas && cajasActivas.length > 0) {
-            throw new Error('Ya existe una caja abierta');
-        }
-        
-        const montoInicial = parseFloat(document.getElementById('monto-inicial').value);
-        
-        if (isNaN(montoInicial) || montoInicial < 0) {
-            throw new Error('Monto inicial inválido');
-        }
-        
-        const { data: caja, error } = await supabase
-            .from('caja')
-            .insert([{
-                usuario_id: currentUser.id,
-                monto_inicial: montoInicial,
-                fecha_apertura: new Date().toISOString()
-            }])
-            .select()
-            .single();
-        
-        if (error) throw error;
-        
-        cajaActiva = caja;
-        await cargarCajaActiva();
-        
-        mostrarToast('Caja abierta', `Caja #${caja.id} abierta con $${montoInicial.toFixed(2)}`, 'success');
-        
-        // Regresar a venta
-        mostrarSeccion('venta');
-        
-    } catch (error) {
-        console.error('Error abriendo caja:', error);
-        mostrarToast('Error', error.message, 'error');
-    }
-}
-
-// Cerrar caja
-async function cerrarCaja() {
-    try {
-        // Validar permisos
-        if (!(await tienePermiso('acceder_caja'))) {
-            mostrarToast('Permiso denegado', 'No tienes permiso para cerrar caja', 'error');
-            return;
-        }
-        
-        const observaciones = document.getElementById('observaciones').value.trim();
-        const montoReal = parseFloat(document.getElementById('monto-real').value);
-        
-        if (isNaN(montoReal) || montoReal < 0) {
-            throw new Error('Monto real inválido');
-        }
-        
-        // Calcular totales de ventas no anuladas
-        const { data: ventas, error: errorVentas } = await supabase
-            .from('ventas')
-            .select('id, total')
-            .eq('caja_id', cajaActiva.id)
-            .eq('anulada', false);
-        
-        if (errorVentas) throw errorVentas;
-        
-        // Calcular totales por medio de pago
-        const ventasIds = ventas.map(v => v.id);
-        let totalEfectivo = 0;
-        let totalTarjeta = 0;
-        let totalTransferencia = 0;
-        
-        if (ventasIds.length > 0) {
-            const { data: pagos, error: errorPagos } = await supabase
-                .from('pagos_venta')
-                .select('medio_pago, monto')
-                .in('venta_id', ventasIds);
-            
-            if (errorPagos) throw errorPagos;
-            
-            pagos.forEach(pago => {
-                switch(pago.medio_pago) {
-                    case 'EFECTIVO':
-                        totalEfectivo += pago.monto;
-                        break;
-                    case 'TARJETA':
-                        totalTarjeta += pago.monto;
-                        break;
-                    case 'TRANSFERENCIA/QR':
-                        totalTransferencia += pago.monto;
-                        break;
+            if (!error && producto) {
+                // Actualizar en UI si el producto está visible
+                const stockElement = document.querySelector(`[data-producto-id="${item.producto.id}"] .producto-stock`);
+                if (stockElement) {
+                    stockElement.textContent = producto.stock;
                 }
-            });
+            }
+        } catch (e) {
+            console.error('Error recargando stock:', e);
         }
-        
-        // Calcular total ventas
-        const totalVentas = totalEfectivo + totalTarjeta + totalTransferencia;
-        const totalEsperado = cajaActiva.monto_inicial + totalEfectivo;
-        const diferencia = montoReal - totalEsperado;
-        
-        // Actualizar caja
-        const { error } = await supabase
-            .from('caja')
-            .update({
-                fecha_cierre: new Date().toISOString(),
-                observaciones: observaciones || null,
-                total_ventas_efectivo: totalEfectivo,
-                total_ventas_tarjeta: totalTarjeta,
-                total_ventas_transferencia: totalTransferencia,
-                monto_real: montoReal,
-                diferencia: diferencia
-            })
-            .eq('id', cajaActiva.id);
-        
-        if (error) throw error;
-        
-        mostrarToast('Caja cerrada', `Caja #${cajaActiva.id} cerrada correctamente`, 'success');
-        
-        // Actualizar estado
-        cajaActiva = null;
-        await cargarCajaActiva();
-        
-    } catch (error) {
-        console.error('Error cerrando caja:', error);
-        mostrarToast('Error', error.message, 'error');
     }
-}
-
-// Cargar movimientos de caja
-async function cargarMovimientosCaja() {
-    if (!cajaActiva) return;
     
-    try {
-        const { data: ventas, error } = await supabase
-            .from('ventas')
-            .select(`
-                id,
-                ticket_id,
-                fecha,
-                total,
-                anulada,
-                pagos_venta (medio_pago, monto)
-            `)
-            .eq('caja_id', cajaActiva.id)
-            .order('fecha', { ascending: false })
-            .limit(50);
-        
-        if (error) throw error;
-        
-        if (!ventas || ventas.length === 0) {
-            elementos.cajaMovimientos.innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-receipt"></i>
-                    <p>No hay ventas registradas en esta caja</p>
-                </div>
-            `;
-            return;
-        }
-        
-        let html = `
-            <h3><i class="fas fa-history"></i> Movimientos de Caja</h3>
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Ticket</th>
-                        <th>Fecha</th>
-                        <th>Total</th>
-                        <th>Medios de Pago</th>
-                        <th>Estado</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-        
-        ventas.forEach(venta => {
-            const medios = venta.pagos_venta.map(p => `
-                <span class="badge bg-secondary">${p.medio_pago}: $${p.monto.toFixed(2)}</span>
-            `).join(' ');
-            
-            html += `
-                <tr class="${venta.anulada ? 'table-danger' : ''}">
-                    <td><code>${venta.ticket_id}</code></td>
-                    <td>${new Date(venta.fecha).toLocaleTimeString()}</td>
-                    <td>$${venta.total.toFixed(2)}</td>
-                    <td>${medios}</td>
-                    <td>
-                        <span class="badge ${venta.anulada ? 'bg-danger' : 'bg-success'}">
-                            ${venta.anulada ? 'ANULADA' : 'ACTIVA'}
-                        </span>
-                    </td>
-                </tr>
-            `;
-        });
-        
-        html += `
-                </tbody>
-            </table>
-        `;
-        
-        elementos.cajaMovimientos.innerHTML = html;
-        
-    } catch (error) {
-        console.error('Error cargando movimientos:', error);
-        elementos.cajaMovimientos.innerHTML = `
-            <div class="alert alert-danger">
-                <i class="fas fa-exclamation-circle"></i>
-                Error cargando movimientos
-            </div>
-        `;
-    }
+    // Recargar estado de caja
+    await verificarCajaActiva();
 }
 
-// ============================================
-// HISTORIAL Y ANULACIÓN DE VENTAS
-// ============================================
-
-// Cargar ventas del día
-async function cargarVentasHoy() {
-    const hoy = new Date().toISOString().split('T')[0];
-    elementos.fechaInicio.value = hoy;
-    elementos.fechaFin.value = hoy;
-    await cargarHistorial();
-}
-
-// Cargar historial de ventas
-async function cargarHistorial() {
-    try {
-        const fechaInicio = elementos.fechaInicio.value;
-        const fechaFin = elementos.fechaFin.value;
-        
-        if (!fechaInicio || !fechaFin) {
-            mostrarToast('Error', 'Selecciona un rango de fechas', 'error');
-            return;
-        }
-        
-        // Convertir fechas a formato ISO
-        const inicio = new Date(fechaInicio + 'T00:00:00');
-        const fin = new Date(fechaFin + 'T23:59:59');
-        
-        let query = supabase
-            .from('ventas')
-            .select(`
-                *,
-                usuario:usuarios(username),
-                pagos_venta (medio_pago, monto)
-            `)
-            .gte('fecha', inicio.toISOString())
-            .lte('fecha', fin.toISOString())
-            .order('fecha', { ascending: false });
-        
-        const { data: ventas, error } = await query;
-        
-        if (error) throw error;
-        
-        renderizarHistorial(ventas);
-        calcularTotalesPeriodo(ventas);
-        
-    } catch (error) {
-        console.error('Error cargando historial:', error);
-        mostrarToast('Error', 'No se pudo cargar el historial', 'error');
-    }
-}
-
-// Renderizar historial
-function renderizarHistorial(ventas) {
-    elementos.historialBody.innerHTML = '';
+function cancelarVenta() {
+    if (appState.carrito.length === 0) return;
     
-    if (!ventas || ventas.length === 0) {
-        elementos.historialBody.innerHTML = `
-            <tr>
-                <td colspan="6" class="empty-state">
-                    <i class="fas fa-receipt"></i>
-                    <p>No hay ventas en el período seleccionado</p>
-                </td>
-            </tr>
-        `;
+    if (!confirm('¿Está seguro de cancelar esta venta? Se perderán todos los productos del carrito.')) {
         return;
     }
     
-    ventas.forEach(venta => {
-        const tr = document.createElement('tr');
-        tr.className = venta.anulada ? 'table-danger' : '';
-        
-        // Agrupar pagos por medio
-        const pagosAgrupados = {};
-        venta.pagos_venta.forEach(pago => {
-            if (!pagosAgrupados[pago.medio_pago]) {
-                pagosAgrupados[pago.medio_pago] = 0;
-            }
-            pagosAgrupados[pago.medio_pago] += pago.monto;
-        });
-        
-        const mediosPago = Object.entries(pagosAgrupados).map(([medio, monto]) => 
-            `<span class="badge bg-secondary">${medio}: $${monto.toFixed(2)}</span>`
-        ).join(' ');
-        
-        tr.innerHTML = `
-            <td><code>${venta.ticket_id}</code></td>
-            <td>${new Date(venta.fecha).toLocaleString()}</td>
-            <td>$${venta.total.toFixed(2)}</td>
-            <td>${mediosPago}</td>
-            <td>
-                <span class="badge ${venta.anulada ? 'bg-danger' : 'bg-success'}">
-                    ${venta.anulada ? 'ANULADA' : 'ACTIVA'}
-                </span>
-            </td>
-            <td>
-                <button class="btn btn-small btn-secondary btn-ver-detalle" data-id="${venta.id}">
-                    <i class="fas fa-eye"></i>
-                </button>
-                ${!venta.anulada ? `
-                    <button class="btn btn-small btn-danger btn-anular-venta" data-id="${venta.id}">
-                        <i class="fas fa-ban"></i>
-                    </button>
-                ` : ''}
-            </td>
-        `;
-        
-        elementos.historialBody.appendChild(tr);
-    });
-    
-    // Configurar eventos
-    document.querySelectorAll('.btn-ver-detalle').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const id = btn.dataset.id;
-            await verDetalleVenta(id);
-        });
-    });
-    
-    document.querySelectorAll('.btn-anular-venta').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const id = btn.dataset.id;
-            if (await tienePermiso('anular_ventas')) {
-                await anularVenta(id);
-            } else {
-                mostrarToast('Permiso denegado', 'No tienes permiso para anular ventas', 'error');
-            }
-        });
-    });
+    limpiarCarrito();
 }
 
-// Calcular totales del período
-function calcularTotalesPeriodo(ventas) {
-    let totalVentas = 0;
-    let totalEfectivo = 0;
-    let totalTarjeta = 0;
-    let totalTransferencia = 0;
+// ==================== BUSCADOR MANUAL (F6) ====================
+function showBuscadorManual() {
+    const modal = document.getElementById('modal-buscador');
+    modal.classList.add('active');
     
-    // Solo ventas no anuladas
-    const ventasValidas = ventas.filter(v => !v.anulada);
+    // Cargar proveedores para el buscador
+    cargarProveedoresBuscador();
     
-    ventasValidas.forEach(venta => {
-        totalVentas += venta.total;
-        
-        venta.pagos_venta.forEach(pago => {
-            switch(pago.medio_pago) {
-                case 'EFECTIVO':
-                    totalEfectivo += pago.monto;
-                    break;
-                case 'TARJETA':
-                    totalTarjeta += pago.monto;
-                    break;
-                case 'TRANSFERENCIA/QR':
-                    totalTransferencia += pago.monto;
-                    break;
-            }
-        });
-    });
-    
-    document.getElementById('total-ventas-periodo').textContent = `$${totalVentas.toFixed(2)}`;
-    document.getElementById('total-efectivo-periodo').textContent = `$${totalEfectivo.toFixed(2)}`;
-    document.getElementById('total-tarjeta-periodo').textContent = `$${totalTarjeta.toFixed(2)}`;
-    document.getElementById('total-transferencia-periodo').textContent = `$${totalTransferencia.toFixed(2)}`;
+    // Enfocar primer campo
+    document.getElementById('buscador-codigo').focus();
 }
 
-// Ver detalle de venta
-async function verDetalleVenta(id) {
+async function cargarProveedoresBuscador() {
     try {
-        const { data: venta, error } = await supabase
-            .from('ventas')
-            .select(`
-                *,
-                usuario:usuarios(username),
-                detalle_ventas (
-                    cantidad,
-                    precio_unitario,
-                    subtotal,
-                    productos (nombre, codigo_barra)
-                ),
-                pagos_venta (medio_pago, monto)
-            `)
-            .eq('id', id)
-            .single();
+        const { data, error } = await supabaseClient
+            .from('productos')
+            .select('proveedor')
+            .not('proveedor', 'is', null)
+            .eq('activo', true)
+            .order('proveedor');
         
         if (error) throw error;
         
-        // Actualizar título
-        document.getElementById('detalle-venta-titulo').textContent = `Detalles: ${venta.ticket_id}`;
+        const proveedores = [...new Set(data.map(p => p.proveedor))];
+        const select = document.getElementById('buscador-proveedor');
+        select.innerHTML = '<option value="">Todos los proveedores</option>';
         
-        // Construir contenido
-        let html = `
-            <div class="detalle-venta">
-                <div class="detalle-header">
-                    <p><strong>Ticket:</strong> ${venta.ticket_id}</p>
-                    <p><strong>Fecha:</strong> ${new Date(venta.fecha).toLocaleString()}</p>
-                    <p><strong>Cajero:</strong> ${venta.usuario.username}</p>
-                    <p><strong>Estado:</strong> 
-                        <span class="badge ${venta.anulada ? 'bg-danger' : 'bg-success'}">
-                            ${venta.anulada ? 'ANULADA' : 'ACTIVA'}
-                        </span>
-                    </p>
-                </div>
-                
-                <div class="detalle-productos">
-                    <h4>Productos:</h4>
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Producto</th>
-                                <th>Cantidad</th>
-                                <th>Precio Unit.</th>
-                                <th>Subtotal</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-        `;
-        
-        venta.detalle_ventas.forEach(detalle => {
-            html += `
-                <tr>
-                    <td>
-                        <strong>${detalle.productos.nombre}</strong><br>
-                        <small>${detalle.productos.codigo_barra}</small>
-                    </td>
-                    <td>${detalle.cantidad}</td>
-                    <td>$${detalle.precio_unitario.toFixed(2)}</td>
-                    <td>$${detalle.subtotal.toFixed(2)}</td>
-                </tr>
-            `;
-        });
-        
-        html += `
-                        </tbody>
-                    </table>
-                </div>
-                
-                <div class="detalle-totales">
-                    <p><strong>Subtotal:</strong> $${venta.subtotal.toFixed(2)}</p>
-                    <p><strong>Descuento:</strong> $${venta.descuento.toFixed(2)}</p>
-                    <p><strong>Total:</strong> $${venta.total.toFixed(2)}</p>
-                </div>
-                
-                <div class="detalle-pagos">
-                    <h4>Pagos:</h4>
-        `;
-        
-        venta.pagos_venta.forEach(pago => {
-            html += `
-                <p>${pago.medio_pago}: $${pago.monto.toFixed(2)}</p>
-            `;
-        });
-        
-        html += `
-                </div>
-            </div>
-        `;
-        
-        document.getElementById('detalle-venta-contenido').innerHTML = html;
-        
-        // Configurar botón de anulación
-        elementos.btnAnularVenta.onclick = () => anularVenta(id);
-        elementos.btnAnularVenta.style.display = venta.anulada ? 'none' : 'block';
-        
-        // Mostrar modal
-        mostrarModal('modal-detalle-venta');
-        
-    } catch (error) {
-        console.error('Error cargando detalle:', error);
-        mostrarToast('Error', 'No se pudo cargar el detalle de la venta', 'error');
-    }
-}
-
-// Anular venta
-async function anularVenta(id) {
-    try {
-        if (!confirm('¿Estás seguro de anular esta venta? Esta acción no se puede deshacer.')) {
-            return;
-        }
-        
-        // Obtener venta y detalles
-        const { data: venta, error: errorVenta } = await supabase
-            .from('ventas')
-            .select(`
-                *,
-                detalle_ventas (producto_id, cantidad)
-            `)
-            .eq('id', id)
-            .single();
-        
-        if (errorVenta) throw errorVenta;
-        
-        if (venta.anulada) {
-            throw new Error('Esta venta ya está anulada');
-        }
-        
-        // Verificar que la caja aún esté abierta
-        if (cajaActiva && venta.caja_id !== cajaActiva.id) {
-            const confirmar = confirm('Esta venta pertenece a una caja ya cerrada. ¿Deseas continuar con la anulación?');
-            if (!confirmar) return;
-        }
-        
-        // Iniciar transacción (usando RPC o múltiples operaciones)
-        // 1. Marcar venta como anulada
-        const { error: errorAnular } = await supabase
-            .from('ventas')
-            .update({
-                anulada: true,
-                usuario_anulacion_id: currentUser.id,
-                fecha_anulacion: new Date().toISOString()
-            })
-            .eq('id', id);
-        
-        if (errorAnular) throw errorAnular;
-        
-        // 2. Revertir stock para cada producto
-        const revertirPromises = venta.detalle_ventas.map(async (detalle) => {
-            const { error: errorStock } = await supabase.rpc('incrementar_stock', {
-                producto_id: detalle.producto_id,
-                cantidad: detalle.cantidad
-            });
-            
-            if (errorStock) throw errorStock;
-        });
-        
-        await Promise.all(revertirPromises);
-        
-        // Recargar historial y estado
-        await cargarHistorial();
-        await cargarProductos();
-        if (cajaActiva && venta.caja_id === cajaActiva.id) {
-            await cargarCajaActiva();
-        }
-        
-        mostrarToast('Venta anulada', 'La venta fue anulada correctamente', 'success');
-        
-        // Cerrar modal si está abierto
-        ocultarModal('modal-detalle-venta');
-        
-    } catch (error) {
-        console.error('Error anulando venta:', error);
-        mostrarToast('Error', error.message, 'error');
-    }
-}
-
-// ============================================
-// CONFIGURACIÓN DEL SISTEMA
-// ============================================
-
-// Cargar configuración
-async function cargarConfiguracion() {
-    try {
-        const { data: config, error } = await supabase
-            .from('configuracion')
-            .select('clave, valor')
-            .in('clave', ['ticket_encabezado', 'ticket_pie', 'ticket_mensaje']);
-        
-        if (error) throw error;
-        
-        // Inicializar valores predeterminados
-        const configMap = {
-            'ticket_encabezado': '',
-            'ticket_pie': '',
-            'ticket_mensaje': ''
-        };
-        
-        config.forEach(item => {
-            configMap[item.clave] = item.valor;
-        });
-        
-        // Actualizar formularios
-        elementos.configEncabezado.value = configMap['ticket_encabezado'];
-        elementos.configPie.value = configMap['ticket_pie'];
-        elementos.configMensaje.value = configMap['ticket_mensaje'];
-        
-        // Cargar permisos si es administrador
-        if (currentRole === 'Administrador') {
-            await cargarUsuariosPermisos();
-        } else {
-            elementos.permisosContainer.innerHTML = `
-                <div class="alert alert-info">
-                    <i class="fas fa-info-circle"></i>
-                    Solo los administradores pueden gestionar permisos
-                </div>
-            `;
-        }
-        
-    } catch (error) {
-        console.error('Error cargando configuración:', error);
-    }
-}
-
-// Cargar usuarios y permisos
-async function cargarUsuariosPermisos() {
-    try {
-        const { data: usuarios, error } = await supabase
-            .from('usuarios')
-            .select('id, username, rol, activo')
-            .neq('rol', 'Administrador')
-            .order('username');
-        
-        if (error) throw error;
-        
-        if (!usuarios || usuarios.length === 0) {
-            elementos.permisosContainer.innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-users"></i>
-                    <p>No hay usuarios registrados</p>
-                </div>
-            `;
-            return;
-        }
-        
-        // Obtener permisos de cada usuario
-        const permisosUsuarios = await Promise.all(
-            usuarios.map(async (usuario) => {
-                const { data: permisos } = await supabase
-                    .from('permisos')
-                    .select('permiso')
-                    .eq('usuario_id', usuario.id)
-                    .eq('activo', true);
-                
-                return {
-                    ...usuario,
-                    permisos: permisos ? permisos.map(p => p.permiso) : []
-                };
-            })
-        );
-        
-        // Renderizar interfaz de permisos
-        let html = `
-            <div class="permisos-grid">
-                <div class="permisos-header">
-                    <div>Usuario</div>
-                    <div>Cargar Productos</div>
-                    <div>Modificar Productos</div>
-                    <div>Anular Ventas</div>
-                    <div>Ver Reportes</div>
-                    <div>Acceder Caja</div>
-                </div>
-        `;
-        
-        permisosUsuarios.forEach(usuario => {
-            html += `
-                <div class="permisos-row" data-user-id="${usuario.id}">
-                    <div class="user-info">
-                        <strong>${usuario.username}</strong><br>
-                        <small>${usuario.rol}</small>
-                    </div>
-                    ${['cargar_productos', 'modificar_productos', 'anular_ventas', 'ver_reportes', 'acceder_caja']
-                        .map(permiso => `
-                            <div>
-                                <input type="checkbox" 
-                                       class="permiso-checkbox" 
-                                       data-user="${usuario.id}" 
-                                       data-permiso="${permiso}"
-                                       ${usuario.permisos.includes(permiso) ? 'checked' : ''}
-                                       ${!usuario.activo ? 'disabled' : ''}>
-                            </div>
-                        `).join('')}
-                </div>
-            `;
-        });
-        
-        html += `</div>`;
-        
-        elementos.permisosContainer.innerHTML = html;
-        
-        // Configurar eventos de checkboxes
-        document.querySelectorAll('.permiso-checkbox').forEach(checkbox => {
-            checkbox.addEventListener('change', async (e) => {
-                await actualizarPermiso(
-                    e.target.dataset.user,
-                    e.target.dataset.permiso,
-                    e.target.checked
-                );
-            });
-        });
-        
-    } catch (error) {
-        console.error('Error cargando permisos:', error);
-        elementos.permisosContainer.innerHTML = `
-            <div class="alert alert-danger">
-                <i class="fas fa-exclamation-circle"></i>
-                Error cargando permisos
-            </div>
-        `;
-    }
-}
-
-// Actualizar permiso de usuario
-async function actualizarPermiso(usuarioId, permiso, activo) {
-    try {
-        if (!(await tienePermiso('modificar_permisos'))) {
-            mostrarToast('Permiso denegado', 'No tienes permiso para modificar permisos', 'error');
-            return;
-        }
-        
-        if (activo) {
-            // Insertar o activar permiso
-            const { error } = await supabase
-                .from('permisos')
-                .upsert({
-                    usuario_id: usuarioId,
-                    permiso: permiso,
-                    activo: true,
-                    fecha_asignacion: new Date().toISOString()
-                }, {
-                    onConflict: 'usuario_id,permiso'
-                });
-            
-            if (error) throw error;
-            
-            mostrarToast('Permiso asignado', 'Permiso actualizado correctamente', 'success');
-        } else {
-            // Desactivar permiso
-            const { error } = await supabase
-                .from('permisos')
-                .update({ activo: false })
-                .eq('usuario_id', usuarioId)
-                .eq('permiso', permiso);
-            
-            if (error) throw error;
-            
-            mostrarToast('Permiso removido', 'Permiso actualizado correctamente', 'success');
-        }
-        
-    } catch (error) {
-        console.error('Error actualizando permiso:', error);
-        mostrarToast('Error', 'No se pudo actualizar el permiso', 'error');
-    }
-}
-
-// Guardar configuración
-async function guardarConfiguracion() {
-    try {
-        if (currentRole !== 'Administrador') {
-            mostrarToast('Permiso denegado', 'Solo administradores pueden modificar la configuración', 'error');
-            return;
-        }
-        
-        const configuraciones = [
-            { clave: 'ticket_encabezado', valor: elementos.configEncabezado.value },
-            { clave: 'ticket_pie', valor: elementos.configPie.value },
-            { clave: 'ticket_mensaje', valor: elementos.configMensaje.value }
-        ];
-        
-        // Actualizar cada configuración
-        const promises = configuraciones.map(config => 
-            supabase
-                .from('configuracion')
-                .upsert(config, { onConflict: 'clave' })
-        );
-        
-        await Promise.all(promises);
-        
-        mostrarToast('Configuración guardada', 'Los cambios se guardaron correctamente', 'success');
-        
-    } catch (error) {
-        console.error('Error guardando configuración:', error);
-        mostrarToast('Error', 'No se pudo guardar la configuración', 'error');
-    }
-}
-
-// ============================================
-// UTILIDADES Y FUNCIONES AUXILIARES
-// ============================================
-
-// Mostrar/ocultar secciones
-function mostrarSeccion(seccionId) {
-    // Actualizar navegación
-    elementos.navLinks.forEach(link => {
-        link.classList.remove('active');
-        if (link.dataset.section === seccionId) {
-            link.classList.add('active');
-        }
-    });
-    
-    // Mostrar sección correspondiente
-    elementos.sections.forEach(section => {
-        section.classList.remove('active');
-        if (section.id === `seccion-${seccionId}`) {
-            section.classList.add('active');
-        }
-    });
-    
-    currentSection = seccionId;
-    
-    // Enfocar scanner si es sección de venta
-    if (seccionId === 'venta') {
-        setTimeout(() => {
-            elementos.scannerInput.focus();
-        }, 100);
-    }
-}
-
-// Mostrar modal
-function mostrarModal(modalId) {
-    const modal = document.getElementById(modalId);
-    if (modal) {
-        modal.classList.add('active');
-        document.body.style.overflow = 'hidden';
-    }
-}
-
-// Ocultar modal
-function ocultarModal(modalId) {
-    const modal = document.getElementById(modalId);
-    if (modal) {
-        modal.classList.remove('active');
-        document.body.style.overflow = '';
-    }
-}
-
-// Configurar tema claro/oscuro
-function configurarTema() {
-    if (modoOscuro) {
-        document.documentElement.setAttribute('data-theme', 'dark');
-        elementos.themeToggle.innerHTML = '<i class="fas fa-sun"></i>';
-    } else {
-        document.documentElement.setAttribute('data-theme', 'light');
-        elementos.themeToggle.innerHTML = '<i class="fas fa-moon"></i>';
-    }
-}
-
-// Toggle tema
-function toggleTema() {
-    modoOscuro = !modoOscuro;
-    localStorage.setItem('theme', modoOscuro ? 'dark' : 'light');
-    configurarTema();
-}
-
-// Toggle sidebar en móvil
-function toggleSidebar() {
-    elementos.sidebar.classList.toggle('active');
-}
-
-// Actualizar reloj en tiempo real
-function actualizarReloj() {
-    const ahora = new Date();
-    elementos.liveClock.textContent = ahora.toLocaleTimeString();
-}
-
-// Mostrar notificación toast
-function mostrarToast(titulo, mensaje, tipo = 'info') {
-    const toast = document.createElement('div');
-    toast.className = `toast ${tipo}`;
-    toast.innerHTML = `
-        <div class="toast-icon">
-            <i class="fas fa-${tipo === 'success' ? 'check-circle' : tipo === 'error' ? 'exclamation-circle' : tipo === 'warning' ? 'exclamation-triangle' : 'info-circle'}"></i>
-        </div>
-        <div class="toast-content">
-            <div class="toast-title">${titulo}</div>
-            <div class="toast-message">${mensaje}</div>
-        </div>
-        <button class="toast-close">
-            <i class="fas fa-times"></i>
-        </button>
-    `;
-    
-    elementos.toastContainer.appendChild(toast);
-    
-    // Configurar botón cerrar
-    toast.querySelector('.toast-close').addEventListener('click', () => {
-        toast.remove();
-    });
-    
-    // Auto-remover después de 5 segundos
-    setTimeout(() => {
-        if (toast.parentNode) {
-            toast.style.opacity = '0';
-            setTimeout(() => toast.remove(), 300);
-        }
-    }, 5000);
-}
-
-// Configurar eventos táctiles para móvil
-function configurarEventosTactiles() {
-    // Prevenir zoom en inputs en iOS
-    document.addEventListener('touchstart', (e) => {
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
-            e.target.style.fontSize = '16px'; // Previene zoom en iOS
-        }
-    });
-    
-    // Botones con feedback táctil
-    document.querySelectorAll('.btn, .btn-pago, .nav-link').forEach(element => {
-        element.addEventListener('touchstart', () => {
-            element.style.opacity = '0.7';
-        });
-        
-        element.addEventListener('touchend', () => {
-            element.style.opacity = '1';
-        });
-    });
-}
-
-// ============================================
-// FUNCIONES DE REPORTES (SIMPLIFICADAS)
-// ============================================
-
-// Generar reporte
-async function generarReporte() {
-    try {
-        if (!(await tienePermiso('ver_reportes'))) {
-            mostrarToast('Permiso denegado', 'No tienes permiso para ver reportes', 'error');
-            return;
-        }
-        
-        const fechaInicio = elementos.reporteFechaInicio.value;
-        const fechaFin = elementos.reporteFechaFin.value;
-        const tipo = elementos.reporteTipo.value;
-        
-        if (!fechaInicio || !fechaFin) {
-            mostrarToast('Error', 'Selecciona un rango de fechas', 'error');
-            return;
-        }
-        
-        // Convertir fechas
-        const inicio = new Date(fechaInicio + 'T00:00:00');
-        const fin = new Date(fechaFin + 'T23:59:59');
-        
-        let html = '';
-        
-        switch(tipo) {
-            case 'ventas':
-                html = await generarReporteVentas(inicio, fin);
-                break;
-            case 'ganancias':
-                html = await generarReporteGanancias(inicio, fin);
-                break;
-            case 'productos':
-                html = await generarReporteProductos(inicio, fin);
-                break;
-        }
-        
-        elementos.reporteResultados.innerHTML = html;
-        
-    } catch (error) {
-        console.error('Error generando reporte:', error);
-        mostrarToast('Error', 'No se pudo generar el reporte', 'error');
-    }
-}
-
-// Reporte de ventas
-async function generarReporteVentas(inicio, fin) {
-    const { data: ventas, error } = await supabase
-        .from('ventas')
-        .select(`
-            *,
-            pagos_venta (medio_pago, monto)
-        `)
-        .gte('fecha', inicio.toISOString())
-        .lte('fecha', fin.toISOString())
-        .eq('anulada', false)
-        .order('fecha');
-    
-    if (error) throw error;
-    
-    // Calcular totales
-    let totalVentas = 0;
-    let totalEfectivo = 0;
-    let totalTarjeta = 0;
-    let totalTransferencia = 0;
-    
-    ventas.forEach(venta => {
-        totalVentas += venta.total;
-        venta.pagos_venta.forEach(pago => {
-            switch(pago.medio_pago) {
-                case 'EFECTIVO': totalEfectivo += pago.monto; break;
-                case 'TARJETA': totalTarjeta += pago.monto; break;
-                case 'TRANSFERENCIA/QR': totalTransferencia += pago.monto; break;
+        proveedores.forEach(proveedor => {
+            if (proveedor) {
+                const option = document.createElement('option');
+                option.value = proveedor;
+                option.textContent = proveedor;
+                select.appendChild(option);
             }
         });
-    });
-    
-    return `
-        <div class="reporte-ventas">
-            <h3>Reporte de Ventas</h3>
-            <p>Período: ${inicio.toLocaleDateString()} - ${fin.toLocaleDateString()}</p>
-            
-            <div class="resumen-grid">
-                <div class="resumen-item">
-                    <span class="resumen-label">Total Ventas:</span>
-                    <span class="resumen-value">$${totalVentas.toFixed(2)}</span>
-                </div>
-                <div class="resumen-item">
-                    <span class="resumen-label">Efectivo:</span>
-                    <span class="resumen-value">$${totalEfectivo.toFixed(2)}</span>
-                </div>
-                <div class="resumen-item">
-                    <span class="resumen-label">Tarjeta:</span>
-                    <span class="resumen-value">$${totalTarjeta.toFixed(2)}</span>
-                </div>
-                <div class="resumen-item">
-                    <span class="resumen-label">Transferencia:</span>
-                    <span class="resumen-value">$${totalTransferencia.toFixed(2)}</span>
-                </div>
-            </div>
-            
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Fecha</th>
-                        <th>Ticket</th>
-                        <th>Total</th>
-                        <th>Medios de Pago</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${ventas.map(venta => {
-                        const medios = venta.pagos_venta.map(p => 
-                            `${p.medio_pago}: $${p.monto.toFixed(2)}`
-                        ).join(', ');
-                        
-                        return `
-                            <tr>
-                                <td>${new Date(venta.fecha).toLocaleDateString()}</td>
-                                <td>${venta.ticket_id}</td>
-                                <td>$${venta.total.toFixed(2)}</td>
-                                <td>${medios}</td>
-                            </tr>
-                        `;
-                    }).join('')}
-                </tbody>
-            </table>
-        </div>
-    `;
+    } catch (error) {
+        console.error('Error cargando proveedores:', error);
+    }
 }
 
-// Reporte de ganancias
-async function generarReporteGanancias(inicio, fin) {
-    const { data: detalles, error } = await supabase
-        .from('detalle_ventas')
-        .select(`
-            cantidad,
-            precio_unitario,
-            productos (precio_costo),
-            ventas (fecha, anulada)
-        `)
-        .gte('ventas.fecha', inicio.toISOString())
-        .lte('ventas.fecha', fin.toISOString())
-        .eq('ventas.anulada', false);
-    
-    if (error) throw error;
-    
-    // Calcular ganancias
-    let totalVentas = 0;
-    let totalCosto = 0;
-    let totalGanancia = 0;
-    
-    detalles.forEach(detalle => {
-        const venta = detalle.precio_unitario * detalle.cantidad;
-        const costo = detalle.productos.precio_costo * detalle.cantidad;
-        
-        totalVentas += venta;
-        totalCosto += costo;
-        totalGanancia += (venta - costo);
-    });
-    
-    const margen = totalVentas > 0 ? (totalGanancia / totalVentas) * 100 : 0;
-    
-    return `
-        <div class="reporte-ganancias">
-            <h3>Reporte de Ganancias</h3>
-            <p>Período: ${inicio.toLocaleDateString()} - ${fin.toLocaleDateString()}</p>
-            
-            <div class="resumen-grid">
-                <div class="resumen-item">
-                    <span class="resumen-label">Total Ventas:</span>
-                    <span class="resumen-value">$${totalVentas.toFixed(2)}</span>
-                </div>
-                <div class="resumen-item">
-                    <span class="resumen-label">Total Costo:</span>
-                    <span class="resumen-value">$${totalCosto.toFixed(2)}</span>
-                </div>
-                <div class="resumen-item">
-                    <span class="resumen-label">Ganancia Bruta:</span>
-                    <span class="resumen-value text-success">$${totalGanancia.toFixed(2)}</span>
-                </div>
-                <div class="resumen-item">
-                    <span class="resumen-label">Margen:</span>
-                    <span class="resumen-value">${margen.toFixed(2)}%</span>
-                </div>
-            </div>
-        </div>
-    `;
-}
-
-// Reporte de productos más vendidos
-async function generarReporteProductos(inicio, fin) {
-    const { data: detalles, error } = await supabase
-        .from('detalle_ventas')
-        .select(`
-            producto_id,
-            cantidad,
-            precio_unitario,
-            productos (nombre, codigo_barra),
-            ventas (fecha, anulada)
-        `)
-        .gte('ventas.fecha', inicio.toISOString())
-        .lte('ventas.fecha', fin.toISOString())
-        .eq('ventas.anulada', false);
-    
-    if (error) throw error;
-    
-    // Agrupar por producto
-    const productosMap = new Map();
-    
-    detalles.forEach(detalle => {
-        const productoId = detalle.producto_id;
-        if (!productosMap.has(productoId)) {
-            productosMap.set(productoId, {
-                nombre: detalle.productos.nombre,
-                codigo: detalle.productos.codigo_barra,
-                cantidad: 0,
-                total: 0
-            });
-        }
-        
-        const producto = productosMap.get(productoId);
-        producto.cantidad += detalle.cantidad;
-        producto.total += detalle.cantidad * detalle.precio_unitario;
-    });
-    
-    // Convertir a array y ordenar por cantidad
-    const productosArray = Array.from(productosMap.values())
-        .sort((a, b) => b.cantidad - a.cantidad)
-        .slice(0, 10); // Top 10
-    
-    return `
-        <div class="reporte-productos">
-            <h3>Productos Más Vendidos</h3>
-            <p>Período: ${inicio.toLocaleDateString()} - ${fin.toLocaleDateString()}</p>
-            
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Producto</th>
-                        <th>Cantidad Vendida</th>
-                        <th>Total Ventas</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${productosArray.map((producto, index) => `
-                        <tr>
-                            <td>${index + 1}</td>
-                            <td>
-                                <strong>${producto.nombre}</strong><br>
-                                <small>${producto.codigo}</small>
-                            </td>
-                            <td>${producto.cantidad}</td>
-                            <td>$${producto.total.toFixed(2)}</td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-        </div>
-    `;
-}
-
-// ============================================
-// INICIALIZAR APLICACIÓN
-// ============================================
-
-// Inicializar cuando el DOM esté listo
-document.addEventListener('DOMContentLoaded', init);
-
-// Configurar botón de reportes
-elementos.btnGenerarReporte.addEventListener('click', generarReporte);
-
-// Configurar botón refresh caja
-elementos.btnRefreshCaja.addEventListener('click', cargarCajaActiva);
-
-// Configurar eventos de búsqueda de productos
-document.getElementById('btn-buscar-productos')?.addEventListener('click', async () => {
-    await buscarProductos();
-});
-
-// Función de búsqueda de productos
-async function buscarProductos() {
+async function buscarProductosManual() {
     try {
-        let query = supabase
+        const codigo = document.getElementById('buscador-codigo').value;
+        const nombre = document.getElementById('buscador-nombre').value;
+        const proveedor = document.getElementById('buscador-proveedor').value;
+        
+        let query = supabaseClient
             .from('productos')
             .select('*')
-            .eq('activo', true);
-        
-        // Aplicar filtros
-        const codigo = document.getElementById('busqueda-codigo').value;
-        const nombre = document.getElementById('busqueda-nombre').value;
-        const proveedor = document.getElementById('busqueda-proveedor').value;
-        const precioMin = document.getElementById('busqueda-precio-min').value;
-        const precioMax = document.getElementById('busqueda-precio-max').value;
+            .eq('activo', true)
+            .order('nombre');
         
         if (codigo) {
             query = query.ilike('codigo_barra', `%${codigo}%`);
@@ -3116,75 +1477,1042 @@ async function buscarProductos() {
         }
         
         if (proveedor) {
-            query = query.ilike('proveedor', `%${proveedor}%`);
+            query = query.eq('proveedor', proveedor);
         }
         
-        if (precioMin) {
-            query = query.gte('precio_venta', parseFloat(precioMin));
-        }
-        
-        if (precioMax) {
-            query = query.lte('precio_venta', parseFloat(precioMax));
-        }
-        
-        const { data: productos, error } = await query
-            .order('nombre')
-            .limit(20);
+        const { data: productos, error } = await query.limit(50);
         
         if (error) throw error;
         
-        // Mostrar resultados
-        const tbody = document.getElementById('busqueda-resultados');
+        const tbody = document.getElementById('buscador-body');
         tbody.innerHTML = '';
         
-        if (!productos || productos.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="5" class="empty-state">
-                        <i class="fas fa-search"></i>
-                        <p>No se encontraron productos</p>
-                    </td>
-                </tr>
-            `;
+        if (productos.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center">No se encontraron productos</td></tr>';
             return;
         }
         
         productos.forEach(producto => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td><code>${producto.codigo_barra}</code></td>
-                <td><strong>${producto.nombre}</strong></td>
-                <td>$${producto.precio_venta.toFixed(2)}</td>
+                <td>${producto.codigo_barra}</td>
+                <td>${producto.nombre}</td>
+                <td>S/ ${parseFloat(producto.precio_venta).toFixed(2)}</td>
+                <td>${producto.stock}</td>
                 <td>
-                    <span class="${producto.stock < 10 ? 'text-danger' : 'text-success'}">
-                        ${producto.stock}
-                    </span>
-                </td>
-                <td>
-                    <button class="btn btn-small btn-primary btn-agregar-busqueda" 
-                            data-id="${producto.id}">
+                    <button class="btn btn-sm btn-primary" onclick="agregarDesdeBuscador('${producto.id}')">
                         <i class="fas fa-cart-plus"></i> Agregar
                     </button>
                 </td>
             `;
+            
+            tbody.appendChild(tr);
+        });
+    } catch (error) {
+        console.error('Error buscando productos:', error);
+        showNotification('Error buscando productos', 'error');
+    }
+}
+
+async function agregarDesdeBuscador(productoId) {
+    try {
+        const { data: producto, error } = await supabaseClient
+            .from('productos')
+            .select('*')
+            .eq('id', productoId)
+            .eq('activo', true)
+            .single();
+        
+        if (error) throw error;
+        
+        mostrarProductoEncontrado(producto);
+        
+        // Cerrar modal
+        document.getElementById('modal-buscador').classList.remove('active');
+        
+        // Enfocar cantidad y auto-seleccionar
+        document.getElementById('cantidad-producto').focus();
+        document.getElementById('cantidad-producto').select();
+        
+    } catch (error) {
+        console.error('Error cargando producto:', error);
+        showNotification('Error cargando producto', 'error');
+    }
+}
+
+// ==================== GESTIÓN DE CAJA ====================
+async function verificarCajaActiva() {
+    try {
+        const { data: caja, error } = await supabaseClient
+            .from('caja')
+            .select('*')
+            .is('fecha_cierre', null)
+            .single();
+        
+        if (error && error.code !== 'PGRST116') {
+            throw error;
+        }
+        
+        appState.cajaActiva = caja || null;
+        actualizarUIEstadoCaja();
+        
+        return caja;
+    } catch (error) {
+        console.error('Error verificando caja activa:', error);
+        return null;
+    }
+}
+
+function actualizarUIEstadoCaja() {
+    const statusElement = document.getElementById('caja-status');
+    const statusDetalle = document.getElementById('caja-detalle-status');
+    const operaciones = document.getElementById('caja-operaciones');
+    
+    if (appState.cajaActiva) {
+        // Caja abierta
+        statusElement.innerHTML = `<i class="fas fa-circle"></i> Caja: Abierta`;
+        statusElement.classList.add('abierta');
+        
+        statusDetalle.innerHTML = `
+            <div class="caja-abierta">
+                <i class="fas fa-unlock fa-3x text-success"></i>
+                <h3>Caja Abierta</h3>
+                <p>Abierta por: ${appState.usuario?.username || 'Usuario'}</p>
+                <p>Monto inicial: S/ ${parseFloat(appState.cajaActiva.monto_inicial).toFixed(2)}</p>
+                <p>Hora apertura: ${new Date(appState.cajaActiva.fecha_apertura).toLocaleTimeString()}</p>
+            </div>
+        `;
+        
+        operaciones.style.display = 'block';
+        
+        // Cargar resumen de caja
+        cargarResumenCaja();
+        
+    } else {
+        // Caja cerrada
+        statusElement.innerHTML = `<i class="fas fa-circle"></i> Caja: Cerrada`;
+        statusElement.classList.remove('abierta');
+        
+        statusDetalle.innerHTML = `
+            <div class="caja-cerrada">
+                <i class="fas fa-lock fa-3x"></i>
+                <h3>Caja Cerrada</h3>
+                <p>No hay caja activa en este momento</p>
+                <button id="btn-abrir-caja" class="btn btn-primary">
+                    <i class="fas fa-unlock"></i> Abrir Caja
+                </button>
+            </div>
+        `;
+        
+        operaciones.style.display = 'none';
+        
+        // Reasignar evento al botón (por si se regeneró el HTML)
+        const btn = document.getElementById('btn-abrir-caja');
+        if (btn) {
+            btn.onclick = mostrarModalAperturaCaja;
+        }
+    }
+}
+
+function mostrarModalAperturaCaja() {
+    const modal = document.getElementById('modal-apertura-caja');
+    modal.classList.add('active');
+    document.getElementById('apertura-monto').focus();
+}
+
+async function abrirCaja(e) {
+    e.preventDefault();
+    
+    const monto = parseFloat(document.getElementById('apertura-monto').value);
+    
+    if (!monto || monto < 0) {
+        showNotification('Ingrese un monto inicial válido', 'warning');
+        return;
+    }
+    
+    try {
+        // Verificar que no hay caja activa
+        const cajaActiva = await verificarCajaActiva();
+        if (cajaActiva) {
+            showNotification('Ya hay una caja activa', 'error');
+            return;
+        }
+        
+        // Abrir caja
+        const cajaData = {
+            usuario_id: appState.usuario.id,
+            monto_inicial: monto
+        };
+        
+        const { data: caja, error } = await supabaseClient
+            .from('caja')
+            .insert([cajaData])
+            .select()
+            .single();
+        
+        if (error) throw error;
+        
+        appState.cajaActiva = caja;
+        actualizarUIEstadoCaja();
+        
+        document.getElementById('modal-apertura-caja').classList.remove('active');
+        showNotification('Caja abierta correctamente', 'success');
+        
+    } catch (error) {
+        console.error('Error abriendo caja:', error);
+        
+        if (error.code === '23505') {
+            showNotification('Ya hay una caja activa', 'error');
+        } else {
+            showNotification('Error abriendo caja', 'error');
+        }
+    }
+}
+
+async function cargarResumenCaja() {
+    if (!appState.cajaActiva) return;
+    
+    try {
+        // Calcular ventas por medio de pago
+        const { data: ventas, error } = await supabaseClient
+            .from('ventas')
+            .select(`
+                id,
+                total,
+                pagos_venta (
+                    medio_pago,
+                    monto
+                )
+            `)
+            .eq('caja_id', appState.cajaActiva.id)
+            .eq('anulada', false);
+        
+        if (error) throw error;
+        
+        // Calcular totales por medio de pago
+        let totalEfectivo = 0;
+        let totalTarjeta = 0;
+        let totalTransferencia = 0;
+        
+        ventas.forEach(venta => {
+            if (venta.pagos_venta && venta.pagos_venta.length > 0) {
+                venta.pagos_venta.forEach(pago => {
+                    if (pago.medio_pago === 'EFECTIVO') {
+                        totalEfectivo += parseFloat(pago.monto);
+                    } else if (pago.medio_pago === 'TARJETA') {
+                        totalTarjeta += parseFloat(pago.monto);
+                    } else if (pago.medio_pago === 'TRANSFERENCIA/QR') {
+                        totalTransferencia += parseFloat(pago.monto);
+                    }
+                });
+            }
+        });
+        
+        // Actualizar UI
+        document.getElementById('caja-monto-inicial').textContent = 
+            `S/ ${parseFloat(appState.cajaActiva.monto_inicial).toFixed(2)}`;
+        document.getElementById('caja-ventas-efectivo').textContent = 
+            `S/ ${totalEfectivo.toFixed(2)}`;
+        document.getElementById('caja-ventas-tarjeta').textContent = 
+            `S/ ${totalTarjeta.toFixed(2)}`;
+        document.getElementById('caja-ventas-transferencia').textContent = 
+            `S/ ${totalTransferencia.toFixed(2)}`;
+        
+        const totalEstimado = parseFloat(appState.cajaActiva.monto_inicial) + 
+            totalEfectivo + totalTarjeta + totalTransferencia;
+        document.getElementById('caja-total-estimado').textContent = 
+            `S/ ${totalEstimado.toFixed(2)}`;
+        
+        // Establecer monto real sugerido
+        document.getElementById('cierre-monto-real').value = totalEstimado.toFixed(2);
+        
+    } catch (error) {
+        console.error('Error cargando resumen de caja:', error);
+    }
+}
+
+async function cerrarCaja() {
+    const montoReal = parseFloat(document.getElementById('cierre-monto-real').value);
+    const observaciones = document.getElementById('cierre-observaciones').value;
+    
+    if (!montoReal || montoReal < 0) {
+        showNotification('Ingrese un monto real válido', 'warning');
+        return;
+    }
+    
+    if (!confirm('¿Está seguro de cerrar la caja? Esta acción no se puede deshacer.')) {
+        return;
+    }
+    
+    try {
+        // Calcular ventas por medio de pago
+        const { data: ventas, error: ventasError } = await supabaseClient
+            .from('ventas')
+            .select(`
+                id,
+                pagos_venta (
+                    medio_pago,
+                    monto
+                )
+            `)
+            .eq('caja_id', appState.cajaActiva.id)
+            .eq('anulada', false);
+        
+        if (ventasError) throw ventasError;
+        
+        // Calcular totales
+        let totalEfectivo = 0;
+        let totalTarjeta = 0;
+        let totalTransferencia = 0;
+        
+        ventas.forEach(venta => {
+            if (venta.pagos_venta && venta.pagos_venta.length > 0) {
+                venta.pagos_venta.forEach(pago => {
+                    if (pago.medio_pago === 'EFECTIVO') {
+                        totalEfectivo += parseFloat(pago.monto);
+                    } else if (pago.medio_pago === 'TARJETA') {
+                        totalTarjeta += parseFloat(pago.monto);
+                    } else if (pago.medio_pago === 'TRANSFERENCIA/QR') {
+                        totalTransferencia += parseFloat(pago.monto);
+                    }
+                });
+            }
+        });
+        
+        // Actualizar registro de caja
+        const { error: updateError } = await supabaseClient
+            .from('caja')
+            .update({
+                fecha_cierre: new Date().toISOString(),
+                total_ventas_efectivo: totalEfectivo,
+                total_ventas_tarjeta: totalTarjeta,
+                total_ventas_transferencia: totalTransferencia,
+                observaciones: observaciones || null
+            })
+            .eq('id', appState.cajaActiva.id);
+        
+        if (updateError) throw updateError;
+        
+        // Actualizar estado local
+        appState.cajaActiva = null;
+        actualizarUIEstadoCaja();
+        
+        showNotification('Caja cerrada correctamente', 'success');
+        
+        // Resetear formulario
+        document.getElementById('cierre-observaciones').value = '';
+        
+    } catch (error) {
+        console.error('Error cerrando caja:', error);
+        showNotification('Error cerrando caja', 'error');
+    }
+}
+
+// ==================== HISTORIAL Y ANULACIONES ====================
+async function cargarVentasHoy() {
+    const hoy = new Date().toISOString().split('T')[0];
+    document.getElementById('filtro-fecha-inicio').value = hoy;
+    document.getElementById('filtro-fecha-fin').value = hoy;
+    
+    await cargarHistorial();
+}
+
+async function cargarHistorial() {
+    try {
+        const fechaInicio = document.getElementById('filtro-fecha-inicio').value;
+        const fechaFin = document.getElementById('filtro-fecha-fin').value;
+        
+        if (!fechaInicio || !fechaFin) {
+            showNotification('Seleccione un rango de fechas', 'warning');
+            return;
+        }
+        
+        // Ajustar fecha fin para incluir todo el día
+        const fechaFinAjustada = new Date(fechaFin);
+        fechaFinAjustada.setHours(23, 59, 59, 999);
+        
+        const { data: ventas, error } = await supabaseClient
+            .from('ventas')
+            .select(`
+                id,
+                ticket_id,
+                fecha,
+                total,
+                anulada,
+                pagos_venta (
+                    medio_pago,
+                    monto
+                )
+            `)
+            .gte('fecha', fechaInicio)
+            .lte('fecha', fechaFinAjustada.toISOString())
+            .order('fecha', { ascending: false });
+        
+        if (error) throw error;
+        
+        const tbody = document.getElementById('historial-body');
+        tbody.innerHTML = '';
+        
+        if (ventas.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center">No hay ventas en este período</td></tr>';
+            return;
+        }
+        
+        ventas.forEach(venta => {
+            // Agrupar medios de pago
+            const medios = {};
+            if (venta.pagos_venta && venta.pagos_venta.length > 0) {
+                venta.pagos_venta.forEach(pago => {
+                    if (!medios[pago.medio_pago]) {
+                        medios[pago.medio_pago] = 0;
+                    }
+                    medios[pago.medio_pago] += parseFloat(pago.monto);
+                });
+            }
+            
+            const mediosTexto = Object.entries(medios)
+                .map(([medio, monto]) => `${medio}: S/ ${monto.toFixed(2)}`)
+                .join('<br>');
+            
+            const fecha = new Date(venta.fecha).toLocaleString('es-ES');
+            
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${venta.ticket_id}</td>
+                <td>${fecha}</td>
+                <td>S/ ${parseFloat(venta.total).toFixed(2)}</td>
+                <td>${mediosTexto || 'Sin pagos'}</td>
+                <td>
+                    <span class="${venta.anulada ? 'text-danger' : 'text-success'}">
+                        ${venta.anulada ? 'ANULADA' : 'ACTIVA'}
+                    </span>
+                </td>
+                <td class="acciones">
+                    <button class="btn btn-sm" onclick="verDetalleVenta('${venta.id}')">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    ${!venta.anulada ? `
+                        <button class="btn btn-sm btn-danger" onclick="anularVenta('${venta.id}')">
+                            <i class="fas fa-ban"></i>
+                        </button>
+                    ` : ''}
+                </td>
+            `;
+            
             tbody.appendChild(tr);
         });
         
-        // Configurar eventos de agregar
-        document.querySelectorAll('.btn-agregar-busqueda').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const id = btn.dataset.id;
-                const producto = productos.find(p => p.id === id);
-                
-                if (producto) {
-                    agregarAlCarrito(producto);
-                    ocultarModal('modal-buscar-producto');
+    } catch (error) {
+        console.error('Error cargando historial:', error);
+        showNotification('Error cargando historial', 'error');
+    }
+}
+
+async function verDetalleVenta(ventaId) {
+    try {
+        const { data: venta, error } = await supabaseClient
+            .from('ventas')
+            .select(`
+                *,
+                detalle_ventas (
+                    cantidad,
+                    precio_unitario,
+                    subtotal,
+                    productos (
+                        nombre,
+                        codigo_barra
+                    )
+                ),
+                pagos_venta (
+                    medio_pago,
+                    monto
+                )
+            `)
+            .eq('id', ventaId)
+            .single();
+        
+        if (error) throw error;
+        
+        const modal = document.getElementById('modal-detalle-venta');
+        const titulo = document.getElementById('modal-venta-titulo');
+        const contenido = document.getElementById('detalle-venta-contenido');
+        
+        titulo.innerHTML = `<i class="fas fa-receipt"></i> Detalle de Venta: ${venta.ticket_id}`;
+        
+        let detalleHTML = `
+            <div class="venta-info">
+                <p><strong>Ticket:</strong> ${venta.ticket_id}</p>
+                <p><strong>Fecha:</strong> ${new Date(venta.fecha).toLocaleString('es-ES')}</p>
+                <p><strong>Estado:</strong> ${venta.anulada ? 'ANULADA' : 'ACTIVA'}</p>
+                <p><strong>Subtotal:</strong> S/ ${parseFloat(venta.subtotal).toFixed(2)}</p>
+                <p><strong>Descuento:</strong> S/ ${parseFloat(venta.descuento).toFixed(2)}</p>
+                <p><strong>Total:</strong> S/ ${parseFloat(venta.total).toFixed(2)}</p>
+            </div>
+            
+            <h4>Productos:</h4>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Producto</th>
+                        <th>Código</th>
+                        <th>Cantidad</th>
+                        <th>Precio Unitario</th>
+                        <th>Subtotal</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        venta.detalle_ventas.forEach(detalle => {
+            detalleHTML += `
+                <tr>
+                    <td>${detalle.productos.nombre}</td>
+                    <td>${detalle.productos.codigo_barra}</td>
+                    <td>${detalle.cantidad}</td>
+                    <td>S/ ${parseFloat(detalle.precio_unitario).toFixed(2)}</td>
+                    <td>S/ ${parseFloat(detalle.subtotal).toFixed(2)}</td>
+                </tr>
+            `;
+        });
+        
+        detalleHTML += `
+                </tbody>
+            </table>
+            
+            <h4>Pagos:</h4>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Medio de Pago</th>
+                        <th>Monto</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        venta.pagos_venta.forEach(pago => {
+            detalleHTML += `
+                <tr>
+                    <td>${pago.medio_pago}</td>
+                    <td>S/ ${parseFloat(pago.monto).toFixed(2)}</td>
+                </tr>
+            `;
+        });
+        
+        detalleHTML += `
+                </tbody>
+            </table>
+        `;
+        
+        contenido.innerHTML = detalleHTML;
+        modal.classList.add('active');
+        
+    } catch (error) {
+        console.error('Error cargando detalle de venta:', error);
+        showNotification('Error cargando detalle de venta', 'error');
+    }
+}
+
+async function anularVenta(ventaId) {
+    // Verificar permiso
+    const tienePermiso = await hasPermission('anular_ventas');
+    if (!tienePermiso) {
+        showNotification('No tiene permisos para anular ventas', 'error');
+        return;
+    }
+    
+    if (!confirm('¿Está seguro de anular esta venta? Esta acción revertirá el stock y no se podrá deshacer.')) {
+        return;
+    }
+    
+    try {
+        const { error } = await supabaseClient
+            .from('ventas')
+            .update({
+                anulada: true,
+                usuario_anulacion_id: appState.usuario.id,
+                fecha_anulacion: new Date().toISOString()
+            })
+            .eq('id', ventaId);
+        
+        if (error) throw error;
+        
+        showNotification('Venta anulada correctamente', 'success');
+        cargarHistorial();
+        
+        // Recargar estado de caja si está abierta
+        if (appState.cajaActiva) {
+            cargarResumenCaja();
+        }
+        
+    } catch (error) {
+        console.error('Error anulando venta:', error);
+        showNotification('Error anulando venta', 'error');
+    }
+}
+
+// ==================== REPORTES ====================
+async function generarReporte() {
+    try {
+        const fechaInicio = document.getElementById('reporte-fecha-inicio').value;
+        const fechaFin = document.getElementById('reporte-fecha-fin').value;
+        
+        if (!fechaInicio || !fechaFin) {
+            showNotification('Seleccione un rango de fechas', 'warning');
+            return;
+        }
+        
+        // Ajustar fecha fin para incluir todo el día
+        const fechaFinAjustada = new Date(fechaFin);
+        fechaFinAjustada.setHours(23, 59, 59, 999);
+        
+        // Obtener ventas del período
+        const { data: ventas, error } = await supabaseClient
+            .from('ventas')
+            .select(`
+                id,
+                total,
+                descuento,
+                anulada,
+                detalle_ventas (
+                    cantidad,
+                    precio_unitario,
+                    productos (
+                        precio_costo
+                    )
+                ),
+                pagos_venta (
+                    medio_pago,
+                    monto
+                )
+            `)
+            .gte('fecha', fechaInicio)
+            .lte('fecha', fechaFinAjustada.toISOString())
+            .eq('anulada', false);
+        
+        if (error) throw error;
+        
+        // Calcular métricas
+        let totalVentas = 0;
+        let totalDescuentos = 0;
+        let totalGanancias = 0;
+        let cantidadVentas = ventas.length;
+        
+        const mediosPago = {
+            'EFECTIVO': 0,
+            'TARJETA': 0,
+            'TRANSFERENCIA/QR': 0
+        };
+        
+        ventas.forEach(venta => {
+            totalVentas += parseFloat(venta.total);
+            totalDescuentos += parseFloat(venta.descuento);
+            
+            // Calcular ganancias
+            if (venta.detalle_ventas && venta.detalle_ventas.length > 0) {
+                venta.detalle_ventas.forEach(detalle => {
+                    const costo = parseFloat(detalle.productos.precio_costo) || 0;
+                    const ganancia = (detalle.precio_unitario - costo) * detalle.cantidad;
+                    totalGanancias += ganancia;
+                });
+            }
+            
+            // Acumular medios de pago
+            if (venta.pagos_venta && venta.pagos_venta.length > 0) {
+                venta.pagos_venta.forEach(pago => {
+                    if (mediosPago[pago.medio_pago] !== undefined) {
+                        mediosPago[pago.medio_pago] += parseFloat(pago.monto);
+                    }
+                });
+            }
+        });
+        
+        // Calcular ticket promedio
+        const ticketPromedio = cantidadVentas > 0 ? totalVentas / cantidadVentas : 0;
+        
+        // Generar HTML del reporte
+        const resultados = document.getElementById('reportes-resultados');
+        resultados.innerHTML = `
+            <div class="reporte-resumen">
+                <div class="reporte-item">
+                    <h4>VENTAS TOTALES</h4>
+                    <div class="reporte-valor">S/ ${totalVentas.toFixed(2)}</div>
+                </div>
+                <div class="reporte-item">
+                    <h4>GANANCIAS</h4>
+                    <div class="reporte-valor">S/ ${totalGanancias.toFixed(2)}</div>
+                </div>
+                <div class="reporte-item">
+                    <h4>CANT. VENTAS</h4>
+                    <div class="reporte-valor">${cantidadVentas}</div>
+                </div>
+                <div class="reporte-item">
+                    <h4>TICKET PROMEDIO</h4>
+                    <div class="reporte-valor">S/ ${ticketPromedio.toFixed(2)}</div>
+                </div>
+                <div class="reporte-item">
+                    <h4>DESCUENTOS</h4>
+                    <div class="reporte-valor">S/ ${totalDescuentos.toFixed(2)}</div>
+                </div>
+            </div>
+            
+            <div class="reporte-desglose">
+                <h3>Desglose por Medio de Pago</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Medio de Pago</th>
+                            <th>Total</th>
+                            <th>Porcentaje</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${Object.entries(mediosPago).map(([medio, total]) => {
+                            const porcentaje = totalVentas > 0 ? (total / totalVentas * 100) : 0;
+                            return `
+                                <tr>
+                                    <td>${medio}</td>
+                                    <td>S/ ${total.toFixed(2)}</td>
+                                    <td>${porcentaje.toFixed(1)}%</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        
+    } catch (error) {
+        console.error('Error generando reporte:', error);
+        showNotification('Error generando reporte', 'error');
+    }
+}
+
+// ==================== CONFIGURACIÓN ====================
+async function cargarConfiguracion() {
+    try {
+        const { data: config, error } = await supabaseClient
+            .from('configuracion')
+            .select('*');
+        
+        if (error) throw error;
+        
+        // Guardar configuración en estado si es necesario
+        return config;
+    } catch (error) {
+        console.error('Error cargando configuración:', error);
+        return [];
+    }
+}
+
+async function cargarConfiguracionTicket() {
+    try {
+        const config = await cargarConfiguracion();
+        
+        const form = document.getElementById('config-ticket-form');
+        form.innerHTML = '';
+        
+        // Agrupar configuraciones relacionadas con ticket
+        const ticketConfigs = config.filter(item => 
+            item.clave.startsWith('ticket_') || 
+            item.clave.startsWith('empresa_')
+        );
+        
+        ticketConfigs.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'config-form-group';
+            
+            const isTextarea = item.clave.includes('mensaje') || 
+                              item.clave.includes('legal') || 
+                              item.clave.includes('pie');
+            
+            div.innerHTML = `
+                <label for="config-${item.clave}">${item.descripcion || item.clave}:</label>
+                ${isTextarea ? 
+                    `<textarea id="config-${item.clave}" rows="3">${item.valor}</textarea>` :
+                    `<input type="text" id="config-${item.clave}" value="${item.valor}">`
                 }
+            `;
+            
+            form.appendChild(div);
+        });
+        
+        // Agregar botón guardar
+        const btnDiv = document.createElement('div');
+        btnDiv.className = 'form-actions';
+        btnDiv.innerHTML = `
+            <button id="btn-guardar-config" class="btn btn-primary">
+                <i class="fas fa-save"></i> Guardar Configuración
+            </button>
+        `;
+        
+        form.appendChild(btnDiv);
+        
+        // Asignar evento
+        document.getElementById('btn-guardar-config').addEventListener('click', guardarConfiguracionTicket);
+        
+    } catch (error) {
+        console.error('Error cargando configuración de ticket:', error);
+        showNotification('Error cargando configuración', 'error');
+    }
+}
+
+async function guardarConfiguracionTicket() {
+    try {
+        const configElements = document.querySelectorAll('#config-ticket-form [id^="config-"]');
+        const updates = [];
+        
+        configElements.forEach(element => {
+            const clave = element.id.replace('config-', '');
+            const valor = element.value.trim();
+            
+            updates.push({
+                clave,
+                valor
             });
         });
         
+        // Actualizar cada configuración
+        for (const config of updates) {
+            const { error } = await supabaseClient
+                .from('configuracion')
+                .update({ valor: config.valor })
+                .eq('clave', config.clave);
+            
+            if (error) throw error;
+        }
+        
+        showNotification('Configuración guardada correctamente', 'success');
+        
     } catch (error) {
-        console.error('Error buscando productos:', error);
-        mostrarToast('Error', 'No se pudo realizar la búsqueda', 'error');
+        console.error('Error guardando configuración:', error);
+        showNotification('Error guardando configuración', 'error');
     }
 }
+
+function mostrarTabConfiguracion(tabId) {
+    // Ocultar todos los tabs
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Mostrar tab seleccionado
+    document.getElementById(tabId).classList.add('active');
+    document.querySelector(`.tab-btn[data-tab="${tabId}"]`).classList.add('active');
+    
+    // Cargar contenido según tab
+    if (tabId === 'config-permisos') {
+        cargarConfiguracionPermisos();
+    } else if (tabId === 'config-usuarios') {
+        cargarConfiguracionUsuarios();
+    }
+}
+
+async function cargarConfiguracionPermisos() {
+    try {
+        const { data: usuarios, error } = await supabaseClient
+            .from('usuarios')
+            .select('*')
+            .eq('activo', true)
+            .neq('rol', 'Administrador');
+        
+        if (error) throw error;
+        
+        const permisosList = document.getElementById('config-permisos-list');
+        
+        if (usuarios.length === 0) {
+            permisosList.innerHTML = '<p>No hay cajeros registrados</p>';
+            return;
+        }
+        
+        let html = '<div class="permisos-grid">';
+        
+        for (const usuario of usuarios) {
+            // Obtener permisos actuales del usuario
+            const { data: permisosUsuario, error: permisosError } = await supabaseClient
+                .from('permisos')
+                .select('*')
+                .eq('usuario_id', usuario.id);
+            
+            if (permisosError) throw permisosError;
+            
+            const permisosActivos = permisosUsuario
+                .filter(p => p.activo)
+                .map(p => p.permiso);
+            
+            html += `
+                <div class="usuario-permisos">
+                    <h4>${usuario.username}</h4>
+                    <div class="permisos-lista">
+                        <div class="permiso-item">
+                            <label>
+                                <input type="checkbox" 
+                                       data-usuario="${usuario.id}" 
+                                       data-permiso="cargar_productos"
+                                       ${permisosActivos.includes('cargar_productos') ? 'checked' : ''}>
+                                Cargar Productos
+                            </label>
+                        </div>
+                        <div class="permiso-item">
+                            <label>
+                                <input type="checkbox" 
+                                       data-usuario="${usuario.id}" 
+                                       data-permiso="modificar_productos"
+                                       ${permisosActivos.includes('modificar_productos') ? 'checked' : ''}>
+                                Modificar Productos
+                            </label>
+                        </div>
+                        <div class="permiso-item">
+                            <label>
+                                <input type="checkbox" 
+                                       data-usuario="${usuario.id}" 
+                                       data-permiso="anular_ventas"
+                                       ${permisosActivos.includes('anular_ventas') ? 'checked' : ''}>
+                                Anular Ventas
+                            </label>
+                        </div>
+                        <div class="permiso-item">
+                            <label>
+                                <input type="checkbox" 
+                                       data-usuario="${usuario.id}" 
+                                       data-permiso="ver_reportes"
+                                       ${permisosActivos.includes('ver_reportes') ? 'checked' : ''}>
+                                Ver Reportes
+                            </label>
+                        </div>
+                        <div class="permiso-item">
+                            <label>
+                                <input type="checkbox" 
+                                       data-usuario="${usuario.id}" 
+                                       data-permiso="acceder_caja"
+                                       ${permisosActivos.includes('acceder_caja') ? 'checked' : ''}>
+                                Acceder a Caja
+                            </label>
+                        </div>
+                    </div>
+                    <button class="btn btn-sm btn-primary" onclick="guardarPermisosUsuario('${usuario.id}')">
+                        <i class="fas fa-save"></i> Guardar
+                    </button>
+                </div>
+            `;
+        }
+        
+        html += '</div>';
+        permisosList.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Error cargando permisos:', error);
+        showNotification('Error cargando permisos', 'error');
+    }
+}
+
+async function guardarPermisosUsuario(usuarioId) {
+    try {
+        const checkboxes = document.querySelectorAll(`input[data-usuario="${usuarioId}"]`);
+        const permisosSeleccionados = [];
+        
+        checkboxes.forEach(checkbox => {
+            if (checkbox.checked) {
+                permisosSeleccionados.push({
+                    usuario_id: usuarioId,
+                    permiso: checkbox.dataset.permiso,
+                    activo: true
+                });
+            }
+        });
+        
+        // Primero, desactivar todos los permisos del usuario
+        const { error: deleteError } = await supabaseClient
+            .from('permisos')
+            .update({ activo: false })
+            .eq('usuario_id', usuarioId);
+        
+        if (deleteError) throw deleteError;
+        
+        // Luego, insertar/actualizar los permisos seleccionados
+        if (permisosSeleccionados.length > 0) {
+            for (const permiso of permisosSeleccionados) {
+                const { error: upsertError } = await supabaseClient
+                    .from('permisos')
+                    .upsert(permiso, { onConflict: 'usuario_id,permiso' });
+                
+                if (upsertError) throw upsertError;
+            }
+        }
+        
+        showNotification('Permisos actualizados correctamente', 'success');
+        
+    } catch (error) {
+        console.error('Error guardando permisos:', error);
+        showNotification('Error guardando permisos', 'error');
+    }
+}
+
+async function cargarConfiguracionUsuarios() {
+    // Implementar según necesidades
+    document.getElementById('config-usuarios-list').innerHTML = `
+        <p>Gestión de usuarios disponible para administradores.</p>
+        <p>Para agregar usuarios, utilice la consola de autenticación de Supabase.</p>
+    `;
+}
+
+// ==================== UTILIDADES ====================
+function showNotification(mensaje, tipo = 'info') {
+    // Crear notificación
+    const notification = document.createElement('div');
+    notification.className = `notification ${tipo}`;
+    notification.innerHTML = `
+        <i class="fas fa-${tipo === 'success' ? 'check-circle' : 
+                           tipo === 'error' ? 'exclamation-circle' : 
+                           tipo === 'warning' ? 'exclamation-triangle' : 
+                           'info-circle'}"></i>
+        <span>${mensaje}</span>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-eliminar después de 5 segundos
+    setTimeout(() => {
+        notification.remove();
+    }, 5000);
+}
+
+// ==================== INICIALIZACIÓN ADICIONAL ====================
+// Detectar cambio de modo claro/oscuro
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+    appState.modoOscuro = e.matches;
+    // Podríamos añadir lógica para cambiar temas dinámicamente
+});
+
+// Manejar redimensionamiento de ventana
+window.addEventListener('resize', function() {
+    // Cerrar menú en móvil al cambiar a desktop
+    if (window.innerWidth >= 768) {
+        document.getElementById('main-nav').classList.remove('active');
+    }
+});
+
+// Prevenir recarga accidental con F5
+window.addEventListener('keydown', function(e) {
+    if (e.key === 'F5') {
+        e.preventDefault();
+        // Nuestra lógica de F5 ya está manejada en setupKeyboardShortcuts
+    }
+});
+
+// Exportar funciones globales para uso en HTML
+window.editarProducto = editarProducto;
+window.eliminarProducto = eliminarProducto;
+window.actualizarCantidadCarrito = actualizarCantidadCarrito;
+window.eliminarDelCarrito = eliminarDelCarrito;
+window.eliminarPago = eliminarPago;
+window.agregarDesdeBuscador = agregarDesdeBuscador;
+window.verDetalleVenta = verDetalleVenta;
+window.anularVenta = anularVenta;
+window.guardarPermisosUsuario = guardarPermisosUsuario;
+
+console.log('Sistema POS cargado correctamente');

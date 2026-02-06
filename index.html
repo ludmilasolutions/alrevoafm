@@ -3,279 +3,302 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>POS - AFMSOLUTIONS</title>
+    <title>AFMSOLUTIONS - Sistema POS</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💰</text></svg>">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
 </head>
 <body>
-    <!-- Modal de Login -->
-    <div id="login-modal" class="modal active">
-        <div class="modal-content login-modal">
+    <!-- Pantalla de Login -->
+    <div id="login-screen" class="login-container">
+        <div class="login-card">
             <div class="login-header">
                 <h1><i class="fas fa-cash-register"></i> AFMSOLUTIONS POS</h1>
-                <p>Sistema de Punto de Venta Comercial</p>
+                <p>Sistema de Punto de Venta para Almacén</p>
             </div>
-            <form id="login-form">
-                <div class="form-group">
-                    <label for="login-email"><i class="fas fa-envelope"></i> Email</label>
-                    <input type="email" id="login-email" placeholder="usuario@ejemplo.com" required>
+            <div class="login-body">
+                <div class="input-group">
+                    <label for="login-email"><i class="fas fa-envelope"></i> Correo Electrónico</label>
+                    <input type="email" id="login-email" placeholder="usuario@almacen.com" autocomplete="email">
                 </div>
-                <div class="form-group">
+                <div class="input-group">
                     <label for="login-password"><i class="fas fa-lock"></i> Contraseña</label>
-                    <input type="password" id="login-password" placeholder="••••••••" required>
+                    <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
                 </div>
-                <button type="submit" class="btn btn-primary btn-large">
+                <button id="login-btn" class="btn btn-primary">
                     <i class="fas fa-sign-in-alt"></i> Iniciar Sesión
                 </button>
+                <div id="login-error" class="error-message"></div>
                 <div class="login-footer">
-                    <p>Versión 1.0 - Sistema comercial en producción</p>
+                    <p><i class="fas fa-info-circle"></i> Sistema optimizado para teclado, scanner y pantalla táctil</p>
                 </div>
-            </form>
+            </div>
         </div>
     </div>
 
-    <!-- Interfaz Principal (oculta hasta login) -->
-    <div id="main-app" class="hidden">
-        <!-- Header con menú hamburguesa para móvil -->
-        <header class="header">
-            <button id="menu-toggle" class="menu-toggle" aria-label="Abrir menú">
+    <!-- Aplicación Principal (oculta inicialmente) -->
+    <div id="app" class="app-container" style="display: none;">
+        <!-- Encabezado con menú hamburguesa para móvil -->
+        <header class="app-header">
+            <button id="menu-toggle" class="menu-toggle" aria-label="Menú principal">
                 <i class="fas fa-bars"></i>
             </button>
-            <div class="header-brand">
-                <h1 class="logo">AFMSOLUTIONS POS</h1>
-                <div class="status-indicator" id="status-caja">
-                    <span class="status-dot"></span>
-                    <span class="status-text">Cargando...</span>
-                </div>
+            <div class="header-title">
+                <h1><i class="fas fa-store"></i> <span id="current-section">VENTA</span></h1>
             </div>
-            <div class="header-actions">
-                <div class="user-info">
-                    <span id="username">Usuario</span>
-                    <span id="user-role" class="role-badge">Cargando...</span>
-                </div>
-                <button id="logout-btn" class="btn btn-secondary btn-small">
-                    <i class="fas fa-sign-out-alt"></i> Salir
-                </button>
-                <button id="theme-toggle" class="btn btn-icon" aria-label="Cambiar tema">
-                    <i class="fas fa-moon"></i>
+            <div class="header-user">
+                <span id="user-name">Usuario</span>
+                <button id="logout-btn" class="btn btn-sm" title="Cerrar sesión">
+                    <i class="fas fa-sign-out-alt"></i>
                 </button>
             </div>
         </header>
 
-        <!-- Barra lateral de navegación -->
-        <nav id="sidebar" class="sidebar">
-            <div class="sidebar-header">
-                <h3><i class="fas fa-store"></i> Menú Principal</h3>
+        <!-- Navegación Principal Responsiva -->
+        <nav id="main-nav" class="main-nav">
+            <div class="nav-header">
+                <h2><i class="fas fa-bars"></i> Menú Principal</h2>
             </div>
-            <ul class="nav-list">
+            <ul class="nav-menu">
                 <li>
-                    <a href="#" data-section="venta" class="nav-link active">
-                        <i class="fas fa-cash-register"></i>
-                        <span class="nav-text">Venta</span>
-                        <span class="nav-shortcut">F1</span>
+                    <a href="#" class="nav-link active" data-section="venta">
+                        <i class="fas fa-shopping-cart"></i>
+                        <span>Venta</span>
                     </a>
                 </li>
                 <li>
-                    <a href="#" data-section="productos" class="nav-link">
+                    <a href="#" class="nav-link" data-section="productos">
                         <i class="fas fa-boxes"></i>
-                        <span class="nav-text">Productos</span>
+                        <span>Productos</span>
                     </a>
                 </li>
                 <li>
-                    <a href="#" data-section="historial" class="nav-link">
+                    <a href="#" class="nav-link" data-section="historial">
                         <i class="fas fa-history"></i>
-                        <span class="nav-text">Historial</span>
-                        <span class="nav-shortcut">F5</span>
+                        <span>Historial</span>
                     </a>
                 </li>
                 <li>
-                    <a href="#" data-section="caja" class="nav-link">
+                    <a href="#" class="nav-link" data-section="caja">
                         <i class="fas fa-cash-register"></i>
-                        <span class="nav-text">Caja</span>
-                        <span class="nav-shortcut">F4</span>
+                        <span>Caja</span>
                     </a>
                 </li>
                 <li>
-                    <a href="#" data-section="reportes" class="nav-link">
+                    <a href="#" class="nav-link" data-section="reportes">
                         <i class="fas fa-chart-bar"></i>
-                        <span class="nav-text">Reportes</span>
+                        <span>Reportes</span>
                     </a>
                 </li>
                 <li>
-                    <a href="#" data-section="configuracion" class="nav-link">
+                    <a href="#" class="nav-link" data-section="configuracion">
                         <i class="fas fa-cog"></i>
-                        <span class="nav-text">Configuración</span>
+                        <span>Configuración</span>
                     </a>
                 </li>
             </ul>
-            <div class="sidebar-footer">
-                <div class="clock" id="live-clock">--:--:--</div>
-                <div class="session-info">
-                    <small>Sesión activa</small>
+            <div class="nav-footer">
+                <div class="caja-status" id="caja-status">
+                    <i class="fas fa-circle"></i> Caja: Cerrada
                 </div>
             </div>
         </nav>
 
-        <!-- Contenido principal -->
-        <main id="main-content" class="main-content">
+        <!-- Contenido Principal -->
+        <main class="main-content">
             <!-- Sección de Venta -->
-            <section id="seccion-venta" class="section active">
-                <div class="section-header">
-                    <h2><i class="fas fa-shopping-cart"></i> Venta en Curso</h2>
-                    <div class="section-actions">
-                        <button id="btn-limpiar-carrito" class="btn btn-secondary">
-                            <i class="fas fa-trash"></i> Limpiar
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Scanner y búsqueda -->
-                <div class="scanner-container">
-                    <div class="scanner-input-group">
-                        <i class="fas fa-barcode scanner-icon"></i>
-                        <input type="text" 
-                               id="scanner-input" 
-                               placeholder="Escanear código o presionar F6 para buscar..."
-                               autocomplete="off"
-                               autofocus>
-                        <button id="btn-buscar-manual" class="btn btn-primary" accesskey="6" title="F6">
-                            <i class="fas fa-search"></i> Buscar (F6)
-                        </button>
-                    </div>
-                    <div class="scanner-hints">
-                        <small><i class="fas fa-info-circle"></i> Presiona Enter después de escanear</small>
-                    </div>
-                </div>
-
-                <!-- Carrito de venta -->
-                <div class="carrito-container">
-                    <div class="carrito-header">
-                        <h3><i class="fas fa-shopping-basket"></i> Productos en Carrito</h3>
-                        <span class="badge" id="carrito-count">0 items</span>
-                    </div>
-                    
-                    <div class="table-responsive">
-                        <table id="tabla-carrito" class="table">
-                            <thead>
-                                <tr>
-                                    <th width="5%">#</th>
-                                    <th width="35%">Producto</th>
-                                    <th width="15%">Precio Unit.</th>
-                                    <th width="20%">Cantidad</th>
-                                    <th width="15%">Subtotal</th>
-                                    <th width="10%">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody id="carrito-body">
-                                <!-- Carrito se llena dinámicamente -->
-                                <tr id="carrito-vacio">
-                                    <td colspan="6" class="empty-state">
-                                        <i class="fas fa-shopping-cart"></i>
-                                        <p>Carrito vacío. Escanea un producto para comenzar.</p>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Totales y descuentos -->
-                    <div class="totales-panel">
-                        <div class="totales-grid">
-                            <div class="total-item">
-                                <span class="total-label">Subtotal:</span>
-                                <span class="total-value" id="subtotal">$0.00</span>
+            <section id="seccion-venta" class="content-section active">
+                <div class="venta-container">
+                    <!-- Panel de Entrada de Productos -->
+                    <div class="scanner-panel">
+                        <div class="input-group">
+                            <label for="scanner-input">
+                                <i class="fas fa-barcode"></i> Scanner / Código de Barras
+                                <small>(F6 para búsqueda manual)</small>
+                            </label>
+                            <div class="input-with-button">
+                                <input type="text" id="scanner-input" placeholder="Escanear o ingresar código..." autofocus>
+                                <button id="btn-buscar-manual" class="btn" title="Buscar producto manualmente (F6)">
+                                    <i class="fas fa-search"></i>
+                                </button>
                             </div>
-                            <div class="total-item">
-                                <div class="descuento-control">
-                                    <input type="text" 
-                                           id="descuento-input" 
-                                           placeholder="Ej: 10% o 5.00"
-                                           class="input-small">
-                                    <button id="btn-aplicar-descuento" class="btn btn-secondary" accesskey="2" title="F2">
-                                        <i class="fas fa-tag"></i> Aplicar (F2)
-                                    </button>
-                                </div>
-                                <span class="total-value text-danger" id="descuento-aplicado">-$0.00</span>
+                        </div>
+                        
+                        <div class="producto-info" id="producto-info" style="display: none;">
+                            <h3 id="producto-nombre"></h3>
+                            <div class="producto-detalles">
+                                <span>Precio: <strong id="producto-precio"></strong></span>
+                                <span>Stock: <strong id="producto-stock"></strong></span>
                             </div>
-                            <div class="total-item grand-total">
-                                <span class="total-label">Total a Pagar:</span>
-                                <span class="total-value" id="total">$0.00</span>
+                            <div class="cantidad-control">
+                                <button class="btn btn-sm" id="btn-cantidad-menos">
+                                    <i class="fas fa-minus"></i>
+                                </button>
+                                <input type="number" id="cantidad-producto" value="1" min="1" max="999">
+                                <button class="btn btn-sm" id="btn-cantidad-mas">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                                <button class="btn btn-primary" id="btn-agregar-carrito">
+                                    <i class="fas fa-cart-plus"></i> Agregar
+                                </button>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Medios de pago -->
+                    <!-- Carrito de Compras -->
+                    <div class="carrito-panel">
+                        <div class="carrito-header">
+                            <h3><i class="fas fa-shopping-cart"></i> Carrito de Venta</h3>
+                            <div class="carrito-actions">
+                                <button id="btn-limpiar-carrito" class="btn btn-warning">
+                                    <i class="fas fa-trash"></i> Limpiar
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="carrito-items" id="carrito-items">
+                            <!-- Items del carrito se cargan dinámicamente -->
+                            <div class="empty-carrito">
+                                <i class="fas fa-shopping-cart fa-2x"></i>
+                                <p>El carrito está vacío</p>
+                                <p>Escanee un producto o use F6 para buscar</p>
+                            </div>
+                        </div>
+                        
+                        <div class="carrito-resumen">
+                            <div class="resumen-row">
+                                <span>Subtotal:</span>
+                                <span id="carrito-subtotal">S/ 0.00</span>
+                            </div>
+                            <div class="descuento-control">
+                                <label for="descuento-input">Descuento:</label>
+                                <div class="input-group-small">
+                                    <input type="number" id="descuento-input" placeholder="0" min="0" max="100" step="0.01">
+                                    <select id="descuento-tipo">
+                                        <option value="porcentaje">%</option>
+                                        <option value="monto">S/</option>
+                                    </select>
+                                </div>
+                                <button id="btn-aplicar-descuento" class="btn btn-sm" title="Aplicar descuento (F2)">
+                                    <i class="fas fa-percentage"></i> Aplicar
+                                </button>
+                            </div>
+                            <div class="resumen-row">
+                                <span>Descuento:</span>
+                                <span id="carrito-descuento">S/ 0.00</span>
+                            </div>
+                            <div class="resumen-row total">
+                                <span>TOTAL:</span>
+                                <span id="carrito-total">S/ 0.00</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Panel de Pagos -->
                     <div class="pagos-panel">
                         <h3><i class="fas fa-credit-card"></i> Medios de Pago</h3>
-                        <div class="medios-grid">
-                            <button class="btn-pago" data-medio="EFECTIVO" accesskey="1" title="Tecla 1">
+                        <div class="pagos-opciones">
+                            <button class="btn-pago" data-medio="EFECTIVO" accesskey="1">
                                 <i class="fas fa-money-bill-wave"></i>
-                                <span>Efectivo (1)</span>
+                                <span>EFECTIVO (1)</span>
                             </button>
-                            <button class="btn-pago" data-medio="TARJETA" accesskey="2" title="Tecla 2">
+                            <button class="btn-pago" data-medio="TARJETA" accesskey="2">
                                 <i class="fas fa-credit-card"></i>
-                                <span>Tarjeta (2)</span>
+                                <span>TARJETA (2)</span>
                             </button>
-                            <button class="btn-pago" data-medio="TRANSFERENCIA/QR" accesskey="3" title="Tecla 3">
+                            <button class="btn-pago" data-medio="TRANSFERENCIA/QR" accesskey="3">
                                 <i class="fas fa-qrcode"></i>
-                                <span>Transferencia/QR (3)</span>
+                                <span>TRANSFERENCIA/QR (3)</span>
                             </button>
                         </div>
                         
-                        <div id="pagos-seleccionados" class="pagos-seleccionados">
-                            <!-- Pagos seleccionados se muestran aquí -->
-                        </div>
-
-                        <div class="finalizar-venta-container">
-                            <button id="btn-finalizar-venta" class="btn btn-success btn-large" accesskey="1" title="F1">
-                                <i class="fas fa-check-circle"></i> Finalizar Venta (F1)
-                            </button>
-                            <div class="venta-info">
-                                <small>Ticket: <span id="next-ticket-id">T-YYYYMMDD-0000</span></small>
-                                <small>Caja: <span id="current-caja-id">#0000</span></small>
+                        <div class="pagos-ingreso">
+                            <div class="input-group">
+                                <label for="pago-monto">Monto a Pagar:</label>
+                                <input type="number" id="pago-monto" placeholder="0.00" min="0" step="0.01">
                             </div>
+                            <button id="btn-agregar-pago" class="btn btn-primary">
+                                <i class="fas fa-plus-circle"></i> Agregar Pago
+                            </button>
+                        </div>
+                        
+                        <div class="pagos-lista" id="pagos-lista">
+                            <!-- Lista de pagos se carga dinámicamente -->
+                            <div class="empty-pagos">
+                                <i class="fas fa-receipt fa-2x"></i>
+                                <p>No hay pagos registrados</p>
+                            </div>
+                        </div>
+                        
+                        <div class="pagos-totales">
+                            <div class="resumen-row">
+                                <span>Total a Pagar:</span>
+                                <span id="total-a-pagar">S/ 0.00</span>
+                            </div>
+                            <div class="resumen-row">
+                                <span>Pagado:</span>
+                                <span id="total-pagado">S/ 0.00</span>
+                            </div>
+                            <div class="resumen-row">
+                                <span>Cambio:</span>
+                                <span id="total-cambio">S/ 0.00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="pagos-acciones">
+                            <button id="btn-finalizar-venta" class="btn btn-success btn-lg" disabled title="Finalizar venta (F1)">
+                                <i class="fas fa-check-circle"></i> FINALIZAR VENTA (F1)
+                            </button>
+                            <button id="btn-cancelar-venta" class="btn btn-danger">
+                                <i class="fas fa-times-circle"></i> Cancelar
+                            </button>
                         </div>
                     </div>
                 </div>
             </section>
 
             <!-- Sección de Productos -->
-            <section id="seccion-productos" class="section">
+            <section id="seccion-productos" class="content-section">
                 <div class="section-header">
-                    <h2><i class="fas fa-box-open"></i> Gestión de Productos</h2>
+                    <h2><i class="fas fa-boxes"></i> Gestión de Productos</h2>
                     <div class="section-actions">
                         <button id="btn-nuevo-producto" class="btn btn-primary">
                             <i class="fas fa-plus"></i> Nuevo Producto
                         </button>
-                        <button id="btn-refresh-productos" class="btn btn-secondary">
-                            <i class="fas fa-sync"></i> Actualizar
+                        <button id="btn-refrescar-productos" class="btn">
+                            <i class="fas fa-sync"></i> Refrescar
                         </button>
                     </div>
                 </div>
-
-                <!-- Filtros de productos -->
+                
                 <div class="filtros-panel">
-                    <input type="text" id="filtro-productos" placeholder="Buscar por nombre o código..." class="input-search">
-                    <select id="filtro-activo" class="select-small">
-                        <option value="all">Todos los estados</option>
-                        <option value="true">Activos</option>
-                        <option value="false">Inactivos</option>
-                    </select>
-                    <button id="btn-aplicar-filtros" class="btn btn-secondary">Filtrar</button>
+                    <div class="input-group">
+                        <input type="text" id="filtro-productos" placeholder="Buscar por nombre o código...">
+                        <button id="btn-filtrar-productos" class="btn">
+                            <i class="fas fa-search"></i> Buscar
+                        </button>
+                    </div>
+                    <div class="filtros-avanzados">
+                        <select id="filtro-proveedor">
+                            <option value="">Todos los proveedores</option>
+                        </select>
+                        <select id="filtro-estado">
+                            <option value="activos">Solo activos</option>
+                            <option value="todos">Todos</option>
+                            <option value="inactivos">Solo inactivos</option>
+                        </select>
+                    </div>
                 </div>
-
-                <!-- Lista de productos -->
-                <div class="table-responsive">
-                    <table id="tabla-productos" class="table">
+                
+                <div class="table-container">
+                    <table id="tabla-productos" class="data-table">
                         <thead>
                             <tr>
                                 <th>Código</th>
                                 <th>Nombre</th>
-                                <th>P. Costo</th>
-                                <th>P. Venta</th>
-                                <th>Margen</th>
+                                <th>Precio Venta</th>
+                                <th>Precio Costo</th>
+                                <th>Margen %</th>
                                 <th>Stock</th>
                                 <th>Proveedor</th>
                                 <th>Estado</th>
@@ -283,72 +306,45 @@
                             </tr>
                         </thead>
                         <tbody id="productos-body">
-                            <!-- Productos cargados dinámicamente -->
+                            <!-- Productos se cargan dinámicamente -->
                         </tbody>
                     </table>
-                </div>
-                <div class="pagination" id="productos-pagination">
-                    <!-- Paginación -->
                 </div>
             </section>
 
             <!-- Sección de Historial -->
-            <section id="seccion-historial" class="section">
+            <section id="seccion-historial" class="content-section">
                 <div class="section-header">
                     <h2><i class="fas fa-history"></i> Historial de Ventas</h2>
                     <div class="section-actions">
-                        <button id="btn-ventas-hoy" class="btn btn-primary" accesskey="5" title="F5">
-                            <i class="fas fa-calendar-day"></i> Ventas Hoy (F5)
-                        </button>
-                        <button id="btn-exportar-historial" class="btn btn-secondary">
-                            <i class="fas fa-file-export"></i> Exportar
+                        <button id="btn-ventas-hoy" class="btn btn-primary" title="Ventas del día (F5)">
+                            <i class="fas fa-calendar-day"></i> Hoy (F5)
                         </button>
                     </div>
                 </div>
-
-                <!-- Filtros de fechas -->
+                
                 <div class="filtros-panel">
-                    <div class="filtro-group">
-                        <label for="fecha-inicio">Desde:</label>
-                        <input type="date" id="fecha-inicio" class="input-date">
-                    </div>
-                    <div class="filtro-group">
-                        <label for="fecha-fin">Hasta:</label>
-                        <input type="date" id="fecha-fin" class="input-date">
-                    </div>
-                    <button id="btn-filtrar-historial" class="btn btn-primary">Filtrar</button>
-                    <button id="btn-limpiar-filtros" class="btn btn-secondary">Limpiar</button>
-                </div>
-
-                <!-- Totales del período -->
-                <div class="resumen-panel">
-                    <div class="resumen-grid">
-                        <div class="resumen-item">
-                            <span class="resumen-label">Total Ventas:</span>
-                            <span class="resumen-value" id="total-ventas-periodo">$0.00</span>
+                    <div class="filtros-rango">
+                        <div class="input-group">
+                            <label for="filtro-fecha-inicio">Desde:</label>
+                            <input type="date" id="filtro-fecha-inicio">
                         </div>
-                        <div class="resumen-item">
-                            <span class="resumen-label">Efectivo:</span>
-                            <span class="resumen-value" id="total-efectivo-periodo">$0.00</span>
+                        <div class="input-group">
+                            <label for="filtro-fecha-fin">Hasta:</label>
+                            <input type="date" id="filtro-fecha-fin">
                         </div>
-                        <div class="resumen-item">
-                            <span class="resumen-label">Tarjeta:</span>
-                            <span class="resumen-value" id="total-tarjeta-periodo">$0.00</span>
-                        </div>
-                        <div class="resumen-item">
-                            <span class="resumen-label">Transferencia:</span>
-                            <span class="resumen-value" id="total-transferencia-periodo">$0.00</span>
-                        </div>
+                        <button id="btn-filtrar-historial" class="btn btn-primary">
+                            <i class="fas fa-filter"></i> Filtrar
+                        </button>
                     </div>
                 </div>
-
-                <!-- Tabla de historial -->
-                <div class="table-responsive">
-                    <table id="tabla-historial" class="table">
+                
+                <div class="table-container">
+                    <table id="tabla-historial" class="data-table">
                         <thead>
                             <tr>
-                                <th>Ticket ID</th>
-                                <th>Fecha/Hora</th>
+                                <th>Ticket</th>
+                                <th>Fecha</th>
                                 <th>Total</th>
                                 <th>Medios de Pago</th>
                                 <th>Estado</th>
@@ -356,320 +352,298 @@
                             </tr>
                         </thead>
                         <tbody id="historial-body">
-                            <!-- Historial cargado dinámicamente -->
+                            <!-- Historial se carga dinámicamente -->
                         </tbody>
                     </table>
-                </div>
-                <div class="pagination" id="historial-pagination">
-                    <!-- Paginación -->
                 </div>
             </section>
 
             <!-- Sección de Caja -->
-            <section id="seccion-caja" class="section">
+            <section id="seccion-caja" class="content-section">
                 <div class="section-header">
                     <h2><i class="fas fa-cash-register"></i> Gestión de Caja</h2>
-                    <div class="section-actions">
-                        <button id="btn-refresh-caja" class="btn btn-secondary">
-                            <i class="fas fa-sync"></i> Actualizar
+                </div>
+                
+                <div class="caja-status-panel" id="caja-detalle-status">
+                    <!-- Estado de caja se carga dinámicamente -->
+                    <div class="caja-cerrada">
+                        <i class="fas fa-lock fa-3x"></i>
+                        <h3>Caja Cerrada</h3>
+                        <p>No hay caja activa en este momento</p>
+                        <button id="btn-abrir-caja" class="btn btn-primary">
+                            <i class="fas fa-unlock"></i> Abrir Caja
                         </button>
                     </div>
                 </div>
-
-                <!-- Estado de caja -->
-                <div id="caja-info" class="caja-info-panel">
-                    <!-- Información de caja cargada dinámicamente -->
-                </div>
-
-                <!-- Formulario de apertura/cierre -->
-                <div id="caja-form-container" class="form-container">
-                    <!-- Formulario dinámico según estado -->
-                </div>
-
-                <!-- Movimientos de caja activa -->
-                <div id="caja-movimientos" class="table-responsive">
-                    <!-- Movimientos cargados dinámicamente -->
+                
+                <div class="caja-operaciones" id="caja-operaciones" style="display: none;">
+                    <div class="caja-resumen">
+                        <h3>Resumen de Caja</h3>
+                        <div class="resumen-grid">
+                            <div class="resumen-item">
+                                <span>Monto Inicial:</span>
+                                <strong id="caja-monto-inicial">S/ 0.00</strong>
+                            </div>
+                            <div class="resumen-item">
+                                <span>Ventas Efectivo:</span>
+                                <strong id="caja-ventas-efectivo">S/ 0.00</strong>
+                            </div>
+                            <div class="resumen-item">
+                                <span>Ventas Tarjeta:</span>
+                                <strong id="caja-ventas-tarjeta">S/ 0.00</strong>
+                            </div>
+                            <div class="resumen-item">
+                                <span>Ventas Transferencia:</span>
+                                <strong id="caja-ventas-transferencia">S/ 0.00</strong>
+                            </div>
+                            <div class="resumen-item total">
+                                <span>Total Estimado:</span>
+                                <strong id="caja-total-estimado">S/ 0.00</strong>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="caja-cierre">
+                        <h3>Cierre de Caja</h3>
+                        <div class="input-group">
+                            <label for="cierre-monto-real">Monto Real en Caja:</label>
+                            <input type="number" id="cierre-monto-real" placeholder="0.00" step="0.01">
+                        </div>
+                        <div class="input-group">
+                            <label for="cierre-observaciones">Observaciones:</label>
+                            <textarea id="cierre-observaciones" rows="3" placeholder="Observaciones del cierre..."></textarea>
+                        </div>
+                        <button id="btn-cerrar-caja" class="btn btn-danger">
+                            <i class="fas fa-lock"></i> Cerrar Caja
+                        </button>
+                    </div>
                 </div>
             </section>
 
             <!-- Sección de Reportes -->
-            <section id="seccion-reportes" class="section">
+            <section id="seccion-reportes" class="content-section">
                 <div class="section-header">
-                    <h2><i class="fas fa-chart-line"></i> Reportes y Ganancias</h2>
-                    <div class="section-actions">
+                    <h2><i class="fas fa-chart-bar"></i> Reportes y Ganancias</h2>
+                </div>
+                
+                <div class="reportes-panel">
+                    <div class="reportes-filtros">
+                        <div class="input-group">
+                            <label for="reporte-fecha-inicio">Fecha Inicio:</label>
+                            <input type="date" id="reporte-fecha-inicio">
+                        </div>
+                        <div class="input-group">
+                            <label for="reporte-fecha-fin">Fecha Fin:</label>
+                            <input type="date" id="reporte-fecha-fin">
+                        </div>
                         <button id="btn-generar-reporte" class="btn btn-primary">
-                            <i class="fas fa-chart-bar"></i> Generar Reporte
+                            <i class="fas fa-chart-line"></i> Generar Reporte
                         </button>
                     </div>
-                </div>
-
-                <!-- Filtros de reportes -->
-                <div class="filtros-panel">
-                    <div class="filtro-group">
-                        <label for="reporte-fecha-inicio">Desde:</label>
-                        <input type="date" id="reporte-fecha-inicio" class="input-date">
+                    
+                    <div class="reportes-resultados" id="reportes-resultados">
+                        <!-- Reportes se cargan dinámicamente -->
+                        <div class="empty-reportes">
+                            <i class="fas fa-chart-bar fa-3x"></i>
+                            <p>Seleccione un rango de fechas y genere un reporte</p>
+                        </div>
                     </div>
-                    <div class="filtro-group">
-                        <label for="reporte-fecha-fin">Hasta:</label>
-                        <input type="date" id="reporte-fecha-fin" class="input-date">
-                    </div>
-                    <select id="reporte-tipo" class="select-medium">
-                        <option value="ventas">Ventas</option>
-                        <option value="ganancias">Ganancias</option>
-                        <option value="productos">Productos más vendidos</option>
-                    </select>
-                </div>
-
-                <!-- Resultados del reporte -->
-                <div id="reporte-resultados" class="reporte-container">
-                    <!-- Reporte generado dinámicamente -->
-                </div>
-
-                <!-- Gráficos (simplificado) -->
-                <div id="reporte-graficos" class="graficos-container">
-                    <!-- Gráficos cargados dinámicamente -->
                 </div>
             </section>
 
             <!-- Sección de Configuración -->
-            <section id="seccion-configuracion" class="section">
+            <section id="seccion-configuracion" class="content-section">
                 <div class="section-header">
-                    <h2><i class="fas fa-cogs"></i> Configuración del Sistema</h2>
-                    <div class="section-actions">
-                        <button id="btn-guardar-config" class="btn btn-primary">
-                            <i class="fas fa-save"></i> Guardar Cambios
-                        </button>
-                    </div>
+                    <h2><i class="fas fa-cog"></i> Configuración del Sistema</h2>
                 </div>
-
-                <div class="config-container">
-                    <!-- Configuración de Ticket -->
-                    <div class="config-panel">
-                        <h3><i class="fas fa-ticket-alt"></i> Configuración de Ticket</h3>
-                        <form id="form-config-ticket" class="config-form">
-                            <div class="form-group">
-                                <label for="config-encabezado">Encabezado del Ticket:</label>
-                                <textarea id="config-encabezado" rows="3" 
-                                          placeholder="Texto que aparecerá en el encabezado del ticket"></textarea>
-                            </div>
-                            <div class="form-group">
-                                <label for="config-pie">Pie del Ticket:</label>
-                                <textarea id="config-pie" rows="3" 
-                                          placeholder="Texto que aparecerá al final del ticket"></textarea>
-                            </div>
-                            <div class="form-group">
-                                <label for="config-mensaje">Mensaje Legal/Agredecimiento:</label>
-                                <textarea id="config-mensaje" rows="3" 
-                                          placeholder="Mensaje adicional (agradecimiento, garantía, etc.)"></textarea>
-                            </div>
-                        </form>
+                
+                <div class="config-tabs">
+                    <div class="tab-header">
+                        <button class="tab-btn active" data-tab="config-ticket">Ticket</button>
+                        <button class="tab-btn" data-tab="config-permisos">Permisos</button>
+                        <button class="tab-btn" data-tab="config-usuarios">Usuarios</button>
                     </div>
-
-                    <!-- Gestión de Permisos -->
-                    <div class="config-panel" id="permisos-panel">
-                        <h3><i class="fas fa-user-shield"></i> Gestión de Permisos</h3>
-                        <div id="permisos-container">
-                            <!-- Lista de usuarios y permisos cargada dinámicamente -->
+                    
+                    <div class="tab-content active" id="config-ticket">
+                        <h3>Configuración de Ticket</h3>
+                        <div id="config-ticket-form">
+                            <!-- Formulario de configuración se carga dinámicamente -->
+                        </div>
+                    </div>
+                    
+                    <div class="tab-content" id="config-permisos">
+                        <h3>Gestión de Permisos</h3>
+                        <div id="config-permisos-list">
+                            <!-- Lista de permisos se carga dinámicamente -->
+                        </div>
+                    </div>
+                    
+                    <div class="tab-content" id="config-usuarios">
+                        <h3>Usuarios del Sistema</h3>
+                        <div id="config-usuarios-list">
+                            <!-- Lista de usuarios se carga dinámicamente -->
                         </div>
                     </div>
                 </div>
             </section>
         </main>
 
-        <!-- Modal para búsqueda manual de productos -->
-        <div id="modal-buscar-producto" class="modal">
-            <div class="modal-content modal-lg">
+        <!-- Modales -->
+        
+        <!-- Modal Buscador de Productos (F6) -->
+        <div id="modal-buscador" class="modal">
+            <div class="modal-content">
                 <div class="modal-header">
-                    <h3><i class="fas fa-search"></i> Búsqueda Manual de Productos</h3>
+                    <h3><i class="fas fa-search"></i> Buscar Producto</h3>
                     <button class="modal-close">&times;</button>
                 </div>
                 <div class="modal-body">
-                    <div class="busqueda-form">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="busqueda-codigo">Código de barras:</label>
-                                <input type="text" id="busqueda-codigo" placeholder="Código exacto">
-                            </div>
-                            <div class="form-group">
-                                <label for="busqueda-nombre">Nombre:</label>
-                                <input type="text" id="busqueda-nombre" placeholder="Parte del nombre">
-                            </div>
-                            <div class="form-group">
-                                <label for="busqueda-proveedor">Proveedor:</label>
-                                <input type="text" id="busqueda-proveedor" placeholder="Nombre del proveedor">
-                            </div>
+                    <div class="buscador-filtros">
+                        <div class="input-group">
+                            <input type="text" id="buscador-codigo" placeholder="Código de barras">
                         </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="busqueda-precio-min">Precio Mín:</label>
-                                <input type="number" id="busqueda-precio-min" min="0" step="0.01" placeholder="0.00">
-                            </div>
-                            <div class="form-group">
-                                <label for="busqueda-precio-max">Precio Máx:</label>
-                                <input type="number" id="busqueda-precio-max" min="0" step="0.01" placeholder="9999.99">
-                            </div>
-                            <button id="btn-buscar-productos" class="btn btn-primary">
-                                <i class="fas fa-search"></i> Buscar Productos
-                            </button>
+                        <div class="input-group">
+                            <input type="text" id="buscador-nombre" placeholder="Nombre del producto">
                         </div>
+                        <div class="input-group">
+                            <select id="buscador-proveedor">
+                                <option value="">Todos los proveedores</option>
+                            </select>
+                        </div>
+                        <button id="btn-buscar-productos" class="btn btn-primary">
+                            <i class="fas fa-search"></i> Buscar
+                        </button>
                     </div>
-
-                    <div class="table-responsive">
-                        <table id="tabla-busqueda-productos" class="table">
+                    
+                    <div class="table-container">
+                        <table id="tabla-buscador" class="data-table">
                             <thead>
                                 <tr>
                                     <th>Código</th>
                                     <th>Nombre</th>
-                                    <th>P. Venta</th>
+                                    <th>Precio</th>
                                     <th>Stock</th>
-                                    <th>Acciones</th>
+                                    <th>Acción</th>
                                 </tr>
                             </thead>
-                            <tbody id="busqueda-resultados">
-                                <!-- Resultados de búsqueda -->
+                            <tbody id="buscador-body">
+                                <!-- Resultados se cargan dinámicamente -->
                             </tbody>
                         </table>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary modal-close">Cancelar (ESC)</button>
-                </div>
             </div>
         </div>
 
-        <!-- Modal para producto -->
+        <!-- Modal Producto (Crear/Editar) -->
         <div id="modal-producto" class="modal">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h3 id="modal-producto-titulo">Nuevo Producto</h3>
+                    <h3 id="modal-producto-titulo"><i class="fas fa-box"></i> Nuevo Producto</h3>
                     <button class="modal-close">&times;</button>
                 </div>
                 <div class="modal-body">
                     <form id="form-producto">
-                        <div class="form-group">
-                            <label for="producto-codigo">Código de Barras *</label>
-                            <input type="text" id="producto-codigo" required 
-                                   placeholder="1234567890123" autocomplete="off">
-                            <small class="form-hint">Código único para escanear</small>
-                        </div>
-                        <div class="form-group">
-                            <label for="producto-nombre">Nombre del Producto *</label>
-                            <input type="text" id="producto-nombre" required 
-                                   placeholder="Nombre comercial del producto">
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
+                        <div class="form-grid">
+                            <div class="input-group">
+                                <label for="producto-codigo">Código de Barras *</label>
+                                <input type="text" id="producto-codigo" required>
+                            </div>
+                            <div class="input-group">
+                                <label for="producto-nombre">Nombre *</label>
+                                <input type="text" id="producto-nombre" required>
+                            </div>
+                            <div class="input-group">
                                 <label for="producto-precio-costo">Precio Costo *</label>
-                                <input type="number" id="producto-precio-costo" 
-                                       step="0.01" min="0" required placeholder="0.00">
+                                <input type="number" id="producto-precio-costo" step="0.01" min="0" required>
                             </div>
-                            <div class="form-group">
+                            <div class="input-group">
                                 <label for="producto-margen">Margen de Ganancia %</label>
-                                <input type="number" id="producto-margen" 
-                                       step="0.01" placeholder="Ej: 30">
-                                <small class="form-hint">Calcula automáticamente precio venta</small>
+                                <input type="number" id="producto-margen" step="0.01" min="0" placeholder="Ej: 30">
                             </div>
-                            <div class="form-group">
+                            <div class="input-group">
                                 <label for="producto-precio-venta">Precio Venta *</label>
-                                <input type="number" id="producto-precio-venta" 
-                                       step="0.01" min="0" required placeholder="0.00">
+                                <input type="number" id="producto-precio-venta" step="0.01" min="0" required>
                             </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
+                            <div class="input-group">
                                 <label for="producto-stock">Stock Inicial *</label>
                                 <input type="number" id="producto-stock" min="0" required value="0">
                             </div>
-                            <div class="form-group">
+                            <div class="input-group">
                                 <label for="producto-proveedor">Proveedor</label>
-                                <input type="text" id="producto-proveedor" 
-                                       placeholder="Nombre del proveedor">
+                                <input type="text" id="producto-proveedor">
+                            </div>
+                            <div class="input-group">
+                                <label for="producto-activo">Estado</label>
+                                <select id="producto-activo">
+                                    <option value="true">Activo</option>
+                                    <option value="false">Inactivo</option>
+                                </select>
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label for="producto-activo">
-                                <input type="checkbox" id="producto-activo" checked>
-                                Producto activo (disponible para venta)
-                            </label>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Guardar Producto
+                            </button>
+                            <button type="button" class="btn btn-secondary modal-close">
+                                <i class="fas fa-times"></i> Cancelar
+                            </button>
                         </div>
                     </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="submit" form="form-producto" class="btn btn-primary">Guardar Producto</button>
-                    <button class="btn btn-secondary modal-close">Cancelar</button>
                 </div>
             </div>
         </div>
 
-        <!-- Modal para pagos -->
-        <div id="modal-pagos" class="modal">
+        <!-- Modal Detalle Venta -->
+        <div id="modal-detalle-venta" class="modal">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h3><i class="fas fa-money-check-alt"></i> Distribuir Pagos</h3>
-                    <button class="modal-close">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <div class="pago-info">
-                        <p>Total a pagar: <strong id="pago-total">$0.00</strong></p>
-                        <p>Saldo pendiente: <strong id="pago-saldo" class="text-danger">$0.00</strong></p>
-                    </div>
-                    <form id="form-pagos">
-                        <div class="pago-item">
-                            <label>Efectivo:</label>
-                            <input type="number" id="pago-efectivo" data-medio="EFECTIVO" 
-                                   step="0.01" min="0" placeholder="0.00">
-                        </div>
-                        <div class="pago-item">
-                            <label>Tarjeta:</label>
-                            <input type="number" id="pago-tarjeta" data-medio="TARJETA" 
-                                   step="0.01" min="0" placeholder="0.00">
-                        </div>
-                        <div class="pago-item">
-                            <label>Transferencia/QR:</label>
-                            <input type="number" id="pago-transferencia" data-medio="TRANSFERENCIA/QR" 
-                                   step="0.01" min="0" placeholder="0.00">
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button id="btn-confirmar-pagos" class="btn btn-success">Confirmar Pagos</button>
-                    <button class="btn btn-secondary modal-close">Cancelar</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Modal para ver detalles de venta -->
-        <div id="modal-detalle-venta" class="modal">
-            <div class="modal-content modal-lg">
-                <div class="modal-header">
-                    <h3 id="detalle-venta-titulo">Detalles de Venta</h3>
+                    <h3 id="modal-venta-titulo"><i class="fas fa-receipt"></i> Detalle de Venta</h3>
                     <button class="modal-close">&times;</button>
                 </div>
                 <div class="modal-body">
                     <div id="detalle-venta-contenido">
-                        <!-- Detalles cargados dinámicamente -->
+                        <!-- Detalle se carga dinámicamente -->
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button id="btn-anular-venta" class="btn btn-danger">
-                        <i class="fas fa-ban"></i> Anular Venta
-                    </button>
-                    <button class="btn btn-secondary modal-close">Cerrar</button>
+            </div>
+        </div>
+
+        <!-- Modal Apertura Caja -->
+        <div id="modal-apertura-caja" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3><i class="fas fa-unlock"></i> Apertura de Caja</h3>
+                    <button class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="form-apertura-caja">
+                        <div class="input-group">
+                            <label for="apertura-monto">Monto Inicial *</label>
+                            <input type="number" id="apertura-monto" step="0.01" min="0" required placeholder="0.00">
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-check"></i> Abrir Caja
+                            </button>
+                            <button type="button" class="btn btn-secondary modal-close">
+                                <i class="fas fa-times"></i> Cancelar
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
 
-        <!-- Ticket de impresión (oculto) -->
-        <div id="ticket-impresion" class="ticket-impresion">
-            <div id="ticket-contenido">
-                <!-- Contenido generado dinámicamente -->
+        <!-- Ticket para Impresión (oculto) -->
+        <div id="ticket-impresion" class="ticket-container">
+            <div class="ticket-content" id="ticket-content">
+                <!-- Ticket se genera dinámicamente -->
             </div>
         </div>
-
-        <!-- Notificaciones Toast -->
-        <div id="toast-container" class="toast-container"></div>
     </div>
 
+    <!-- Scripts -->
     <script src="app.js"></script>
 </body>
 </html>

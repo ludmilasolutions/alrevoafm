@@ -1,11 +1,11 @@
-// Configuración de Supabase - REEMPLAZAR con tus credenciales
+// ==================== CONFIGURACIÓN SUPABASE ====================
 const SUPABASE_URL = 'https://nptthngcshkbuavkjujf.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wdHRobmdjc2hrYnVhdmtqdWpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyNTAyMTcsImV4cCI6MjA4NTgyNjIxN30.0P2Yf-wHtNzgoIFLEN-DYME85NFEjKtmz2cyIkyuZfg';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wdHRobmdjc2hrYnVhdmtqdWpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzgxNzM2NDksImV4cCI6MjA1Mzc0OTY0OX0.KVtWQwOib_DVWJ_5GXqIx1Wq-fZtqOkmhFQhQsrmv6k';
 
 // Inicialización única de Supabase
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Estado global de la aplicación
+// ==================== ESTADO GLOBAL ====================
 let appState = {
     usuario: null,
     permisos: [],
@@ -17,29 +17,22 @@ let appState = {
     modoOscuro: window.matchMedia('(prefers-color-scheme: dark)').matches
 };
 
-// Inicialización cuando el DOM está listo
+// ==================== INICIALIZACIÓN ====================
 document.addEventListener('DOMContentLoaded', function() {
     initApp();
 });
 
-// Función principal de inicialización
 async function initApp() {
-    // Verificar sesión activa
-    await checkSession();
-    
-    // Configurar eventos globales
-    setupEventListeners();
-    
-    // Configurar atajos de teclado
-    setupKeyboardShortcuts();
-    
-    // Cargar configuración inicial
-    await cargarConfiguracion();
-    
-    // Verificar estado de caja
-    await verificarCajaActiva();
-    
-    console.log('Sistema POS inicializado correctamente');
+    try {
+        await checkSession();
+        setupEventListeners();
+        setupKeyboardShortcuts();
+        await verificarCajaActiva();
+        console.log('Sistema POS inicializado correctamente');
+    } catch (error) {
+        console.error('Error inicializando aplicación:', error);
+        showNotification('Error al inicializar la aplicación', 'error');
+    }
 }
 
 // ==================== AUTENTICACIÓN ====================
@@ -47,76 +40,89 @@ async function checkSession() {
     try {
         const { data: { session }, error } = await supabaseClient.auth.getSession();
         
-        if (error) throw error;
+        if (error) {
+            console.error('Error de sesión:', error);
+            return;
+        }
         
         if (session) {
-            // Cargar datos del usuario
-            await cargarUsuario(session.user.id);
+            // Crear usuario básico primero
+            appState.usuario = {
+                id: session.user.id,
+                username: session.user.email || 'Usuario',
+                rol: 'Cajero',
+                activo: true
+            };
+            appState.permisos = ['cargar_productos', 'acceder_caja'];
+            
+            // Intentar cargar usuario real desde BD
+            try {
+                const { data: usuarioReal, error: usuarioError } = await supabaseClient
+                    .from('usuarios')
+                    .select('*')
+                    .eq('id', session.user.id)
+                    .single();
+                
+                if (!usuarioError && usuarioReal) {
+                    appState.usuario = usuarioReal;
+                    
+                    // Cargar permisos si es cajero
+                    if (usuarioReal.rol === 'Cajero') {
+                        const { data: permisosData } = await supabaseClient
+                            .from('permisos')
+                            .select('permiso')
+                            .eq('usuario_id', session.user.id)
+                            .eq('activo', true);
+                        
+                        if (permisosData) {
+                            appState.permisos = permisosData.map(p => p.permiso);
+                        }
+                    } else if (usuarioReal.rol === 'Administrador') {
+                        // Administradores tienen todos los permisos
+                        appState.permisos = [
+                            'cargar_productos',
+                            'modificar_productos',
+                            'anular_ventas',
+                            'ver_reportes',
+                            'acceder_caja'
+                        ];
+                    }
+                }
+            } catch (bdError) {
+                console.warn('Error cargando datos de BD, usando datos básicos:', bdError);
+            }
+            
             // Mostrar aplicación
             document.getElementById('login-screen').style.display = 'none';
             document.getElementById('app').style.display = 'flex';
-            
-            // Actualizar UI
-            document.getElementById('user-name').textContent = appState.usuario?.username || 'Usuario';
+            document.getElementById('user-name').textContent = appState.usuario.username;
             updateNavigationPermissions();
             
-            // Enfocar campo scanner si estamos en sección venta
+            // Enfocar campo scanner
             if (document.getElementById('seccion-venta').classList.contains('active')) {
-                document.getElementById('scanner-input').focus();
+                setTimeout(() => document.getElementById('scanner-input').focus(), 100);
             }
         }
     } catch (error) {
         console.error('Error verificando sesión:', error);
-        showNotification('Error al verificar sesión', 'error');
-    }
-}
-
-async function cargarUsuario(userId) {
-    try {
-        const { data: usuario, error } = await supabaseClient
-            .from('usuarios')
-            .select('*')
-            .eq('id', userId)
-            .single();
-        
-        if (error) throw error;
-        
-        if (usuario) {
-            appState.usuario = usuario;
-            await cargarPermisosUsuario(userId);
-        }
-    } catch (error) {
-        console.error('Error cargando usuario:', error);
-    }
-}
-
-async function cargarPermisosUsuario(userId) {
-    try {
-        const { data: permisos, error } = await supabaseClient
-            .from('permisos')
-            .select('permiso')
-            .eq('usuario_id', userId)
-            .eq('activo', true);
-        
-        if (error) throw error;
-        
-        appState.permisos = permisos.map(p => p.permiso);
-    } catch (error) {
-        console.error('Error cargando permisos:', error);
     }
 }
 
 // Login
-document.getElementById('login-btn').addEventListener('click', async function() {
+document.getElementById('login-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
     const email = document.getElementById('login-email').value;
     const password = document.getElementById('login-password').value;
+    const loginBtn = document.getElementById('login-btn');
     
     if (!email || !password) {
         showNotification('Por favor ingrese email y contraseña', 'warning');
         return;
     }
     
-    this.classList.add('loading');
+    loginBtn.classList.add('loading');
+    loginBtn.disabled = true;
     
     try {
         const { data, error } = await supabaseClient.auth.signInWithPassword({
@@ -127,15 +133,20 @@ document.getElementById('login-btn').addEventListener('click', async function() 
         if (error) throw error;
         
         if (data.user) {
-            await cargarUsuario(data.user.id);
-            document.getElementById('login-screen').style.display = 'none';
-            document.getElementById('app').style.display = 'flex';
-            document.getElementById('user-name').textContent = appState.usuario?.username || 'Usuario';
-            updateNavigationPermissions();
-            showNotification('Sesión iniciada correctamente', 'success');
+            // Resetear estado
+            appState = {
+                usuario: null,
+                permisos: [],
+                carrito: [],
+                pagos: [],
+                descuento: { tipo: 'porcentaje', valor: 0 },
+                productoActual: null,
+                cajaActiva: null
+            };
             
-            // Enfocar campo scanner
-            document.getElementById('scanner-input').focus();
+            // Recargar sesión
+            await checkSession();
+            showNotification('Sesión iniciada correctamente', 'success');
         }
     } catch (error) {
         console.error('Error en login:', error);
@@ -143,7 +154,8 @@ document.getElementById('login-btn').addEventListener('click', async function() 
         document.getElementById('login-error').style.display = 'block';
         showNotification('Error en inicio de sesión', 'error');
     } finally {
-        this.classList.remove('loading');
+        loginBtn.classList.remove('loading');
+        loginBtn.disabled = false;
     }
 });
 
@@ -164,10 +176,36 @@ document.getElementById('logout-btn').addEventListener('click', async function()
             cajaActiva: null
         };
         
+        // Limpiar UI
+        document.getElementById('carrito-items').innerHTML = `
+            <div class="empty-carrito">
+                <i class="fas fa-shopping-cart fa-2x"></i>
+                <p>El carrito está vacío</p>
+                <p>Escanee un producto o use F6 para buscar</p>
+            </div>
+        `;
+        
+        document.getElementById('pagos-lista').innerHTML = `
+            <div class="empty-pagos">
+                <i class="fas fa-receipt fa-2x"></i>
+                <p>No hay pagos registrados</p>
+            </div>
+        `;
+        
+        // Resetear valores
+        document.getElementById('carrito-subtotal').textContent = 'S/ 0.00';
+        document.getElementById('carrito-descuento').textContent = 'S/ 0.00';
+        document.getElementById('carrito-total').textContent = 'S/ 0.00';
+        document.getElementById('total-a-pagar').textContent = 'S/ 0.00';
+        document.getElementById('total-pagado').textContent = 'S/ 0.00';
+        document.getElementById('total-cambio').textContent = 'S/ 0.00';
+        document.getElementById('btn-finalizar-venta').disabled = true;
+        
         // Mostrar login
         document.getElementById('app').style.display = 'none';
         document.getElementById('login-screen').style.display = 'flex';
         document.getElementById('login-error').style.display = 'none';
+        document.getElementById('login-form').reset();
         
         showNotification('Sesión cerrada correctamente', 'success');
     } catch (error) {
@@ -176,54 +214,36 @@ document.getElementById('logout-btn').addEventListener('click', async function()
     }
 });
 
-// ==================== PERMISOS DINÁMICOS ====================
+// ==================== PERMISOS ====================
 async function hasPermission(permiso) {
-    // Si es administrador, tiene todos los permisos
+    // Administradores tienen todos los permisos
     if (appState.usuario?.rol === 'Administrador') {
         return true;
     }
     
-    // Consultar permisos en tiempo real
-    try {
-        const { data, error } = await supabaseClient
-            .from('permisos')
-            .select('activo')
-            .eq('usuario_id', appState.usuario?.id)
-            .eq('permiso', permiso)
-            .single();
-        
-        if (error || !data) return false;
-        
-        return data.activo;
-    } catch (error) {
-        console.error('Error verificando permiso:', error);
-        return false;
-    }
+    // Cajeros verifican permisos en estado local
+    return appState.permisos.includes(permiso);
 }
 
 function updateNavigationPermissions() {
     const navLinks = document.querySelectorAll('.nav-link');
+    const isAdmin = appState.usuario?.rol === 'Administrador';
     
     navLinks.forEach(link => {
         const section = link.dataset.section;
         
-        // Mostrar/ocultar según permisos
         switch(section) {
             case 'caja':
-                if (!appState.usuario || (appState.usuario.rol !== 'Administrador' && !appState.permisos.includes('acceder_caja'))) {
-                    link.style.display = 'none';
-                }
+                link.style.display = (isAdmin || appState.permisos.includes('acceder_caja')) ? 'flex' : 'none';
                 break;
             case 'reportes':
-                if (!appState.usuario || (appState.usuario.rol !== 'Administrador' && !appState.permisos.includes('ver_reportes'))) {
-                    link.style.display = 'none';
-                }
+                link.style.display = (isAdmin || appState.permisos.includes('ver_reportes')) ? 'flex' : 'none';
                 break;
             case 'configuracion':
-                if (!appState.usuario || appState.usuario.rol !== 'Administrador') {
-                    link.style.display = 'none';
-                }
+                link.style.display = isAdmin ? 'flex' : 'none';
                 break;
+            default:
+                link.style.display = 'flex';
         }
     });
 }
@@ -234,7 +254,6 @@ function setupEventListeners() {
     document.querySelectorAll('.nav-link').forEach(link => {
         link.addEventListener('click', function(e) {
             e.preventDefault();
-            
             const targetSection = this.dataset.section;
             showSection(targetSection);
             
@@ -263,17 +282,19 @@ function setupEventListeners() {
         }
     });
     
-    // Campo scanner
+    // Scanner
     const scannerInput = document.getElementById('scanner-input');
-    scannerInput.addEventListener('input', handleScannerInput);
     scannerInput.addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
-            buscarProductoPorCodigo(this.value);
-            this.value = '';
+            const codigo = this.value.trim();
+            if (codigo) {
+                buscarProductoPorCodigo(codigo);
+                this.value = '';
+            }
         }
     });
     
-    // Buscador manual (F6)
+    // Buscador manual
     document.getElementById('btn-buscar-manual').addEventListener('click', showBuscadorManual);
     
     // Carrito
@@ -418,7 +439,8 @@ function setupKeyboardShortcuts() {
         switch(e.key) {
             case 'F1':
                 e.preventDefault();
-                if (document.getElementById('btn-finalizar-venta') && !document.getElementById('btn-finalizar-venta').disabled) {
+                const btnFinalizar = document.getElementById('btn-finalizar-venta');
+                if (btnFinalizar && !btnFinalizar.disabled) {
                     finalizarVenta();
                 }
                 break;
@@ -488,12 +510,17 @@ async function buscarProductoPorCodigo(codigo) {
             .eq('activo', true)
             .single();
         
-        if (error) throw error;
+        if (error) {
+            if (error.code === 'PGRST116') {
+                showNotification('Producto no encontrado', 'warning');
+            } else {
+                throw error;
+            }
+            return;
+        }
         
         if (producto) {
             mostrarProductoEncontrado(producto);
-        } else {
-            showNotification('Producto no encontrado', 'warning');
         }
     } catch (error) {
         console.error('Error buscando producto:', error);
@@ -520,284 +547,6 @@ function mostrarProductoEncontrado(producto) {
     }, 10);
 }
 
-function handleScannerInput(e) {
-    // En móvil, enfocar automáticamente el campo
-    if (window.innerWidth < 768) {
-        e.target.focus();
-    }
-}
-
-async function cargarProductos() {
-    try {
-        const filtro = document.getElementById('filtro-productos').value;
-        const proveedor = document.getElementById('filtro-proveedor').value;
-        const estado = document.getElementById('filtro-estado').value;
-        
-        let query = supabaseClient
-            .from('productos')
-            .select('*')
-            .order('nombre');
-        
-        // Aplicar filtros
-        if (filtro) {
-            query = query.or(`codigo_barra.ilike.%${filtro}%,nombre.ilike.%${filtro}%`);
-        }
-        
-        if (proveedor) {
-            query = query.eq('proveedor', proveedor);
-        }
-        
-        if (estado === 'activos') {
-            query = query.eq('activo', true);
-        } else if (estado === 'inactivos') {
-            query = query.eq('activo', false);
-        }
-        
-        const { data: productos, error } = await query;
-        
-        if (error) throw error;
-        
-        const tbody = document.getElementById('productos-body');
-        tbody.innerHTML = '';
-        
-        if (productos.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" class="text-center">No se encontraron productos</td></tr>';
-            return;
-        }
-        
-        productos.forEach(producto => {
-            const tr = document.createElement('tr');
-            const margen = producto.margen_ganancia ? 
-                `${parseFloat(producto.margen_ganancia).toFixed(2)}%` : 'N/A';
-            
-            tr.innerHTML = `
-                <td>${producto.codigo_barra}</td>
-                <td>${producto.nombre}</td>
-                <td>S/ ${parseFloat(producto.precio_venta).toFixed(2)}</td>
-                <td>S/ ${parseFloat(producto.precio_costo).toFixed(2)}</td>
-                <td>${margen}</td>
-                <td>${producto.stock}</td>
-                <td>${producto.proveedor || '-'}</td>
-                <td>
-                    <span class="${producto.activo ? 'text-success' : 'text-danger'}">
-                        ${producto.activo ? 'Activo' : 'Inactivo'}
-                    </span>
-                </td>
-                <td class="acciones">
-                    <button class="btn btn-sm" onclick="editarProducto('${producto.id}')">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                    <button class="btn btn-sm btn-danger" onclick="eliminarProducto('${producto.id}')">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </td>
-            `;
-            
-            tbody.appendChild(tr);
-        });
-        
-        // Cargar proveedores únicos para el filtro
-        await cargarProveedores();
-    } catch (error) {
-        console.error('Error cargando productos:', error);
-        showNotification('Error cargando productos', 'error');
-    }
-}
-
-async function cargarProveedores() {
-    try {
-        const { data, error } = await supabaseClient
-            .from('productos')
-            .select('proveedor')
-            .not('proveedor', 'is', null)
-            .order('proveedor');
-        
-        if (error) throw error;
-        
-        const proveedores = [...new Set(data.map(p => p.proveedor))];
-        const select = document.getElementById('filtro-proveedor');
-        select.innerHTML = '<option value="">Todos los proveedores</option>';
-        
-        proveedores.forEach(proveedor => {
-            if (proveedor) {
-                const option = document.createElement('option');
-                option.value = proveedor;
-                option.textContent = proveedor;
-                select.appendChild(option);
-            }
-        });
-    } catch (error) {
-        console.error('Error cargando proveedores:', error);
-    }
-}
-
-function mostrarModalProducto(producto = null) {
-    const modal = document.getElementById('modal-producto');
-    const titulo = document.getElementById('modal-producto-titulo');
-    const form = document.getElementById('form-producto');
-    
-    if (producto) {
-        titulo.innerHTML = '<i class="fas fa-edit"></i> Editar Producto';
-        document.getElementById('producto-codigo').value = producto.codigo_barra;
-        document.getElementById('producto-nombre').value = producto.nombre;
-        document.getElementById('producto-precio-costo').value = producto.precio_costo;
-        document.getElementById('producto-margen').value = producto.margen_ganancia || '';
-        document.getElementById('producto-precio-venta').value = producto.precio_venta;
-        document.getElementById('producto-stock').value = producto.stock;
-        document.getElementById('producto-proveedor').value = producto.proveedor || '';
-        document.getElementById('producto-activo').value = producto.activo;
-        
-        form.dataset.productoId = producto.id;
-    } else {
-        titulo.innerHTML = '<i class="fas fa-box"></i> Nuevo Producto';
-        form.reset();
-        delete form.dataset.productoId;
-    }
-    
-    modal.classList.add('active');
-    document.getElementById('producto-codigo').focus();
-}
-
-function calcularPrecioVenta() {
-    const costo = parseFloat(document.getElementById('producto-precio-costo').value) || 0;
-    const margen = parseFloat(document.getElementById('producto-margen').value) || 0;
-    
-    if (costo > 0 && margen > 0) {
-        const precioVenta = costo * (1 + margen / 100);
-        document.getElementById('producto-precio-venta').value = precioVenta.toFixed(2);
-    }
-}
-
-function calcularMargen() {
-    const costo = parseFloat(document.getElementById('producto-precio-costo').value) || 0;
-    const venta = parseFloat(document.getElementById('producto-precio-venta').value) || 0;
-    
-    if (costo > 0 && venta > 0) {
-        const margen = ((venta - costo) / costo) * 100;
-        document.getElementById('producto-margen').value = margen.toFixed(2);
-    }
-}
-
-async function guardarProducto(e) {
-    e.preventDefault();
-    
-    // Verificar permiso
-    const permiso = e.target.dataset.productoId ? 'modificar_productos' : 'cargar_productos';
-    const tienePermiso = await hasPermission(permiso);
-    
-    if (!tienePermiso) {
-        showNotification('No tiene permisos para esta acción', 'error');
-        return;
-    }
-    
-    const producto = {
-        codigo_barra: document.getElementById('producto-codigo').value.trim(),
-        nombre: document.getElementById('producto-nombre').value.trim(),
-        precio_costo: parseFloat(document.getElementById('producto-precio-costo').value),
-        precio_venta: parseFloat(document.getElementById('producto-precio-venta').value),
-        stock: parseInt(document.getElementById('producto-stock').value),
-        proveedor: document.getElementById('producto-proveedor').value.trim() || null,
-        activo: document.getElementById('producto-activo').value === 'true',
-        margen_ganancia: document.getElementById('producto-margen').value ? 
-            parseFloat(document.getElementById('producto-margen').value) : null
-    };
-    
-    // Validaciones
-    if (!producto.codigo_barra || !producto.nombre) {
-        showNotification('Código y nombre son obligatorios', 'warning');
-        return;
-    }
-    
-    if (producto.precio_costo < 0 || producto.precio_venta < 0) {
-        showNotification('Los precios deben ser positivos', 'warning');
-        return;
-    }
-    
-    if (producto.stock < 0) {
-        showNotification('El stock no puede ser negativo', 'warning');
-        return;
-    }
-    
-    try {
-        let error;
-        
-        if (e.target.dataset.productoId) {
-            // Actualizar producto existente
-            const { error: updateError } = await supabaseClient
-                .from('productos')
-                .update(producto)
-                .eq('id', e.target.dataset.productoId);
-            
-            error = updateError;
-        } else {
-            // Crear nuevo producto
-            const { error: insertError } = await supabaseClient
-                .from('productos')
-                .insert([producto]);
-            
-            error = insertError;
-        }
-        
-        if (error) throw error;
-        
-        showNotification('Producto guardado correctamente', 'success');
-        document.getElementById('modal-producto').classList.remove('active');
-        cargarProductos();
-    } catch (error) {
-        console.error('Error guardando producto:', error);
-        
-        if (error.code === '23505') {
-            showNotification('El código de barras ya existe', 'error');
-        } else {
-            showNotification('Error guardando producto', 'error');
-        }
-    }
-}
-
-async function editarProducto(productoId) {
-    try {
-        const { data: producto, error } = await supabaseClient
-            .from('productos')
-            .select('*')
-            .eq('id', productoId)
-            .single();
-        
-        if (error) throw error;
-        
-        mostrarModalProducto(producto);
-    } catch (error) {
-        console.error('Error cargando producto:', error);
-        showNotification('Error cargando producto', 'error');
-    }
-}
-
-async function eliminarProducto(productoId) {
-    if (!await hasPermission('modificar_productos')) {
-        showNotification('No tiene permisos para eliminar productos', 'error');
-        return;
-    }
-    
-    if (!confirm('¿Está seguro de eliminar este producto? Se marcará como inactivo.')) {
-        return;
-    }
-    
-    try {
-        const { error } = await supabaseClient
-            .from('productos')
-            .update({ activo: false })
-            .eq('id', productoId);
-        
-        if (error) throw error;
-        
-        showNotification('Producto eliminado correctamente', 'success');
-        cargarProductos();
-    } catch (error) {
-        console.error('Error eliminando producto:', error);
-        showNotification('Error eliminando producto', 'error');
-    }
-}
-
-// ==================== PROCESO DE VENTA ====================
 function cambiarCantidad(delta) {
     const input = document.getElementById('cantidad-producto');
     let nuevaCantidad = parseInt(input.value) + delta;
@@ -1109,7 +858,7 @@ function eliminarPago(index) {
     showNotification('Pago eliminado', 'info');
 }
 
-// ==================== FINALIZACIÓN DE VENTA (ATÓMICA) ====================
+// ==================== FINALIZACIÓN DE VENTA ====================
 async function finalizarVenta() {
     // Verificar caja activa
     if (!appState.cajaActiva) {
@@ -1154,10 +903,7 @@ async function finalizarVenta() {
             }
         }
         
-        // PASO 2: Generar ticket ID atómico
-        const ticketId = await generarTicketIdAtomico();
-        
-        // PASO 3: Calcular subtotal y total
+        // PASO 2: Calcular subtotal y total
         const subtotal = appState.carrito.reduce((sum, item) => 
             sum + (item.cantidad * item.precioUnitario), 0);
         
@@ -1168,7 +914,39 @@ async function finalizarVenta() {
         
         const total = subtotal - descuento;
         
-        // PASO 4: Crear venta en transacción
+        // PASO 3: Generar ticket ID
+        const hoy = new Date();
+        const fechaStr = hoy.toISOString().split('T')[0].replace(/-/g, '');
+        
+        // Obtener secuencia para hoy
+        const { data: secuencia, error: secError } = await supabaseClient
+            .from('secuencia_tickets')
+            .select('siguiente_numero')
+            .eq('fecha', fechaStr)
+            .single();
+        
+        let numero = 1;
+        if (secError) {
+            // Crear nueva secuencia
+            const { error: insertError } = await supabaseClient
+                .from('secuencia_tickets')
+                .insert([{ fecha: fechaStr, siguiente_numero: 2 }]);
+            
+            if (insertError) throw insertError;
+        } else {
+            numero = secuencia.siguiente_numero;
+            // Incrementar secuencia
+            const { error: updateError } = await supabaseClient
+                .from('secuencia_tickets')
+                .update({ siguiente_numero: numero + 1 })
+                .eq('fecha', fechaStr);
+            
+            if (updateError) throw updateError;
+        }
+        
+        const ticketId = `T-${fechaStr}-${numero.toString().padStart(4, '0')}`;
+        
+        // PASO 4: Crear venta
         const ventaData = {
             ticket_id: ticketId,
             caja_id: appState.cajaActiva.id,
@@ -1188,40 +966,49 @@ async function finalizarVenta() {
         if (ventaError) throw ventaError;
         
         // Insertar detalles de venta
-        const detalles = appState.carrito.map(item => ({
-            venta_id: venta.id,
-            producto_id: item.producto.id,
-            cantidad: item.cantidad,
-            precio_unitario: item.precioUnitario,
-            subtotal: item.cantidad * item.precioUnitario
-        }));
-        
-        const { error: detallesError } = await supabaseClient
-            .from('detalle_ventas')
-            .insert(detalles);
-        
-        if (detallesError) throw detallesError;
+        for (const item of appState.carrito) {
+            const detalleData = {
+                venta_id: venta.id,
+                producto_id: item.producto.id,
+                cantidad: item.cantidad,
+                precio_unitario: item.precioUnitario,
+                subtotal: item.cantidad * item.precioUnitario
+            };
+            
+            const { error: detalleError } = await supabaseClient
+                .from('detalle_ventas')
+                .insert([detalleData]);
+            
+            if (detalleError) throw detalleError;
+            
+            // Actualizar stock
+            const { error: stockError } = await supabaseClient
+                .from('productos')
+                .update({ stock: item.producto.stock - item.cantidad })
+                .eq('id', item.producto.id);
+            
+            if (stockError) throw stockError;
+        }
         
         // Insertar pagos
-        const pagosData = appState.pagos.map(pago => ({
-            venta_id: venta.id,
-            medio_pago: pago.medio,
-            monto: pago.monto
-        }));
-        
-        const { error: pagosError } = await supabaseClient
-            .from('pagos_venta')
-            .insert(pagosData);
-        
-        if (pagosError) throw pagosError;
+        for (const pago of appState.pagos) {
+            const pagoData = {
+                venta_id: venta.id,
+                medio_pago: pago.medio,
+                monto: pago.monto
+            };
+            
+            const { error: pagoError } = await supabaseClient
+                .from('pagos_venta')
+                .insert([pagoData]);
+            
+            if (pagoError) throw pagoError;
+        }
         
         // PASO 5: Generar ticket
         await generarTicket(venta);
         
-        // PASO 6: Recargar estado desde BD
-        await recargarEstadoPostVenta();
-        
-        // PASO 7: Resetear venta actual
+        // PASO 6: Resetear venta actual
         appState.carrito = [];
         appState.pagos = [];
         appState.descuento = { tipo: 'porcentaje', valor: 0 };
@@ -1232,7 +1019,10 @@ async function finalizarVenta() {
         actualizarCarritoUI();
         actualizarPagosUI();
         
-        showNotification(`Venta finalizada correctamente: ${ticketId}`, 'success');
+        // Actualizar estado de caja
+        await verificarCajaActiva();
+        
+        showNotification(`Venta finalizada: ${ticketId}`, 'success');
         
         // Enfocar scanner para próxima venta
         document.getElementById('scanner-input').focus();
@@ -1246,23 +1036,9 @@ async function finalizarVenta() {
     }
 }
 
-async function generarTicketIdAtomico() {
-    try {
-        // Llamar a la función de BD que genera el ticket ID atómico
-        const { data, error } = await supabaseClient.rpc('generar_ticket_id');
-        
-        if (error) throw error;
-        
-        return data;
-    } catch (error) {
-        console.error('Error generando ticket ID:', error);
-        throw new Error('No se pudo generar el número de ticket');
-    }
-}
-
 async function generarTicket(venta) {
     try {
-        // Cargar configuración del ticket
+        // Cargar configuración
         const { data: config, error } = await supabaseClient
             .from('configuracion')
             .select('*');
@@ -1286,18 +1062,16 @@ async function generarTicket(venta) {
                     <div>${item.producto.nombre} x${item.cantidad}</div>
                     <div>S/ ${totalItem.toFixed(2)}</div>
                 </div>
-                <div style="font-size: 10px; margin-bottom: 5px;">
-                    ${item.producto.codigo_barra} @ S/ ${item.precioUnitario.toFixed(2)}
-                </div>
             `;
         });
+        
+        const cambio = appState.pagos.reduce((s, p) => s + p.monto, 0) - venta.total;
         
         ticketContent.innerHTML = `
             <div class="ticket-header">
                 <h1>${configMap.ticket_encabezado || 'AFMSOLUTIONS'}</h1>
                 <div>${configMap.ticket_encabezado_extra || ''}</div>
                 <div>${configMap.empresa_direccion || ''}</div>
-                <div>${configMap.empresa_telefono || ''}</div>
                 <div>${fecha}</div>
                 <div><strong>Ticket: ${venta.ticket_id}</strong></div>
                 <div>Atendido por: ${appState.usuario?.username || ''}</div>
@@ -1330,17 +1104,18 @@ async function generarTicket(venta) {
                         </div>
                     `).join('')}
                     
-                    <div class="ticket-item">
-                        <div>Cambio:</div>
-                        <div>S/ ${(appState.pagos.reduce((s, p) => s + p.monto, 0) - venta.total).toFixed(2)}</div>
-                    </div>
+                    ${cambio > 0 ? `
+                        <div class="ticket-item">
+                            <div>Cambio:</div>
+                            <div>S/ ${cambio.toFixed(2)}</div>
+                        </div>
+                    ` : ''}
                 </div>
             </div>
             
             <div class="ticket-footer">
                 <div>${configMap.ticket_pie || '¡Gracias por su compra!'}</div>
                 <div>${configMap.ticket_legal || ''}</div>
-                <div>${configMap.ticket_contacto || ''}</div>
             </div>
         `;
         
@@ -1372,6 +1147,7 @@ async function generarTicket(venta) {
             </body>
             </html>
         `);
+        printWindow.document.close();
         
     } catch (error) {
         console.error('Error generando ticket:', error);
@@ -1380,164 +1156,14 @@ async function generarTicket(venta) {
     }
 }
 
-async function recargarEstadoPostVenta() {
-    // Recargar productos del carrito para actualizar stock
-    for (const item of appState.carrito) {
-        try {
-            const { data: producto, error } = await supabaseClient
-                .from('productos')
-                .select('stock')
-                .eq('id', item.producto.id)
-                .single();
-            
-            if (!error && producto) {
-                // Actualizar en UI si el producto está visible
-                const stockElement = document.querySelector(`[data-producto-id="${item.producto.id}"] .producto-stock`);
-                if (stockElement) {
-                    stockElement.textContent = producto.stock;
-                }
-            }
-        } catch (e) {
-            console.error('Error recargando stock:', e);
-        }
-    }
-    
-    // Recargar estado de caja
-    await verificarCajaActiva();
-}
-
 function cancelarVenta() {
     if (appState.carrito.length === 0) return;
     
-    if (!confirm('¿Está seguro de cancelar esta venta? Se perderán todos los productos del carrito.')) {
+    if (!confirm('¿Está seguro de cancelar esta venta?')) {
         return;
     }
     
     limpiarCarrito();
-}
-
-// ==================== BUSCADOR MANUAL (F6) ====================
-function showBuscadorManual() {
-    const modal = document.getElementById('modal-buscador');
-    modal.classList.add('active');
-    
-    // Cargar proveedores para el buscador
-    cargarProveedoresBuscador();
-    
-    // Enfocar primer campo
-    document.getElementById('buscador-codigo').focus();
-}
-
-async function cargarProveedoresBuscador() {
-    try {
-        const { data, error } = await supabaseClient
-            .from('productos')
-            .select('proveedor')
-            .not('proveedor', 'is', null)
-            .eq('activo', true)
-            .order('proveedor');
-        
-        if (error) throw error;
-        
-        const proveedores = [...new Set(data.map(p => p.proveedor))];
-        const select = document.getElementById('buscador-proveedor');
-        select.innerHTML = '<option value="">Todos los proveedores</option>';
-        
-        proveedores.forEach(proveedor => {
-            if (proveedor) {
-                const option = document.createElement('option');
-                option.value = proveedor;
-                option.textContent = proveedor;
-                select.appendChild(option);
-            }
-        });
-    } catch (error) {
-        console.error('Error cargando proveedores:', error);
-    }
-}
-
-async function buscarProductosManual() {
-    try {
-        const codigo = document.getElementById('buscador-codigo').value;
-        const nombre = document.getElementById('buscador-nombre').value;
-        const proveedor = document.getElementById('buscador-proveedor').value;
-        
-        let query = supabaseClient
-            .from('productos')
-            .select('*')
-            .eq('activo', true)
-            .order('nombre');
-        
-        if (codigo) {
-            query = query.ilike('codigo_barra', `%${codigo}%`);
-        }
-        
-        if (nombre) {
-            query = query.ilike('nombre', `%${nombre}%`);
-        }
-        
-        if (proveedor) {
-            query = query.eq('proveedor', proveedor);
-        }
-        
-        const { data: productos, error } = await query.limit(50);
-        
-        if (error) throw error;
-        
-        const tbody = document.getElementById('buscador-body');
-        tbody.innerHTML = '';
-        
-        if (productos.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center">No se encontraron productos</td></tr>';
-            return;
-        }
-        
-        productos.forEach(producto => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${producto.codigo_barra}</td>
-                <td>${producto.nombre}</td>
-                <td>S/ ${parseFloat(producto.precio_venta).toFixed(2)}</td>
-                <td>${producto.stock}</td>
-                <td>
-                    <button class="btn btn-sm btn-primary" onclick="agregarDesdeBuscador('${producto.id}')">
-                        <i class="fas fa-cart-plus"></i> Agregar
-                    </button>
-                </td>
-            `;
-            
-            tbody.appendChild(tr);
-        });
-    } catch (error) {
-        console.error('Error buscando productos:', error);
-        showNotification('Error buscando productos', 'error');
-    }
-}
-
-async function agregarDesdeBuscador(productoId) {
-    try {
-        const { data: producto, error } = await supabaseClient
-            .from('productos')
-            .select('*')
-            .eq('id', productoId)
-            .eq('activo', true)
-            .single();
-        
-        if (error) throw error;
-        
-        mostrarProductoEncontrado(producto);
-        
-        // Cerrar modal
-        document.getElementById('modal-buscador').classList.remove('active');
-        
-        // Enfocar cantidad y auto-seleccionar
-        document.getElementById('cantidad-producto').focus();
-        document.getElementById('cantidad-producto').select();
-        
-    } catch (error) {
-        console.error('Error cargando producto:', error);
-        showNotification('Error cargando producto', 'error');
-    }
 }
 
 // ==================== GESTIÓN DE CAJA ====================
@@ -1547,10 +1173,10 @@ async function verificarCajaActiva() {
             .from('caja')
             .select('*')
             .is('fecha_cierre', null)
-            .single();
+            .maybeSingle();
         
         if (error && error.code !== 'PGRST116') {
-            throw error;
+            console.warn('Error verificando caja activa:', error);
         }
         
         appState.cajaActiva = caja || null;
@@ -1558,9 +1184,15 @@ async function verificarCajaActiva() {
         
         return caja;
     } catch (error) {
-        console.error('Error verificando caja activa:', error);
+        console.error('Error en verificarCajaActiva:', error);
+        appState.cajaActiva = null;
+        actualizarUIEstadoCaja();
         return null;
     }
+}
+
+async function cargarEstadoCaja() {
+    await verificarCajaActiva();
 }
 
 function actualizarUIEstadoCaja() {
@@ -1577,7 +1209,6 @@ function actualizarUIEstadoCaja() {
             <div class="caja-abierta">
                 <i class="fas fa-unlock fa-3x text-success"></i>
                 <h3>Caja Abierta</h3>
-                <p>Abierta por: ${appState.usuario?.username || 'Usuario'}</p>
                 <p>Monto inicial: S/ ${parseFloat(appState.cajaActiva.monto_inicial).toFixed(2)}</p>
                 <p>Hora apertura: ${new Date(appState.cajaActiva.fecha_apertura).toLocaleTimeString()}</p>
             </div>
@@ -1598,15 +1229,18 @@ function actualizarUIEstadoCaja() {
                 <i class="fas fa-lock fa-3x"></i>
                 <h3>Caja Cerrada</h3>
                 <p>No hay caja activa en este momento</p>
-                <button id="btn-abrir-caja" class="btn btn-primary">
-                    <i class="fas fa-unlock"></i> Abrir Caja
-                </button>
+                ${appState.usuario?.rol === 'Administrador' ? 
+                    `<button id="btn-abrir-caja" class="btn btn-primary">
+                        <i class="fas fa-unlock"></i> Abrir Caja
+                    </button>` : 
+                    '<p class="text-warning">Solo administradores pueden abrir caja</p>'
+                }
             </div>
         `;
         
         operaciones.style.display = 'none';
         
-        // Reasignar evento al botón (por si se regeneró el HTML)
+        // Reasignar evento al botón
         const btn = document.getElementById('btn-abrir-caja');
         if (btn) {
             btn.onclick = mostrarModalAperturaCaja;
@@ -1615,6 +1249,11 @@ function actualizarUIEstadoCaja() {
 }
 
 function mostrarModalAperturaCaja() {
+    if (appState.usuario?.rol !== 'Administrador') {
+        showNotification('Solo administradores pueden abrir caja', 'error');
+        return;
+    }
+    
     const modal = document.getElementById('modal-apertura-caja');
     modal.classList.add('active');
     document.getElementById('apertura-monto').focus();
@@ -1623,12 +1262,22 @@ function mostrarModalAperturaCaja() {
 async function abrirCaja(e) {
     e.preventDefault();
     
+    // Verificar que el usuario sea administrador
+    if (appState.usuario?.rol !== 'Administrador') {
+        showNotification('Solo administradores pueden abrir caja', 'error');
+        return;
+    }
+    
     const monto = parseFloat(document.getElementById('apertura-monto').value);
     
     if (!monto || monto < 0) {
         showNotification('Ingrese un monto inicial válido', 'warning');
         return;
     }
+    
+    const btn = e.target.querySelector('button[type="submit"]') || e.target;
+    btn.classList.add('loading');
+    btn.disabled = true;
     
     try {
         // Verificar que no hay caja activa
@@ -1650,22 +1299,27 @@ async function abrirCaja(e) {
             .select()
             .single();
         
-        if (error) throw error;
-        
-        appState.cajaActiva = caja;
-        actualizarUIEstadoCaja();
-        
-        document.getElementById('modal-apertura-caja').classList.remove('active');
-        showNotification('Caja abierta correctamente', 'success');
+        if (error) {
+            if (error.code === '23505') {
+                showNotification('Ya hay una caja activa', 'error');
+            } else {
+                throw error;
+            }
+        } else {
+            appState.cajaActiva = caja;
+            actualizarUIEstadoCaja();
+            
+            document.getElementById('modal-apertura-caja').classList.remove('active');
+            document.getElementById('form-apertura-caja').reset();
+            showNotification('Caja abierta correctamente', 'success');
+        }
         
     } catch (error) {
         console.error('Error abriendo caja:', error);
-        
-        if (error.code === '23505') {
-            showNotification('Ya hay una caja activa', 'error');
-        } else {
-            showNotification('Error abriendo caja', 'error');
-        }
+        showNotification('Error abriendo caja', 'error');
+    } finally {
+        btn.classList.remove('loading');
+        btn.disabled = false;
     }
 }
 
@@ -1689,7 +1343,7 @@ async function cargarResumenCaja() {
         
         if (error) throw error;
         
-        // Calcular totales por medio de pago
+        // Calcular totales
         let totalEfectivo = 0;
         let totalTarjeta = 0;
         let totalTransferencia = 0;
@@ -1808,7 +1462,366 @@ async function cerrarCaja() {
     }
 }
 
-// ==================== HISTORIAL Y ANULACIONES ====================
+// ==================== PRODUCTOS ====================
+async function cargarProductos() {
+    try {
+        const filtro = document.getElementById('filtro-productos').value;
+        const proveedor = document.getElementById('filtro-proveedor').value;
+        const estado = document.getElementById('filtro-estado').value;
+        
+        let query = supabaseClient
+            .from('productos')
+            .select('*')
+            .order('nombre');
+        
+        // Aplicar filtros
+        if (filtro) {
+            query = query.or(`codigo_barra.ilike.%${filtro}%,nombre.ilike.%${filtro}%`);
+        }
+        
+        if (proveedor) {
+            query = query.eq('proveedor', proveedor);
+        }
+        
+        if (estado === 'activos') {
+            query = query.eq('activo', true);
+        } else if (estado === 'inactivos') {
+            query = query.eq('activo', false);
+        }
+        
+        const { data: productos, error } = await query;
+        
+        if (error) throw error;
+        
+        const tbody = document.getElementById('productos-body');
+        tbody.innerHTML = '';
+        
+        if (productos.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center">No se encontraron productos</td></tr>';
+            return;
+        }
+        
+        productos.forEach(producto => {
+            const tr = document.createElement('tr');
+            const margen = producto.margen_ganancia ? 
+                `${parseFloat(producto.margen_ganancia).toFixed(2)}%` : 'N/A';
+            
+            tr.innerHTML = `
+                <td>${producto.codigo_barra}</td>
+                <td>${producto.nombre}</td>
+                <td>S/ ${parseFloat(producto.precio_venta).toFixed(2)}</td>
+                <td>S/ ${parseFloat(producto.precio_costo).toFixed(2)}</td>
+                <td>${margen}</td>
+                <td>${producto.stock}</td>
+                <td>${producto.proveedor || '-'}</td>
+                <td>
+                    <span class="${producto.activo ? 'text-success' : 'text-danger'}">
+                        ${producto.activo ? 'Activo' : 'Inactivo'}
+                    </span>
+                </td>
+                <td class="acciones">
+                    <button class="btn btn-sm" onclick="editarProducto('${producto.id}')">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="eliminarProducto('${producto.id}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            `;
+            
+            tbody.appendChild(tr);
+        });
+        
+    } catch (error) {
+        console.error('Error cargando productos:', error);
+        showNotification('Error cargando productos', 'error');
+    }
+}
+
+function mostrarModalProducto(producto = null) {
+    const modal = document.getElementById('modal-producto');
+    const titulo = document.getElementById('modal-producto-titulo');
+    const form = document.getElementById('form-producto');
+    
+    if (producto) {
+        titulo.innerHTML = '<i class="fas fa-edit"></i> Editar Producto';
+        document.getElementById('producto-codigo').value = producto.codigo_barra;
+        document.getElementById('producto-nombre').value = producto.nombre;
+        document.getElementById('producto-precio-costo').value = producto.precio_costo;
+        document.getElementById('producto-margen').value = producto.margen_ganancia || '';
+        document.getElementById('producto-precio-venta').value = producto.precio_venta;
+        document.getElementById('producto-stock').value = producto.stock;
+        document.getElementById('producto-proveedor').value = producto.proveedor || '';
+        document.getElementById('producto-activo').value = producto.activo;
+        
+        form.dataset.productoId = producto.id;
+    } else {
+        titulo.innerHTML = '<i class="fas fa-box"></i> Nuevo Producto';
+        form.reset();
+        delete form.dataset.productoId;
+    }
+    
+    modal.classList.add('active');
+    document.getElementById('producto-codigo').focus();
+}
+
+function calcularPrecioVenta() {
+    const costo = parseFloat(document.getElementById('producto-precio-costo').value) || 0;
+    const margen = parseFloat(document.getElementById('producto-margen').value) || 0;
+    
+    if (costo > 0 && margen > 0) {
+        const precioVenta = costo * (1 + margen / 100);
+        document.getElementById('producto-precio-venta').value = precioVenta.toFixed(2);
+    }
+}
+
+function calcularMargen() {
+    const costo = parseFloat(document.getElementById('producto-precio-costo').value) || 0;
+    const venta = parseFloat(document.getElementById('producto-precio-venta').value) || 0;
+    
+    if (costo > 0 && venta > 0) {
+        const margen = ((venta - costo) / costo) * 100;
+        document.getElementById('producto-margen').value = margen.toFixed(2);
+    }
+}
+
+async function guardarProducto(e) {
+    e.preventDefault();
+    
+    // Verificar permiso
+    const permiso = e.target.dataset.productoId ? 'modificar_productos' : 'cargar_productos';
+    const tienePermiso = await hasPermission(permiso);
+    
+    if (!tienePermiso) {
+        showNotification('No tiene permisos para esta acción', 'error');
+        return;
+    }
+    
+    const producto = {
+        codigo_barra: document.getElementById('producto-codigo').value.trim(),
+        nombre: document.getElementById('producto-nombre').value.trim(),
+        precio_costo: parseFloat(document.getElementById('producto-precio-costo').value),
+        precio_venta: parseFloat(document.getElementById('producto-precio-venta').value),
+        stock: parseInt(document.getElementById('producto-stock').value),
+        proveedor: document.getElementById('producto-proveedor').value.trim() || null,
+        activo: document.getElementById('producto-activo').value === 'true',
+        margen_ganancia: document.getElementById('producto-margen').value ? 
+            parseFloat(document.getElementById('producto-margen').value) : null
+    };
+    
+    // Validaciones
+    if (!producto.codigo_barra || !producto.nombre) {
+        showNotification('Código y nombre son obligatorios', 'warning');
+        return;
+    }
+    
+    if (producto.precio_costo < 0 || producto.precio_venta < 0) {
+        showNotification('Los precios deben ser positivos', 'warning');
+        return;
+    }
+    
+    if (producto.stock < 0) {
+        showNotification('El stock no puede ser negativo', 'warning');
+        return;
+    }
+    
+    const btn = e.target.querySelector('button[type="submit"]');
+    btn.classList.add('loading');
+    btn.disabled = true;
+    
+    try {
+        let error;
+        
+        if (e.target.dataset.productoId) {
+            // Actualizar producto existente
+            const { error: updateError } = await supabaseClient
+                .from('productos')
+                .update(producto)
+                .eq('id', e.target.dataset.productoId);
+            
+            error = updateError;
+        } else {
+            // Crear nuevo producto
+            const { error: insertError } = await supabaseClient
+                .from('productos')
+                .insert([producto]);
+            
+            error = insertError;
+        }
+        
+        if (error) throw error;
+        
+        showNotification('Producto guardado correctamente', 'success');
+        document.getElementById('modal-producto').classList.remove('active');
+        cargarProductos();
+        
+    } catch (error) {
+        console.error('Error guardando producto:', error);
+        
+        if (error.code === '23505') {
+            showNotification('El código de barras ya existe', 'error');
+        } else {
+            showNotification('Error guardando producto', 'error');
+        }
+    } finally {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+    }
+}
+
+function editarProducto(productoId) {
+    // Esta función se llama desde HTML, se define globalmente
+    window.editarProducto = async function(id) {
+        try {
+            const { data: producto, error } = await supabaseClient
+                .from('productos')
+                .select('*')
+                .eq('id', id)
+                .single();
+            
+            if (error) throw error;
+            
+            mostrarModalProducto(producto);
+        } catch (error) {
+            console.error('Error cargando producto:', error);
+            showNotification('Error cargando producto', 'error');
+        }
+    };
+    
+    window.editarProducto(productoId);
+}
+
+function eliminarProducto(productoId) {
+    // Esta función se llama desde HTML, se define globalmente
+    window.eliminarProducto = async function(id) {
+        const tienePermiso = await hasPermission('modificar_productos');
+        if (!tienePermiso) {
+            showNotification('No tiene permisos para eliminar productos', 'error');
+            return;
+        }
+        
+        if (!confirm('¿Está seguro de eliminar este producto? Se marcará como inactivo.')) {
+            return;
+        }
+        
+        try {
+            const { error } = await supabaseClient
+                .from('productos')
+                .update({ activo: false })
+                .eq('id', id);
+            
+            if (error) throw error;
+            
+            showNotification('Producto eliminado correctamente', 'success');
+            cargarProductos();
+        } catch (error) {
+            console.error('Error eliminando producto:', error);
+            showNotification('Error eliminando producto', 'error');
+        }
+    };
+    
+    window.eliminarProducto(productoId);
+}
+
+// ==================== BUSCADOR MANUAL ====================
+function showBuscadorManual() {
+    const modal = document.getElementById('modal-buscador');
+    modal.classList.add('active');
+    
+    // Enfocar primer campo
+    document.getElementById('buscador-codigo').focus();
+}
+
+async function buscarProductosManual() {
+    try {
+        const codigo = document.getElementById('buscador-codigo').value;
+        const nombre = document.getElementById('buscador-nombre').value;
+        const proveedor = document.getElementById('buscador-proveedor').value;
+        
+        let query = supabaseClient
+            .from('productos')
+            .select('*')
+            .eq('activo', true)
+            .order('nombre');
+        
+        if (codigo) {
+            query = query.ilike('codigo_barra', `%${codigo}%`);
+        }
+        
+        if (nombre) {
+            query = query.ilike('nombre', `%${nombre}%`);
+        }
+        
+        if (proveedor) {
+            query = query.eq('proveedor', proveedor);
+        }
+        
+        const { data: productos, error } = await query.limit(50);
+        
+        if (error) throw error;
+        
+        const tbody = document.getElementById('buscador-body');
+        tbody.innerHTML = '';
+        
+        if (productos.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center">No se encontraron productos</td></tr>';
+            return;
+        }
+        
+        productos.forEach(producto => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${producto.codigo_barra}</td>
+                <td>${producto.nombre}</td>
+                <td>S/ ${parseFloat(producto.precio_venta).toFixed(2)}</td>
+                <td>${producto.stock}</td>
+                <td>
+                    <button class="btn btn-sm btn-primary" onclick="agregarDesdeBuscador('${producto.id}')">
+                        <i class="fas fa-cart-plus"></i> Agregar
+                    </button>
+                </td>
+            `;
+            
+            tbody.appendChild(tr);
+        });
+    } catch (error) {
+        console.error('Error buscando productos:', error);
+        showNotification('Error buscando productos', 'error');
+    }
+}
+
+function agregarDesdeBuscador(productoId) {
+    // Esta función se llama desde HTML
+    window.agregarDesdeBuscador = async function(id) {
+        try {
+            const { data: producto, error } = await supabaseClient
+                .from('productos')
+                .select('*')
+                .eq('id', id)
+                .eq('activo', true)
+                .single();
+            
+            if (error) throw error;
+            
+            mostrarProductoEncontrado(producto);
+            
+            // Cerrar modal
+            document.getElementById('modal-buscador').classList.remove('active');
+            
+            // Enfocar cantidad
+            document.getElementById('cantidad-producto').focus();
+            document.getElementById('cantidad-producto').select();
+            
+        } catch (error) {
+            console.error('Error cargando producto:', error);
+            showNotification('Error cargando producto', 'error');
+        }
+    };
+    
+    window.agregarDesdeBuscador(productoId);
+}
+
+// ==================== HISTORIAL ====================
 async function cargarVentasHoy() {
     const hoy = new Date().toISOString().split('T')[0];
     document.getElementById('filtro-fecha-inicio').value = hoy;
@@ -1908,147 +1921,151 @@ async function cargarHistorial() {
     }
 }
 
-async function verDetalleVenta(ventaId) {
-    try {
-        const { data: venta, error } = await supabaseClient
-            .from('ventas')
-            .select(`
-                *,
-                detalle_ventas (
-                    cantidad,
-                    precio_unitario,
-                    subtotal,
-                    productos (
-                        nombre,
-                        codigo_barra
+function verDetalleVenta(ventaId) {
+    // Esta función se llama desde HTML
+    window.verDetalleVenta = async function(id) {
+        try {
+            const { data: venta, error } = await supabaseClient
+                .from('ventas')
+                .select(`
+                    *,
+                    detalle_ventas (
+                        cantidad,
+                        precio_unitario,
+                        subtotal,
+                        productos (
+                            nombre,
+                            codigo_barra
+                        )
+                    ),
+                    pagos_venta (
+                        medio_pago,
+                        monto
                     )
-                ),
-                pagos_venta (
-                    medio_pago,
-                    monto
-                )
-            `)
-            .eq('id', ventaId)
-            .single();
-        
-        if (error) throw error;
-        
-        const modal = document.getElementById('modal-detalle-venta');
-        const titulo = document.getElementById('modal-venta-titulo');
-        const contenido = document.getElementById('detalle-venta-contenido');
-        
-        titulo.innerHTML = `<i class="fas fa-receipt"></i> Detalle de Venta: ${venta.ticket_id}`;
-        
-        let detalleHTML = `
-            <div class="venta-info">
-                <p><strong>Ticket:</strong> ${venta.ticket_id}</p>
-                <p><strong>Fecha:</strong> ${new Date(venta.fecha).toLocaleString('es-ES')}</p>
-                <p><strong>Estado:</strong> ${venta.anulada ? 'ANULADA' : 'ACTIVA'}</p>
-                <p><strong>Subtotal:</strong> S/ ${parseFloat(venta.subtotal).toFixed(2)}</p>
-                <p><strong>Descuento:</strong> S/ ${parseFloat(venta.descuento).toFixed(2)}</p>
-                <p><strong>Total:</strong> S/ ${parseFloat(venta.total).toFixed(2)}</p>
-            </div>
+                `)
+                .eq('id', id)
+                .single();
             
-            <h4>Productos:</h4>
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Producto</th>
-                        <th>Código</th>
-                        <th>Cantidad</th>
-                        <th>Precio Unitario</th>
-                        <th>Subtotal</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-        
-        venta.detalle_ventas.forEach(detalle => {
-            detalleHTML += `
-                <tr>
-                    <td>${detalle.productos.nombre}</td>
-                    <td>${detalle.productos.codigo_barra}</td>
-                    <td>${detalle.cantidad}</td>
-                    <td>S/ ${parseFloat(detalle.precio_unitario).toFixed(2)}</td>
-                    <td>S/ ${parseFloat(detalle.subtotal).toFixed(2)}</td>
-                </tr>
-            `;
-        });
-        
-        detalleHTML += `
-                </tbody>
-            </table>
+            if (error) throw error;
             
-            <h4>Pagos:</h4>
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Medio de Pago</th>
-                        <th>Monto</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-        
-        venta.pagos_venta.forEach(pago => {
-            detalleHTML += `
-                <tr>
-                    <td>${pago.medio_pago}</td>
-                    <td>S/ ${parseFloat(pago.monto).toFixed(2)}</td>
-                </tr>
+            const modal = document.getElementById('modal-detalle-venta');
+            const titulo = document.getElementById('modal-venta-titulo');
+            const contenido = document.getElementById('detalle-venta-contenido');
+            
+            titulo.innerHTML = `<i class="fas fa-receipt"></i> Detalle de Venta: ${venta.ticket_id}`;
+            
+            let detalleHTML = `
+                <div class="venta-info">
+                    <p><strong>Ticket:</strong> ${venta.ticket_id}</p>
+                    <p><strong>Fecha:</strong> ${new Date(venta.fecha).toLocaleString('es-ES')}</p>
+                    <p><strong>Estado:</strong> ${venta.anulada ? 'ANULADA' : 'ACTIVA'}</p>
+                    <p><strong>Subtotal:</strong> S/ ${parseFloat(venta.subtotal).toFixed(2)}</p>
+                    <p><strong>Descuento:</strong> S/ ${parseFloat(venta.descuento).toFixed(2)}</p>
+                    <p><strong>Total:</strong> S/ ${parseFloat(venta.total).toFixed(2)}</p>
+                </div>
+                
+                <h4>Productos:</h4>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th>Código</th>
+                            <th>Cantidad</th>
+                            <th>Precio Unitario</th>
+                            <th>Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
             `;
-        });
-        
-        detalleHTML += `
-                </tbody>
-            </table>
-        `;
-        
-        contenido.innerHTML = detalleHTML;
-        modal.classList.add('active');
-        
-    } catch (error) {
-        console.error('Error cargando detalle de venta:', error);
-        showNotification('Error cargando detalle de venta', 'error');
-    }
+            
+            venta.detalle_ventas.forEach(detalle => {
+                detalleHTML += `
+                    <tr>
+                        <td>${detalle.productos.nombre}</td>
+                        <td>${detalle.productos.codigo_barra}</td>
+                        <td>${detalle.cantidad}</td>
+                        <td>S/ ${parseFloat(detalle.precio_unitario).toFixed(2)}</td>
+                        <td>S/ ${parseFloat(detalle.subtotal).toFixed(2)}</td>
+                    </tr>
+                `;
+            });
+            
+            detalleHTML += `
+                    </tbody>
+                </table>
+                
+                <h4>Pagos:</h4>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Medio de Pago</th>
+                            <th>Monto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            venta.pagos_venta.forEach(pago => {
+                detalleHTML += `
+                    <tr>
+                        <td>${pago.medio_pago}</td>
+                        <td>S/ ${parseFloat(pago.monto).toFixed(2)}</td>
+                    </tr>
+                `;
+            });
+            
+            detalleHTML += `
+                    </tbody>
+                </table>
+            `;
+            
+            contenido.innerHTML = detalleHTML;
+            modal.classList.add('active');
+            
+        } catch (error) {
+            console.error('Error cargando detalle de venta:', error);
+            showNotification('Error cargando detalle de venta', 'error');
+        }
+    };
+    
+    window.verDetalleVenta(ventaId);
 }
 
-async function anularVenta(ventaId) {
-    // Verificar permiso
-    const tienePermiso = await hasPermission('anular_ventas');
-    if (!tienePermiso) {
-        showNotification('No tiene permisos para anular ventas', 'error');
-        return;
-    }
-    
-    if (!confirm('¿Está seguro de anular esta venta? Esta acción revertirá el stock y no se podrá deshacer.')) {
-        return;
-    }
-    
-    try {
-        const { error } = await supabaseClient
-            .from('ventas')
-            .update({
-                anulada: true,
-                usuario_anulacion_id: appState.usuario.id,
-                fecha_anulacion: new Date().toISOString()
-            })
-            .eq('id', ventaId);
-        
-        if (error) throw error;
-        
-        showNotification('Venta anulada correctamente', 'success');
-        cargarHistorial();
-        
-        // Recargar estado de caja si está abierta
-        if (appState.cajaActiva) {
-            cargarResumenCaja();
+function anularVenta(ventaId) {
+    // Esta función se llama desde HTML
+    window.anularVenta = async function(id) {
+        const tienePermiso = await hasPermission('anular_ventas');
+        if (!tienePermiso) {
+            showNotification('No tiene permisos para anular ventas', 'error');
+            return;
         }
         
-    } catch (error) {
-        console.error('Error anulando venta:', error);
-        showNotification('Error anulando venta', 'error');
-    }
+        if (!confirm('¿Está seguro de anular esta venta? Esta acción revertirá el stock y no se podrá deshacer.')) {
+            return;
+        }
+        
+        try {
+            const { error } = await supabaseClient
+                .from('ventas')
+                .update({
+                    anulada: true,
+                    usuario_anulacion_id: appState.usuario.id,
+                    fecha_anulacion: new Date().toISOString()
+                })
+                .eq('id', id);
+            
+            if (error) throw error;
+            
+            showNotification('Venta anulada correctamente', 'success');
+            cargarHistorial();
+            
+        } catch (error) {
+            console.error('Error anulando venta:', error);
+            showNotification('Error anulando venta', 'error');
+        }
+    };
+    
+    window.anularVenta(ventaId);
 }
 
 // ==================== REPORTES ====================
@@ -2189,7 +2206,7 @@ async function generarReporte() {
 }
 
 // ==================== CONFIGURACIÓN ====================
-async function cargarConfiguracion() {
+async function cargarConfiguracionTicket() {
     try {
         const { data: config, error } = await supabaseClient
             .from('configuracion')
@@ -2197,22 +2214,9 @@ async function cargarConfiguracion() {
         
         if (error) throw error;
         
-        // Guardar configuración en estado si es necesario
-        return config;
-    } catch (error) {
-        console.error('Error cargando configuración:', error);
-        return [];
-    }
-}
-
-async function cargarConfiguracionTicket() {
-    try {
-        const config = await cargarConfiguracion();
-        
         const form = document.getElementById('config-ticket-form');
         form.innerHTML = '';
         
-        // Agrupar configuraciones relacionadas con ticket
         const ticketConfigs = config.filter(item => 
             item.clave.startsWith('ticket_') || 
             item.clave.startsWith('empresa_')
@@ -2271,6 +2275,12 @@ async function guardarConfiguracionTicket() {
                 valor
             });
         });
+        
+        // Verificar que el usuario es administrador
+        if (appState.usuario?.rol !== 'Administrador') {
+            showNotification('Solo administradores pueden modificar la configuración', 'error');
+            return;
+        }
         
         // Actualizar cada configuración
         for (const config of updates) {
@@ -2410,54 +2420,125 @@ async function cargarConfiguracionPermisos() {
     }
 }
 
-async function guardarPermisosUsuario(usuarioId) {
-    try {
-        const checkboxes = document.querySelectorAll(`input[data-usuario="${usuarioId}"]`);
-        const permisosSeleccionados = [];
-        
-        checkboxes.forEach(checkbox => {
-            if (checkbox.checked) {
-                permisosSeleccionados.push({
-                    usuario_id: usuarioId,
-                    permiso: checkbox.dataset.permiso,
-                    activo: true
-                });
+function guardarPermisosUsuario(usuarioId) {
+    // Esta función se llama desde HTML
+    window.guardarPermisosUsuario = async function(id) {
+        try {
+            const checkboxes = document.querySelectorAll(`input[data-usuario="${id}"]`);
+            const permisosSeleccionados = [];
+            
+            checkboxes.forEach(checkbox => {
+                if (checkbox.checked) {
+                    permisosSeleccionados.push({
+                        usuario_id: id,
+                        permiso: checkbox.dataset.permiso,
+                        activo: true
+                    });
+                }
+            });
+            
+            // Verificar que el usuario es administrador
+            if (appState.usuario?.rol !== 'Administrador') {
+                showNotification('Solo administradores pueden modificar permisos', 'error');
+                return;
             }
-        });
-        
-        // Primero, desactivar todos los permisos del usuario
-        const { error: deleteError } = await supabaseClient
-            .from('permisos')
-            .update({ activo: false })
-            .eq('usuario_id', usuarioId);
-        
-        if (deleteError) throw deleteError;
-        
-        // Luego, insertar/actualizar los permisos seleccionados
-        if (permisosSeleccionados.length > 0) {
-            for (const permiso of permisosSeleccionados) {
-                const { error: upsertError } = await supabaseClient
-                    .from('permisos')
-                    .upsert(permiso, { onConflict: 'usuario_id,permiso' });
-                
-                if (upsertError) throw upsertError;
+            
+            // Primero, desactivar todos los permisos del usuario
+            const { error: deleteError } = await supabaseClient
+                .from('permisos')
+                .update({ activo: false })
+                .eq('usuario_id', id);
+            
+            if (deleteError) throw deleteError;
+            
+            // Luego, insertar/actualizar los permisos seleccionados
+            if (permisosSeleccionados.length > 0) {
+                for (const permiso of permisosSeleccionados) {
+                    const { error: upsertError } = await supabaseClient
+                        .from('permisos')
+                        .upsert(permiso, { onConflict: 'usuario_id,permiso' });
+                    
+                    if (upsertError) throw upsertError;
+                }
             }
+            
+            showNotification('Permisos actualizados correctamente', 'success');
+            
+        } catch (error) {
+            console.error('Error guardando permisos:', error);
+            showNotification('Error guardando permisos', 'error');
         }
-        
-        showNotification('Permisos actualizados correctamente', 'success');
-        
-    } catch (error) {
-        console.error('Error guardando permisos:', error);
-        showNotification('Error guardando permisos', 'error');
-    }
+    };
+    
+    window.guardarPermisosUsuario(usuarioId);
 }
 
 async function cargarConfiguracionUsuarios() {
-    // Implementar según necesidades
-    document.getElementById('config-usuarios-list').innerHTML = `
-        <p>Gestión de usuarios disponible para administradores.</p>
-        <p>Para agregar usuarios, utilice la consola de autenticación de Supabase.</p>
-    `;
+    // Solo administradores pueden ver esta sección
+    if (appState.usuario?.rol !== 'Administrador') {
+        document.getElementById('config-usuarios-list').innerHTML = `
+            <p class="text-warning">Solo administradores pueden acceder a esta sección</p>
+        `;
+        return;
+    }
+    
+    try {
+        const { data: usuarios, error } = await supabaseClient
+            .from('usuarios')
+            .select('*')
+            .order('username');
+        
+        if (error) throw error;
+        
+        const usuariosList = document.getElementById('config-usuarios-list');
+        
+        if (usuarios.length === 0) {
+            usuariosList.innerHTML = '<p>No hay usuarios registrados</p>';
+            return;
+        }
+        
+        let html = `
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Usuario</th>
+                        <th>Rol</th>
+                        <th>Estado</th>
+                        <th>Fecha Creación</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        usuarios.forEach(usuario => {
+            html += `
+                <tr>
+                    <td>${usuario.username}</td>
+                    <td>${usuario.rol}</td>
+                    <td>
+                        <span class="${usuario.activo ? 'text-success' : 'text-danger'}">
+                            ${usuario.activo ? 'Activo' : 'Inactivo'}
+                        </span>
+                    </td>
+                    <td>${new Date(usuario.creado_en).toLocaleDateString('es-ES')}</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                </tbody>
+            </table>
+            <p class="mt-3"><small>Nota: Para agregar nuevos usuarios, utilice la consola de autenticación de Supabase.</small></p>
+        `;
+        
+        usuariosList.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Error cargando usuarios:', error);
+        document.getElementById('config-usuarios-list').innerHTML = `
+            <p>Error cargando usuarios: ${error.message}</p>
+        `;
+    }
 }
 
 // ==================== UTILIDADES ====================
@@ -2465,11 +2546,14 @@ function showNotification(mensaje, tipo = 'info') {
     // Crear notificación
     const notification = document.createElement('div');
     notification.className = `notification ${tipo}`;
+    
+    let icon = 'info-circle';
+    if (tipo === 'success') icon = 'check-circle';
+    else if (tipo === 'error') icon = 'exclamation-circle';
+    else if (tipo === 'warning') icon = 'exclamation-triangle';
+    
     notification.innerHTML = `
-        <i class="fas fa-${tipo === 'success' ? 'check-circle' : 
-                           tipo === 'error' ? 'exclamation-circle' : 
-                           tipo === 'warning' ? 'exclamation-triangle' : 
-                           'info-circle'}"></i>
+        <i class="fas fa-${icon}"></i>
         <span>${mensaje}</span>
     `;
     
@@ -2480,6 +2564,12 @@ function showNotification(mensaje, tipo = 'info') {
         notification.remove();
     }, 5000);
 }
+
+// ==================== FUNCIONES GLOBALES PARA HTML ====================
+// Exportar funciones que se llaman desde HTML onclick
+window.actualizarCantidadCarrito = actualizarCantidadCarrito;
+window.eliminarDelCarrito = eliminarDelCarrito;
+window.eliminarPago = eliminarPago;
 
 // ==================== INICIALIZACIÓN ADICIONAL ====================
 // Detectar cambio de modo claro/oscuro
@@ -2500,19 +2590,8 @@ window.addEventListener('resize', function() {
 window.addEventListener('keydown', function(e) {
     if (e.key === 'F5') {
         e.preventDefault();
-        // Nuestra lógica de F5 ya está manejada en setupKeyboardShortcuts
+        // Nuestra lógica de F5 ya está manejada
     }
 });
-
-// Exportar funciones globales para uso en HTML
-window.editarProducto = editarProducto;
-window.eliminarProducto = eliminarProducto;
-window.actualizarCantidadCarrito = actualizarCantidadCarrito;
-window.eliminarDelCarrito = eliminarDelCarrito;
-window.eliminarPago = eliminarPago;
-window.agregarDesdeBuscador = agregarDesdeBuscador;
-window.verDetalleVenta = verDetalleVenta;
-window.anularVenta = anularVenta;
-window.guardarPermisosUsuario = guardarPermisosUsuario;
 
 console.log('Sistema POS cargado correctamente');

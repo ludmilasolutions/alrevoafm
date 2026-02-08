@@ -368,58 +368,117 @@
                     <h2><i class="fas fa-cash-register"></i> Gestión de Caja</h2>
                 </div>
                 
-                <div class="caja-status-panel" id="caja-detalle-status">
-                    <!-- Estado de caja se carga dinámicamente -->
-                    <div class="caja-cerrada">
-                        <i class="fas fa-lock fa-3x"></i>
-                        <h3>Caja Cerrada</h3>
-                        <p>No hay caja activa en este momento</p>
-                        <button id="btn-abrir-caja" class="btn btn-primary">
-                            <i class="fas fa-unlock"></i> Abrir Caja
-                        </button>
+                <div class="caja-tabs">
+                    <div class="tab-header">
+                        <button class="tab-btn active" data-tab="caja-actual">Caja Actual</button>
+                        <button class="tab-btn" data-tab="caja-historial">Historial de Cajas</button>
+                        <button class="tab-btn" data-tab="caja-detalles">Detalles Diarios</button>
                     </div>
-                </div>
-                
-                <div class="caja-operaciones" id="caja-operaciones" style="display: none;">
-                    <div class="caja-resumen">
-                        <h3>Resumen de Caja</h3>
-                        <div class="resumen-grid">
-                            <div class="resumen-item">
-                                <span>Monto Inicial:</span>
-                                <strong id="caja-monto-inicial">S/ 0.00</strong>
+                    
+                    <div class="tab-content active" id="caja-actual">
+                        <!-- Estado actual de caja -->
+                        <div class="caja-status-panel" id="caja-detalle-status">
+                            <!-- Cargado dinámicamente -->
+                        </div>
+                        
+                        <div class="caja-operaciones" id="caja-operaciones" style="display: none;">
+                            <div class="caja-resumen">
+                                <h3><i class="fas fa-chart-pie"></i> Resumen de Caja</h3>
+                                <div class="resumen-grid">
+                                    <div class="resumen-item">
+                                        <span><i class="fas fa-wallet"></i> Monto Inicial:</span>
+                                        <strong id="caja-monto-inicial">S/ 0.00</strong>
+                                    </div>
+                                    <div class="resumen-item">
+                                        <span><i class="fas fa-money-bill-wave"></i> Ventas Efectivo:</span>
+                                        <strong id="caja-ventas-efectivo">S/ 0.00</strong>
+                                    </div>
+                                    <div class="resumen-item">
+                                        <span><i class="fas fa-credit-card"></i> Ventas Tarjeta:</span>
+                                        <strong id="caja-ventas-tarjeta">S/ 0.00</strong>
+                                    </div>
+                                    <div class="resumen-item">
+                                        <span><i class="fas fa-qrcode"></i> Ventas Transferencia:</span>
+                                        <strong id="caja-ventas-transferencia">S/ 0.00</strong>
+                                    </div>
+                                    <div class="resumen-item total">
+                                        <span><i class="fas fa-calculator"></i> Total Estimado:</span>
+                                        <strong id="caja-total-estimado">S/ 0.00</strong>
+                                    </div>
+                                </div>
+                                
+                                <div class="ventas-resumen mt-4">
+                                    <h4><i class="fas fa-receipt"></i> Resumen de Ventas del Día</h4>
+                                    <div class="stats-grid" id="caja-ventas-dia">
+                                        <!-- Cargado dinámicamente -->
+                                    </div>
+                                </div>
                             </div>
-                            <div class="resumen-item">
-                                <span>Ventas Efectivo:</span>
-                                <strong id="caja-ventas-efectivo">S/ 0.00</strong>
-                            </div>
-                            <div class="resumen-item">
-                                <span>Ventas Tarjeta:</span>
-                                <strong id="caja-ventas-tarjeta">S/ 0.00</strong>
-                            </div>
-                            <div class="resumen-item">
-                                <span>Ventas Transferencia:</span>
-                                <strong id="caja-ventas-transferencia">S/ 0.00</strong>
-                            </div>
-                            <div class="resumen-item total">
-                                <span>Total Estimado:</span>
-                                <strong id="caja-total-estimado">S/ 0.00</strong>
+                            
+                            <div class="caja-cierre">
+                                <h3><i class="fas fa-lock"></i> Cierre de Caja</h3>
+                                <div class="cierre-form">
+                                    <div class="input-group">
+                                        <label for="cierre-monto-real"><i class="fas fa-money-check-alt"></i> Monto Real en Caja:</label>
+                                        <input type="number" id="cierre-monto-real" placeholder="0.00" step="0.01">
+                                    </div>
+                                    <div class="input-group">
+                                        <label for="cierre-observaciones"><i class="fas fa-comment-alt"></i> Observaciones:</label>
+                                        <textarea id="cierre-observaciones" rows="3" placeholder="Observaciones del cierre..."></textarea>
+                                    </div>
+                                    <div class="form-actions">
+                                        <button id="btn-cerrar-caja" class="btn btn-danger">
+                                            <i class="fas fa-lock"></i> Cerrar Caja
+                                        </button>
+                                        <button id="btn-imprimir-resumen" class="btn btn-secondary">
+                                            <i class="fas fa-print"></i> Imprimir Resumen
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
                     
-                    <div class="caja-cierre">
-                        <h3>Cierre de Caja</h3>
-                        <div class="input-group">
-                            <label for="cierre-monto-real">Monto Real en Caja:</label>
-                            <input type="number" id="cierre-monto-real" placeholder="0.00" step="0.01">
+                    <div class="tab-content" id="caja-historial">
+                        <h3><i class="fas fa-history"></i> Historial de Cajas</h3>
+                        <div class="filtros-panel">
+                            <div class="filtros-rango">
+                                <div class="input-group">
+                                    <label for="caja-fecha-inicio"><i class="fas fa-calendar-alt"></i> Desde:</label>
+                                    <input type="date" id="caja-fecha-inicio">
+                                </div>
+                                <div class="input-group">
+                                    <label for="caja-fecha-fin"><i class="fas fa-calendar-alt"></i> Hasta:</label>
+                                    <input type="date" id="caja-fecha-fin">
+                                </div>
+                                <button id="btn-filtrar-cajas" class="btn btn-primary">
+                                    <i class="fas fa-filter"></i> Filtrar
+                                </button>
+                            </div>
                         </div>
-                        <div class="input-group">
-                            <label for="cierre-observaciones">Observaciones:</label>
-                            <textarea id="cierre-observaciones" rows="3" placeholder="Observaciones del cierre..."></textarea>
+                        
+                        <div class="table-container">
+                            <div id="historial-cajas">
+                                <!-- Cargado dinámicamente -->
+                            </div>
                         </div>
-                        <button id="btn-cerrar-caja" class="btn btn-danger">
-                            <i class="fas fa-lock"></i> Cerrar Caja
-                        </button>
+                    </div>
+                    
+                    <div class="tab-content" id="caja-detalles">
+                        <h3><i class="fas fa-file-invoice-dollar"></i> Detalles Diarios de Caja</h3>
+                        <div class="filtros-panel">
+                            <div class="input-group">
+                                <label for="detalle-fecha"><i class="fas fa-calendar-day"></i> Seleccionar Fecha:</label>
+                                <input type="date" id="detalle-fecha" value="">
+                            </div>
+                            <button id="btn-cargar-detalles" class="btn btn-primary">
+                                <i class="fas fa-search"></i> Cargar Detalles
+                            </button>
+                        </div>
+                        
+                        <div id="detalles-caja-dia">
+                            <!-- Cargado dinámicamente -->
+                        </div>
                     </div>
                 </div>
             </section>

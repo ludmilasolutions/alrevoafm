@@ -381,10 +381,39 @@ function setupEventListeners() {
         });
     });
     
+    // Auto-calcular cuando se selecciona medio de pago
+    document.querySelectorAll('.btn-pago').forEach(btn => {
+        btn.addEventListener('click', function() {
+            seleccionarMedioPago(this.dataset.medio);
+            // Auto-completar monto con lo que falta
+            setTimeout(() => {
+                const totalAPagarEl = document.getElementById('carrito-total');
+                const pagoMonto = document.getElementById('pago-monto');
+                if (totalAPagarEl && pagoMonto) {
+                    const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('S/ ', ''));
+                    const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
+                    const falta = totalAPagar - totalPagado;
+                    
+                    if (falta > 0) {
+                        pagoMonto.value = falta.toFixed(2);
+                        pagoMonto.select();
+                    }
+                }
+            }, 100);
+        });
+    });
+    
     const btnAgregarPago = document.getElementById('btn-agregar-pago');
     if (btnAgregarPago) {
         btnAgregarPago.addEventListener('click', agregarPago);
     }
+    
+    // Permitir Enter para agregar pago
+    document.getElementById('pago-monto')?.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            agregarPago();
+        }
+    });
     
     const btnFinalizarVenta = document.getElementById('btn-finalizar-venta');
     if (btnFinalizarVenta) {
@@ -441,6 +470,11 @@ function setupEventListeners() {
         btnCerrarCaja.addEventListener('click', cerrarCaja);
     }
     
+    // Event listeners para nuevas funcionalidades de caja
+    document.getElementById('btn-filtrar-cajas')?.addEventListener('click', cargarHistorialCajas);
+    document.getElementById('btn-cargar-detalles')?.addEventListener('click', cargarDetallesCajaDia);
+    document.getElementById('btn-imprimir-resumen')?.addEventListener('click', imprimirResumenCaja);
+    
     // Reportes
     const btnGenerarReporte = document.getElementById('btn-generar-reporte');
     if (btnGenerarReporte) {
@@ -478,13 +512,10 @@ function setupEventListeners() {
         btnBuscarProductos.addEventListener('click', buscarProductosManual);
     }
     
-    // Formulario producto - IMPORTANTE: verificar que exista
+    // Formulario producto
     const formProducto = document.getElementById('form-producto');
     if (formProducto) {
-        console.log('Formulario producto encontrado, agregando listener');
         formProducto.addEventListener('submit', guardarProducto);
-    } else {
-        console.warn('Formulario producto NO encontrado');
     }
     
     // Cálculo automático de precio
@@ -859,7 +890,7 @@ function actualizarCarritoUI() {
     btnFinalizar.disabled = appState.carrito.length === 0 || appState.pagos.length === 0;
 }
 
-function actualizarCantidadCarrito(index, delta) {
+window.actualizarCantidadCarrito = function(index, delta) {
     const item = appState.carrito[index];
     const nuevaCantidad = item.cantidad + delta;
     
@@ -875,13 +906,13 @@ function actualizarCantidadCarrito(index, delta) {
     
     item.cantidad = nuevaCantidad;
     actualizarCarritoUI();
-}
+};
 
-function eliminarDelCarrito(index) {
+window.eliminarDelCarrito = function(index) {
     appState.carrito.splice(index, 1);
     actualizarCarritoUI();
     showNotification('Producto eliminado del carrito', 'info');
-}
+};
 
 function limpiarCarrito() {
     if (appState.carrito.length === 0) return;
@@ -947,6 +978,25 @@ function seleccionarMedioPago(medio) {
     }
 }
 
+function getMedioPagoIcon(medio) {
+    switch(medio) {
+        case 'EFECTIVO': return 'fas fa-money-bill-wave';
+        case 'TARJETA': return 'fas fa-credit-card';
+        case 'TRANSFERENCIA/QR': return 'fas fa-qrcode';
+        default: return 'fas fa-money-check-alt';
+    }
+}
+
+window.eliminarPagosPorMedio = function(medio) {
+    if (!confirm(`¿Eliminar todos los pagos de ${medio}?`)) {
+        return;
+    }
+    
+    appState.pagos = appState.pagos.filter(pago => pago.medio !== medio);
+    actualizarPagosUI();
+    showNotification(`Pagos de ${medio} eliminados`, 'info');
+};
+
 function agregarPago() {
     const medioElement = document.querySelector('.btn-pago.active');
     if (!medioElement) {
@@ -958,22 +1008,28 @@ function agregarPago() {
     const pagoMonto = document.getElementById('pago-monto');
     if (!pagoMonto) return;
     
-    const monto = parseFloat(pagoMonto.value);
+    // Calcular automáticamente si el campo está vacío o tiene 0
+    let monto = parseFloat(pagoMonto.value);
     
     if (!monto || monto <= 0) {
-        showNotification('Ingrese un monto válido', 'warning');
-        return;
+        // Calcular lo que falta
+        const totalAPagarEl = document.getElementById('carrito-total');
+        if (!totalAPagarEl) return;
+        
+        const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('S/ ', ''));
+        const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
+        const falta = totalAPagar - totalPagado;
+        
+        if (falta <= 0) {
+            showNotification('Ya se pagó el total completo', 'warning');
+            return;
+        }
+        
+        monto = falta;
     }
     
-    // Verificar que no exceda el total
-    const totalAPagarEl = document.getElementById('carrito-total');
-    if (!totalAPagarEl) return;
-    
-    const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('S/ ', ''));
-    const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
-    
-    if (totalPagado + monto > totalAPagar) {
-        showNotification('El monto excede el total a pagar', 'warning');
+    if (monto <= 0) {
+        showNotification('Ingrese un monto válido', 'warning');
         return;
     }
     
@@ -983,9 +1039,11 @@ function agregarPago() {
     // Actualizar UI
     actualizarPagosUI();
     
-    // Resetear campos
+    // Resetear campo y mantener foco
     pagoMonto.value = '';
-    showNotification('Pago agregado correctamente', 'success');
+    pagoMonto.focus();
+    
+    showNotification(`Pago de S/ ${monto.toFixed(2)} agregado (${medio})`, 'success');
 }
 
 function actualizarPagosUI() {
@@ -1010,27 +1068,39 @@ function actualizarPagosUI() {
         return;
     }
     
-    // Calcular total pagado
-    const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
+    // Calcular total pagado agrupando por medio de pago
+    const pagosAgrupados = {};
+    let totalPagado = 0;
+    
+    appState.pagos.forEach(pago => {
+        if (!pagosAgrupados[pago.medio]) {
+            pagosAgrupados[pago.medio] = 0;
+        }
+        pagosAgrupados[pago.medio] += pago.monto;
+        totalPagado += pago.monto;
+    });
+    
+    // Calcular total a pagar
     const totalAPagarEl = document.getElementById('carrito-total');
     if (!totalAPagarEl) return;
     
     const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('S/ ', ''));
     const cambio = totalPagado - totalAPagar;
     
-    // Mostrar pagos
+    // Mostrar pagos agrupados
     container.innerHTML = '';
-    appState.pagos.forEach((pago, index) => {
+    Object.entries(pagosAgrupados).forEach(([medio, monto], index) => {
         const div = document.createElement('div');
         div.className = 'pago-item';
         div.innerHTML = `
-            <div>
-                <strong>${pago.medio}</strong>
+            <div class="pago-medio">
+                <i class="${getMedioPagoIcon(medio)}"></i>
+                <strong>${medio}</strong>
             </div>
-            <div>
-                S/ ${pago.monto.toFixed(2)}
+            <div class="pago-monto">
+                S/ ${monto.toFixed(2)}
             </div>
-            <button class="pago-item-remove" onclick="eliminarPago(${index})">
+            <button class="pago-item-remove" onclick="eliminarPagosPorMedio('${medio}')" title="Eliminar todos los pagos de ${medio}">
                 <i class="fas fa-times"></i>
             </button>
         `;
@@ -1040,17 +1110,43 @@ function actualizarPagosUI() {
     
     // Actualizar totales
     totalPagadoEl.textContent = `S/ ${totalPagado.toFixed(2)}`;
-    cambioEl.textContent = `S/ ${cambio >= 0 ? cambio.toFixed(2) : '0.00'}`;
     
-    // Habilitar botón finalizar si se cubrió el total
-    btnFinalizar.disabled = appState.carrito.length === 0 || totalPagado < totalAPagar;
+    if (cambio >= 0) {
+        cambioEl.textContent = `S/ ${cambio.toFixed(2)}`;
+        cambioEl.className = 'cambio-positivo';
+    } else {
+        cambioEl.textContent = `S/ ${Math.abs(cambio).toFixed(2)}`;
+        cambioEl.className = 'cambio-negativo';
+    }
+    
+    // Actualizar botón finalizar
+    const puedeFinalizar = appState.carrito.length > 0 && totalPagado >= totalAPagar;
+    btnFinalizar.disabled = !puedeFinalizar;
+    
+    // Actualizar placeholder del input de pago
+    const pagoMontoInput = document.getElementById('pago-monto');
+    if (pagoMontoInput) {
+        if (cambio < 0) {
+            pagoMontoInput.placeholder = `Falta: S/ ${Math.abs(cambio).toFixed(2)}`;
+        } else if (cambio > 0) {
+            pagoMontoInput.placeholder = `Vuelto: S/ ${cambio.toFixed(2)}`;
+        } else {
+            const medioActivo = document.querySelector('.btn-pago.active');
+            pagoMontoInput.placeholder = medioActivo ? `Monto en ${medioActivo.dataset.medio}` : 'Monto a pagar';
+        }
+    }
+    
+    // Si ya se pagó completo, enfocar botón finalizar
+    if (puedeFinalizar) {
+        setTimeout(() => btnFinalizar.focus(), 100);
+    }
 }
 
-function eliminarPago(index) {
+window.eliminarPago = function(index) {
     appState.pagos.splice(index, 1);
     actualizarPagosUI();
     showNotification('Pago eliminado', 'info');
-}
+};
 
 // ==================== FINALIZACIÓN DE VENTA ====================
 async function finalizarVenta() {
@@ -1400,6 +1496,7 @@ async function verificarCajaActiva() {
 
 async function cargarEstadoCaja() {
     await verificarCajaActiva();
+    await cargarVentasDelDiaEnCaja();
 }
 
 function actualizarUIEstadoCaja() {
@@ -1694,6 +1791,740 @@ async function cerrarCaja() {
     }
 }
 
+// ==================== HISTORIAL DE CAJAS MEJORADO ====================
+async function cargarHistorialCajas() {
+    try {
+        const fechaInicio = document.getElementById('caja-fecha-inicio');
+        const fechaFin = document.getElementById('caja-fecha-fin');
+        
+        // Establecer fechas por defecto (últimos 30 días)
+        const hoy = new Date();
+        const hace30Dias = new Date();
+        hace30Dias.setDate(hoy.getDate() - 30);
+        
+        if (fechaInicio && !fechaInicio.value) {
+            fechaInicio.value = hace30Dias.toISOString().split('T')[0];
+        }
+        if (fechaFin && !fechaFin.value) {
+            fechaFin.value = hoy.toISOString().split('T')[0];
+        }
+        
+        const fechaInicioVal = fechaInicio?.value || hace30Dias.toISOString().split('T')[0];
+        const fechaFinVal = fechaFin?.value || hoy.toISOString().split('T')[0];
+        
+        // Ajustar fecha fin para incluir todo el día
+        const fechaFinAjustada = new Date(fechaFinVal);
+        fechaFinAjustada.setHours(23, 59, 59, 999);
+        
+        const { data: cajas, error } = await supabaseClient
+            .from('caja')
+            .select(`
+                *,
+                usuarios (username)
+            `)
+            .gte('fecha_apertura', fechaInicioVal)
+            .lte('fecha_apertura', fechaFinAjustada.toISOString())
+            .order('fecha_apertura', { ascending: false });
+        
+        if (error) throw error;
+        
+        const contenedor = document.getElementById('historial-cajas');
+        if (!contenedor) return;
+        
+        if (cajas.length === 0) {
+            contenedor.innerHTML = `
+                <div class="empty-reportes">
+                    <i class="fas fa-cash-register fa-3x"></i>
+                    <p>No hay cajas en este período</p>
+                </div>
+            `;
+            return;
+        }
+        
+        let html = `
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Fecha Apertura</th>
+                        <th>Fecha Cierre</th>
+                        <th>Usuario</th>
+                        <th>Monto Inicial</th>
+                        <th>Total Efectivo</th>
+                        <th>Total Tarjeta</th>
+                        <th>Total Transferencia</th>
+                        <th>Total Estimado</th>
+                        <th>Monto Real</th>
+                        <th>Diferencia</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        cajas.forEach(caja => {
+            const totalVentas = (parseFloat(caja.total_ventas_efectivo) || 0) +
+                               (parseFloat(caja.total_ventas_tarjeta) || 0) +
+                               (parseFloat(caja.total_ventas_transferencia) || 0);
+            
+            const totalEstimado = (parseFloat(caja.monto_inicial) || 0) + totalVentas;
+            const montoReal = parseFloat(caja.monto_real) || totalEstimado;
+            const diferencia = montoReal - totalEstimado;
+            
+            const estado = caja.fecha_cierre ? 'Cerrada' : 'Abierta';
+            const estadoClase = caja.fecha_cierre ? 'text-success' : 'text-warning';
+            
+            html += `
+                <tr>
+                    <td>${caja.id}</td>
+                    <td>${new Date(caja.fecha_apertura).toLocaleString('es-ES')}</td>
+                    <td>${caja.fecha_cierre ? new Date(caja.fecha_cierre).toLocaleString('es-ES') : 'En curso'}</td>
+                    <td>${caja.usuarios?.username || 'N/A'}</td>
+                    <td>S/ ${parseFloat(caja.monto_inicial).toFixed(2)}</td>
+                    <td>S/ ${parseFloat(caja.total_ventas_efectivo || 0).toFixed(2)}</td>
+                    <td>S/ ${parseFloat(caja.total_ventas_tarjeta || 0).toFixed(2)}</td>
+                    <td>S/ ${parseFloat(caja.total_ventas_transferencia || 0).toFixed(2)}</td>
+                    <td>S/ ${totalEstimado.toFixed(2)}</td>
+                    <td>S/ ${montoReal.toFixed(2)}</td>
+                    <td class="${diferencia >= 0 ? 'text-success' : 'text-danger'}">
+                        ${diferencia >= 0 ? '+' : ''}S/ ${diferencia.toFixed(2)}
+                    </td>
+                    <td><span class="${estadoClase}">${estado}</span></td>
+                    <td class="acciones">
+                        <button class="btn btn-sm" onclick="verDetalleCaja('${caja.id}')">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        ${!caja.fecha_cierre && appState.usuario?.rol === 'Administrador' ? `
+                            <button class="btn btn-sm btn-danger" onclick="forzarCerrarCaja('${caja.id}')">
+                                <i class="fas fa-lock"></i>
+                            </button>
+                        ` : ''}
+                    </td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                </tbody>
+            </table>
+            
+            <div class="mt-4 p-3 bg-light rounded">
+                <h5>Resumen del Período</h5>
+                <div class="d-flex justify-content-between">
+                    <span>Total Cajas: <strong>${cajas.length}</strong></span>
+                    <span>Cajas Abiertas: <strong>${cajas.filter(c => !c.fecha_cierre).length}</strong></span>
+                    <span>Cajas Cerradas: <strong>${cajas.filter(c => c.fecha_cierre).length}</strong></span>
+                </div>
+            </div>
+        `;
+        
+        contenedor.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Error cargando historial de cajas:', error);
+        showNotification('Error cargando historial de cajas', 'error');
+    }
+}
+
+async function cargarDetallesCajaDia() {
+    try {
+        const fechaInput = document.getElementById('detalle-fecha');
+        const fecha = fechaInput?.value || new Date().toISOString().split('T')[0];
+        
+        if (!fecha) {
+            showNotification('Seleccione una fecha', 'warning');
+            return;
+        }
+        
+        // Ajustar fecha para incluir todo el día
+        const fechaInicio = new Date(fecha);
+        fechaInicio.setHours(0, 0, 0, 0);
+        
+        const fechaFin = new Date(fecha);
+        fechaFin.setHours(23, 59, 59, 999);
+        
+        // Obtener cajas de ese día
+        const { data: cajas, error: cajasError } = await supabaseClient
+            .from('caja')
+            .select(`
+                *,
+                usuarios (username)
+            `)
+            .gte('fecha_apertura', fechaInicio.toISOString())
+            .lte('fecha_apertura', fechaFin.toISOString());
+        
+        if (cajasError) throw cajasError;
+        
+        // Obtener ventas de ese día
+        const { data: ventas, error: ventasError } = await supabaseClient
+            .from('ventas')
+            .select(`
+                *,
+                pagos_venta (medio_pago, monto),
+                usuarios (username)
+            `)
+            .gte('fecha', fechaInicio.toISOString())
+            .lte('fecha', fechaFin.toISOString())
+            .eq('anulada', false);
+        
+        if (ventasError) throw ventasError;
+        
+        const contenedor = document.getElementById('detalles-caja-dia');
+        if (!contenedor) return;
+        
+        if (cajas.length === 0 && ventas.length === 0) {
+            contenedor.innerHTML = `
+                <div class="empty-reportes">
+                    <i class="fas fa-calendar-day fa-3x"></i>
+                    <p>No hay actividad registrada para esta fecha</p>
+                </div>
+            `;
+            return;
+        }
+        
+        let html = '<div class="row">';
+        
+        // Resumen de cajas
+        if (cajas.length > 0) {
+            html += `
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="fas fa-cash-register"></i> Cajas del Día</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="list-group">
+            `;
+            
+            cajas.forEach(caja => {
+                const totalVentas = (parseFloat(caja.total_ventas_efectivo) || 0) +
+                                   (parseFloat(caja.total_ventas_tarjeta) || 0) +
+                                   (parseFloat(caja.total_ventas_transferencia) || 0);
+                
+                html += `
+                    <div class="list-item">
+                        <div class="d-flex justify-content-between">
+                            <strong>Caja ${caja.id}</strong>
+                            <span class="${caja.fecha_cierre ? 'text-success' : 'text-warning'}">
+                                ${caja.fecha_cierre ? 'Cerrada' : 'Abierta'}
+                            </span>
+                        </div>
+                        <div class="text-muted small">Usuario: ${caja.usuarios?.username || 'N/A'}</div>
+                        <div class="mt-2">
+                            <div class="d-flex justify-content-between">
+                                <span>Inicial:</span>
+                                <span>S/ ${parseFloat(caja.monto_inicial).toFixed(2)}</span>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span>Ventas:</span>
+                                <span>S/ ${totalVentas.toFixed(2)}</span>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span>Total:</span>
+                                <span>S/ ${(parseFloat(caja.monto_inicial) + totalVentas).toFixed(2)}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += `
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Resumen de ventas
+        if (ventas.length > 0) {
+            let totalVentas = 0;
+            let ventasEfectivo = 0;
+            let ventasTarjeta = 0;
+            let ventasTransferencia = 0;
+            let cantidadVentas = ventas.length;
+            
+            ventas.forEach(venta => {
+                totalVentas += parseFloat(venta.total) || 0;
+                
+                if (venta.pagos_venta && venta.pagos_venta.length > 0) {
+                    venta.pagos_venta.forEach(pago => {
+                        const monto = parseFloat(pago.monto) || 0;
+                        if (pago.medio_pago === 'EFECTIVO') {
+                            ventasEfectivo += monto;
+                        } else if (pago.medio_pago === 'TARJETA') {
+                            ventasTarjeta += monto;
+                        } else if (pago.medio_pago === 'TRANSFERENCIA/QR') {
+                            ventasTransferencia += monto;
+                        }
+                    });
+                }
+            });
+            
+            html += `
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="fas fa-receipt"></i> Ventas del Día</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="resumen-grid">
+                                <div class="resumen-item">
+                                    <span>Cantidad de Ventas:</span>
+                                    <strong>${cantidadVentas}</strong>
+                                </div>
+                                <div class="resumen-item">
+                                    <span>Total Ventas:</span>
+                                    <strong>S/ ${totalVentas.toFixed(2)}</strong>
+                                </div>
+                                <div class="resumen-item">
+                                    <span>Efectivo:</span>
+                                    <strong>S/ ${ventasEfectivo.toFixed(2)}</strong>
+                                </div>
+                                <div class="resumen-item">
+                                    <span>Tarjeta:</span>
+                                    <strong>S/ ${ventasTarjeta.toFixed(2)}</strong>
+                                </div>
+                                <div class="resumen-item">
+                                    <span>Transferencia:</span>
+                                    <strong>S/ ${ventasTransferencia.toFixed(2)}</strong>
+                                </div>
+                            </div>
+                            
+                            <div class="mt-4">
+                                <h6>Últimas Ventas</h6>
+                                <div class="list-group" style="max-height: 300px; overflow-y: auto;">
+            `;
+            
+            ventas.slice(0, 10).forEach(venta => {
+                html += `
+                    <div class="list-item">
+                        <div class="d-flex justify-content-between">
+                            <strong>${venta.ticket_id}</strong>
+                            <span>S/ ${parseFloat(venta.total).toFixed(2)}</span>
+                        </div>
+                        <div class="text-muted small">
+                            ${new Date(venta.fecha).toLocaleTimeString('es-ES')} - 
+                            ${venta.usuarios?.username || 'N/A'}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += `
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        html += '</div>';
+        
+        contenedor.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Error cargando detalles del día:', error);
+        showNotification('Error cargando detalles del día', 'error');
+    }
+}
+
+async function cargarVentasDelDiaEnCaja() {
+    if (!appState.cajaActiva) return;
+    
+    try {
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+        
+        const { data: ventas, error } = await supabaseClient
+            .from('ventas')
+            .select(`
+                id,
+                total,
+                fecha,
+                pagos_venta (medio_pago, monto)
+            `)
+            .eq('caja_id', appState.cajaActiva.id)
+            .gte('fecha', hoy.toISOString())
+            .eq('anulada', false);
+        
+        if (error) throw error;
+        
+        const contenedor = document.getElementById('caja-ventas-dia');
+        if (!contenedor) return;
+        
+        let totalVentas = 0;
+        let cantidadVentas = ventas.length;
+        
+        ventas.forEach(venta => {
+            totalVentas += parseFloat(venta.total) || 0;
+        });
+        
+        const ticketPromedio = cantidadVentas > 0 ? totalVentas / cantidadVentas : 0;
+        
+        contenedor.innerHTML = `
+            <div class="stats-item">
+                <div class="stats-icon bg-primary">
+                    <i class="fas fa-shopping-cart"></i>
+                </div>
+                <div class="stats-info">
+                    <h4>${cantidadVentas}</h4>
+                    <span>Ventas Realizadas</span>
+                </div>
+            </div>
+            <div class="stats-item">
+                <div class="stats-icon bg-success">
+                    <i class="fas fa-money-bill-wave"></i>
+                </div>
+                <div class="stats-info">
+                    <h4>S/ ${totalVentas.toFixed(2)}</h4>
+                    <span>Total del Día</span>
+                </div>
+            </div>
+            <div class="stats-item">
+                <div class="stats-icon bg-info">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="stats-info">
+                    <h4>S/ ${ticketPromedio.toFixed(2)}</h4>
+                    <span>Ticket Promedio</span>
+                </div>
+            </div>
+        `;
+        
+    } catch (error) {
+        console.error('Error cargando ventas del día:', error);
+    }
+}
+
+window.verDetalleCaja = async function(cajaId) {
+    try {
+        const { data: caja, error: cajaError } = await supabaseClient
+            .from('caja')
+            .select(`
+                *,
+                usuarios (username)
+            `)
+            .eq('id', cajaId)
+            .single();
+        
+        if (cajaError) throw cajaError;
+        
+        // Obtener ventas de esta caja
+        const { data: ventas, error: ventasError } = await supabaseClient
+            .from('ventas')
+            .select(`
+                ticket_id,
+                total,
+                fecha,
+                pagos_venta (medio_pago, monto)
+            `)
+            .eq('caja_id', cajaId)
+            .eq('anulada', false);
+        
+        if (ventasError) throw ventasError;
+        
+        let detalleHTML = `
+            <div class="card">
+                <div class="card-header">
+                    <h4><i class="fas fa-cash-register"></i> Detalle de Caja ${cajaId}</h4>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <p><strong>Usuario:</strong> ${caja.usuarios?.username || 'N/A'}</p>
+                            <p><strong>Fecha Apertura:</strong> ${new Date(caja.fecha_apertura).toLocaleString('es-ES')}</p>
+                            <p><strong>Monto Inicial:</strong> S/ ${parseFloat(caja.monto_inicial).toFixed(2)}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Fecha Cierre:</strong> ${caja.fecha_cierre ? new Date(caja.fecha_cierre).toLocaleString('es-ES') : 'En curso'}</p>
+                            <p><strong>Total Ventas Efectivo:</strong> S/ ${parseFloat(caja.total_ventas_efectivo || 0).toFixed(2)}</p>
+                            <p><strong>Total Ventas Tarjeta:</strong> S/ ${parseFloat(caja.total_ventas_tarjeta || 0).toFixed(2)}</p>
+                            <p><strong>Total Ventas Transferencia:</strong> S/ ${parseFloat(caja.total_ventas_transferencia || 0).toFixed(2)}</p>
+                        </div>
+                    </div>
+        `;
+        
+        if (ventas.length > 0) {
+            detalleHTML += `
+                <h5>Ventas de esta caja (${ventas.length})</h5>
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Ticket</th>
+                                <th>Fecha</th>
+                                <th>Total</th>
+                                <th>Medios de Pago</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            ventas.forEach(venta => {
+                const medios = {};
+                if (venta.pagos_venta && venta.pagos_venta.length > 0) {
+                    venta.pagos_venta.forEach(pago => {
+                        if (!medios[pago.medio_pago]) {
+                            medios[pago.medio_pago] = 0;
+                        }
+                        medios[pago.medio_pago] += parseFloat(pago.monto);
+                    });
+                }
+                
+                const mediosTexto = Object.entries(medios)
+                    .map(([medio, monto]) => `${medio}: S/ ${monto.toFixed(2)}`)
+                    .join(', ');
+                
+                detalleHTML += `
+                    <tr>
+                        <td>${venta.ticket_id}</td>
+                        <td>${new Date(venta.fecha).toLocaleTimeString('es-ES')}</td>
+                        <td>S/ ${parseFloat(venta.total).toFixed(2)}</td>
+                        <td>${mediosTexto || 'Sin pagos'}</td>
+                    </tr>
+                `;
+            });
+            
+            detalleHTML += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        } else {
+            detalleHTML += '<p>No hay ventas registradas para esta caja.</p>';
+        }
+        
+        detalleHTML += `
+                </div>
+            </div>
+        `;
+        
+        // Mostrar en modal
+        const modal = document.getElementById('modal-detalle-venta');
+        const titulo = document.getElementById('modal-venta-titulo');
+        const contenido = document.getElementById('detalle-venta-contenido');
+        
+        if (modal && titulo && contenido) {
+            titulo.innerHTML = `<i class="fas fa-cash-register"></i> Detalle de Caja: ${cajaId}`;
+            contenido.innerHTML = detalleHTML;
+            modal.classList.add('active');
+        } else {
+            // Si no hay modal, mostrar en alerta
+            alert(detalleHTML.replace(/<[^>]*>/g, ''));
+        }
+        
+    } catch (error) {
+        console.error('Error cargando detalle de caja:', error);
+        showNotification('Error cargando detalle de caja', 'error');
+    }
+};
+
+window.forzarCerrarCaja = async function(cajaId) {
+    if (!confirm('¿Está seguro de forzar el cierre de esta caja? Esta acción no se puede deshacer.')) {
+        return;
+    }
+    
+    try {
+        const { error } = await supabaseClient
+            .from('caja')
+            .update({
+                fecha_cierre: new Date().toISOString(),
+                observaciones: 'Cierre forzado por administrador'
+            })
+            .eq('id', cajaId);
+        
+        if (error) throw error;
+        
+        showNotification('Caja cerrada forzosamente', 'success');
+        cargarHistorialCajas();
+        
+    } catch (error) {
+        console.error('Error forzando cierre de caja:', error);
+        showNotification('Error forzando cierre de caja', 'error');
+    }
+};
+
+async function imprimirResumenCaja() {
+    if (!appState.cajaActiva) {
+        showNotification('No hay caja activa', 'warning');
+        return;
+    }
+    
+    try {
+        const { data: caja, error: cajaError } = await supabaseClient
+            .from('caja')
+            .select(`
+                *,
+                usuarios (username)
+            `)
+            .eq('id', appState.cajaActiva.id)
+            .single();
+        
+        if (cajaError) throw cajaError;
+        
+        // Obtener ventas de la caja
+        const { data: ventas, error: ventasError } = await supabaseClient
+            .from('ventas')
+            .select(`
+                id,
+                ticket_id,
+                total,
+                fecha,
+                pagos_venta (medio_pago, monto)
+            `)
+            .eq('caja_id', appState.cajaActiva.id)
+            .eq('anulada', false);
+        
+        if (ventasError) throw ventasError;
+        
+        // Calcular totales
+        let totalVentas = 0;
+        let ventasEfectivo = 0;
+        let ventasTarjeta = 0;
+        let ventasTransferencia = 0;
+        
+        ventas.forEach(venta => {
+            totalVentas += parseFloat(venta.total) || 0;
+            
+            if (venta.pagos_venta && venta.pagos_venta.length > 0) {
+                venta.pagos_venta.forEach(pago => {
+                    const monto = parseFloat(pago.monto) || 0;
+                    if (pago.medio_pago === 'EFECTIVO') {
+                        ventasEfectivo += monto;
+                    } else if (pago.medio_pago === 'TARJETA') {
+                        ventasTarjeta += monto;
+                    } else if (pago.medio_pago === 'TRANSFERENCIA/QR') {
+                        ventasTransferencia += monto;
+                    }
+                });
+            }
+        });
+        
+        const totalEstimado = (parseFloat(caja.monto_inicial) || 0) + totalVentas;
+        const montoReal = parseFloat(document.getElementById('cierre-monto-real').value) || totalEstimado;
+        const diferencia = montoReal - totalEstimado;
+        
+        // Crear ventana de impresión
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Resumen Caja ${caja.id}</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 20px; }
+                    .header { text-align: center; margin-bottom: 30px; }
+                    .header h1 { color: #333; margin-bottom: 5px; }
+                    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+                    .info-item { padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+                    .info-item h3 { margin-top: 0; color: #666; font-size: 14px; }
+                    .info-item .valor { font-size: 18px; font-weight: bold; color: #333; }
+                    .table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+                    .table th, .table td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+                    .table th { background: #f5f5f5; }
+                    .totales { margin-top: 30px; padding: 20px; background: #f9f9f9; border-radius: 5px; }
+                    .firma { margin-top: 50px; text-align: center; }
+                    .firma-line { border-top: 1px solid #333; width: 300px; margin: 0 auto 10px; }
+                    @media print { body { margin: 0; padding: 10px; } }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>RESUMEN DE CAJA</h1>
+                    <p>ID: ${caja.id} | Fecha: ${new Date(caja.fecha_apertura).toLocaleString('es-ES')}</p>
+                    <p>Usuario: ${caja.usuarios?.username || 'N/A'}</p>
+                </div>
+                
+                <div class="info-grid">
+                    <div class="info-item">
+                        <h3>Monto Inicial</h3>
+                        <div class="valor">S/ ${parseFloat(caja.monto_inicial).toFixed(2)}</div>
+                    </div>
+                    <div class="info-item">
+                        <h3>Ventas Totales</h3>
+                        <div class="valor">S/ ${totalVentas.toFixed(2)}</div>
+                    </div>
+                    <div class="info-item">
+                        <h3>Total Estimado</h3>
+                        <div class="valor">S/ ${totalEstimado.toFixed(2)}</div>
+                    </div>
+                    <div class="info-item">
+                        <h3>Monto Real</h3>
+                        <div class="valor">S/ ${montoReal.toFixed(2)}</div>
+                    </div>
+                </div>
+                
+                <h3>Desglose por Medio de Pago</h3>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Medio de Pago</th>
+                            <th>Total</th>
+                            <th>Porcentaje</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>EFECTIVO</td>
+                            <td>S/ ${ventasEfectivo.toFixed(2)}</td>
+                            <td>${totalVentas > 0 ? ((ventasEfectivo / totalVentas) * 100).toFixed(1) : '0'}%</td>
+                        </tr>
+                        <tr>
+                            <td>TARJETA</td>
+                            <td>S/ ${ventasTarjeta.toFixed(2)}</td>
+                            <td>${totalVentas > 0 ? ((ventasTarjeta / totalVentas) * 100).toFixed(1) : '0'}%</td>
+                        </tr>
+                        <tr>
+                            <td>TRANSFERENCIA/QR</td>
+                            <td>S/ ${ventasTransferencia.toFixed(2)}</td>
+                            <td>${totalVentas > 0 ? ((ventasTransferencia / totalVentas) * 100).toFixed(1) : '0'}%</td>
+                        </tr>
+                    </tbody>
+                </table>
+                
+                <div class="totales">
+                    <h3>Resumen Final</h3>
+                    <div style="display: flex; justify-content: space-between; margin: 10px 0;">
+                        <span>Total Estimado:</span>
+                        <strong>S/ ${totalEstimado.toFixed(2)}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin: 10px 0;">
+                        <span>Monto Real:</span>
+                        <strong>S/ ${montoReal.toFixed(2)}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin: 10px 0; padding-top: 10px; border-top: 2px solid #333;">
+                        <span>Diferencia:</span>
+                        <strong class="${diferencia >= 0 ? 'text-success' : 'text-danger'}">
+                            ${diferencia >= 0 ? '+' : ''}S/ ${Math.abs(diferencia).toFixed(2)}
+                        </strong>
+                    </div>
+                </div>
+                
+                <div class="firma">
+                    <div class="firma-line"></div>
+                    <p>Firma del Responsable</p>
+                </div>
+                
+                <script>
+                    window.onload = function() {
+                        window.print();
+                        setTimeout(function() { window.close(); }, 1000);
+                    };
+                </script>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
+        
+    } catch (error) {
+        console.error('Error generando resumen:', error);
+        showNotification('Error generando resumen', 'error');
+    }
+}
+
 // ==================== PRODUCTOS ====================
 async function cargarProductos() {
     try {
@@ -1849,7 +2680,10 @@ function calcularMargen() {
 async function guardarProducto(e) {
     e.preventDefault();
     
-    console.log('Formulario enviado'); // Para debug
+    console.log('Formulario enviado - Depuración:', {
+        codigo: document.getElementById('producto-codigo')?.value,
+        nombre: document.getElementById('producto-nombre')?.value
+    });
     
     // Verificar permiso
     const permiso = e.target.dataset.productoId ? 'modificar_productos' : 'cargar_productos';
@@ -1873,24 +2707,45 @@ async function guardarProducto(e) {
     // Verificar que todos los elementos existan
     if (!codigoInput || !nombreInput || !precioCostoInput || !precioVentaInput || 
         !stockInput || !activoSelect || !margenInput || !proveedorInput) {
-        console.error('Elementos del formulario no encontrados:', {
-            codigo: !!codigoInput,
-            nombre: !!nombreInput,
-            precioCosto: !!precioCostoInput,
-            precioVenta: !!precioVentaInput,
-            stock: !!stockInput,
-            activo: !!activoSelect,
-            margen: !!margenInput,
-            proveedor: !!proveedorInput
-        });
+        console.error('Elementos del formulario no encontrados');
         showNotification('Error: formulario incompleto', 'error');
         return;
     }
     
+    // Depurar valores
+    const codigoValor = codigoInput.value ? codigoInput.value.trim() : '';
+    const nombreValor = nombreInput.value ? nombreInput.value.trim() : '';
+    
+    console.log('Valores depurados:', {
+        codigo: codigoValor,
+        nombre: nombreValor,
+        codigoLength: codigoValor.length,
+        nombreLength: nombreValor.length
+    });
+    
+    // Validaciones
+    if (!codigoValor || codigoValor.length === 0) {
+        showNotification('El código de barras es obligatorio', 'warning');
+        codigoInput.focus();
+        codigoInput.classList.add('input-error');
+        return;
+    } else {
+        codigoInput.classList.remove('input-error');
+    }
+    
+    if (!nombreValor || nombreValor.length === 0) {
+        showNotification('El nombre del producto es obligatorio', 'warning');
+        nombreInput.focus();
+        nombreInput.classList.add('input-error');
+        return;
+    } else {
+        nombreInput.classList.remove('input-error');
+    }
+    
     // Usar valores con validación
     const producto = {
-        codigo_barra: codigoInput.value ? codigoInput.value.trim() : '',
-        nombre: nombreInput.value ? nombreInput.value.trim() : '',
+        codigo_barra: codigoValor,
+        nombre: nombreValor,
         precio_costo: parseFloat(precioCostoInput.value) || 0,
         precio_venta: parseFloat(precioVentaInput.value) || 0,
         stock: parseInt(stockInput.value) || 0,
@@ -1898,12 +2753,6 @@ async function guardarProducto(e) {
         activo: activoSelect.value === 'true',
         margen_ganancia: margenInput.value ? parseFloat(margenInput.value) : null
     };
-    
-    // Validaciones
-    if (!producto.codigo_barra || !producto.nombre) {
-        showNotification('Código y nombre son obligatorios', 'warning');
-        return;
-    }
     
     if (producto.precio_costo < 0 || producto.precio_venta < 0) {
         showNotification('Los precios deben ser positivos', 'warning');
@@ -1950,6 +2799,8 @@ async function guardarProducto(e) {
         
         if (error.code === '23505') {
             showNotification('El código de barras ya existe', 'error');
+            codigoInput.focus();
+            codigoInput.classList.add('input-error');
         } else {
             showNotification('Error guardando producto', 'error');
         }
@@ -1959,59 +2810,49 @@ async function guardarProducto(e) {
     }
 }
 
-function editarProducto(productoId) {
-    // Esta función se llama desde HTML, se define globalmente
-    window.editarProducto = async function(id) {
-        try {
-            const { data: producto, error } = await supabaseClient
-                .from('productos')
-                .select('*')
-                .eq('id', id)
-                .single();
-            
-            if (error) throw error;
-            
-            mostrarModalProducto(producto);
-        } catch (error) {
-            console.error('Error cargando producto:', error);
-            showNotification('Error cargando producto', 'error');
-        }
-    };
-    
-    window.editarProducto(productoId);
-}
+window.editarProducto = async function(id) {
+    try {
+        const { data: producto, error } = await supabaseClient
+            .from('productos')
+            .select('*')
+            .eq('id', id)
+            .single();
+        
+        if (error) throw error;
+        
+        mostrarModalProducto(producto);
+    } catch (error) {
+        console.error('Error cargando producto:', error);
+        showNotification('Error cargando producto', 'error');
+    }
+};
 
-function eliminarProducto(productoId) {
-    // Esta función se llama desde HTML, se define globalmente
-    window.eliminarProducto = async function(id) {
-        const tienePermiso = await hasPermission('modificar_productos');
-        if (!tienePermiso) {
-            showNotification('No tiene permisos para eliminar productos', 'error');
-            return;
-        }
-        
-        if (!confirm('¿Está seguro de eliminar este producto? Se marcará como inactivo.')) {
-            return;
-        }
-        
-        try {
-            const { error } = await supabaseClient
-                .from('productos')
-                .update({ activo: false })
-                .eq('id', id);
-            
-            if (error) throw error;
-            
-            showNotification('Producto eliminado correctamente', 'success');
-            cargarProductos();
-        } catch (error) {
-            console.error('Error eliminando producto:', error);
-            showNotification('Error eliminando producto', 'error');
-        }
-    };
+window.eliminarProducto = async function(id) {
+    const tienePermiso = await hasPermission('modificar_productos');
+    if (!tienePermiso) {
+        showNotification('No tiene permisos para eliminar productos', 'error');
+        return;
+    }
     
-    window.eliminarProducto(productoId);
-}
+    if (!confirm('¿Está seguro de eliminar este producto? Se marcará como inactivo.')) {
+        return;
+    }
+    
+    try {
+        const { error } = await supabaseClient
+            .from('productos')
+            .update({ activo: false })
+            .eq('id', id);
+        
+        if (error) throw error;
+        
+        showNotification('Producto eliminado correctamente', 'success');
+        cargarProductos();
+    } catch (error) {
+        console.error('Error eliminando producto:', error);
+        showNotification('Error eliminando producto', 'error');
+    }
+};
 
 // ==================== BUSCADOR MANUAL ====================
 function showBuscadorManual() {
@@ -2084,40 +2925,35 @@ async function buscarProductosManual() {
     }
 }
 
-function agregarDesdeBuscador(productoId) {
-    // Esta función se llama desde HTML
-    window.agregarDesdeBuscador = async function(id) {
-        try {
-            const { data: producto, error } = await supabaseClient
-                .from('productos')
-                .select('*')
-                .eq('id', id)
-                .eq('activo', true)
-                .single();
-            
-            if (error) throw error;
-            
-            mostrarProductoEncontrado(producto);
-            
-            // Cerrar modal
-            const modal = document.getElementById('modal-buscador');
-            if (modal) modal.classList.remove('active');
-            
-            // Enfocar cantidad
-            const cantidadProducto = document.getElementById('cantidad-producto');
-            if (cantidadProducto) {
-                cantidadProducto.focus();
-                cantidadProducto.select();
-            }
-            
-        } catch (error) {
-            console.error('Error cargando producto:', error);
-            showNotification('Error cargando producto', 'error');
+window.agregarDesdeBuscador = async function(id) {
+    try {
+        const { data: producto, error } = await supabaseClient
+            .from('productos')
+            .select('*')
+            .eq('id', id)
+            .eq('activo', true)
+            .single();
+        
+        if (error) throw error;
+        
+        mostrarProductoEncontrado(producto);
+        
+        // Cerrar modal
+        const modal = document.getElementById('modal-buscador');
+        if (modal) modal.classList.remove('active');
+        
+        // Enfocar cantidad
+        const cantidadProducto = document.getElementById('cantidad-producto');
+        if (cantidadProducto) {
+            cantidadProducto.focus();
+            cantidadProducto.select();
         }
-    };
-    
-    window.agregarDesdeBuscador(productoId);
-}
+        
+    } catch (error) {
+        console.error('Error cargando producto:', error);
+        showNotification('Error cargando producto', 'error');
+    }
+};
 
 // ==================== HISTORIAL ====================
 async function cargarVentasHoy() {
@@ -2224,154 +3060,144 @@ async function cargarHistorial() {
     }
 }
 
-function verDetalleVenta(ventaId) {
-    // Esta función se llama desde HTML
-    window.verDetalleVenta = async function(id) {
-        try {
-            const { data: venta, error } = await supabaseClient
-                .from('ventas')
-                .select(`
-                    *,
-                    detalle_ventas (
-                        cantidad,
-                        precio_unitario,
-                        subtotal,
-                        productos (
-                            nombre,
-                            codigo_barra
-                        )
-                    ),
-                    pagos_venta (
-                        medio_pago,
-                        monto
+window.verDetalleVenta = async function(id) {
+    try {
+        const { data: venta, error } = await supabaseClient
+            .from('ventas')
+            .select(`
+                *,
+                detalle_ventas (
+                    cantidad,
+                    precio_unitario,
+                    subtotal,
+                    productos (
+                        nombre,
+                        codigo_barra
                     )
-                `)
-                .eq('id', id)
-                .single();
+                ),
+                pagos_venta (
+                    medio_pago,
+                    monto
+                )
+            `)
+            .eq('id', id)
+            .single();
+        
+        if (error) throw error;
+        
+        const modal = document.getElementById('modal-detalle-venta');
+        const titulo = document.getElementById('modal-venta-titulo');
+        const contenido = document.getElementById('detalle-venta-contenido');
+        
+        if (!modal || !titulo || !contenido) return;
+        
+        titulo.innerHTML = `<i class="fas fa-receipt"></i> Detalle de Venta: ${venta.ticket_id}`;
+        
+        let detalleHTML = `
+            <div class="venta-info">
+                <p><strong>Ticket:</strong> ${venta.ticket_id}</p>
+                <p><strong>Fecha:</strong> ${new Date(venta.fecha).toLocaleString('es-ES')}</p>
+                <p><strong>Estado:</strong> ${venta.anulada ? 'ANULADA' : 'ACTIVA'}</p>
+                <p><strong>Subtotal:</strong> S/ ${parseFloat(venta.subtotal).toFixed(2)}</p>
+                <p><strong>Descuento:</strong> S/ ${parseFloat(venta.descuento).toFixed(2)}</p>
+                <p><strong>Total:</strong> S/ ${parseFloat(venta.total).toFixed(2)}</p>
+            </div>
             
-            if (error) throw error;
-            
-            const modal = document.getElementById('modal-detalle-venta');
-            const titulo = document.getElementById('modal-venta-titulo');
-            const contenido = document.getElementById('detalle-venta-contenido');
-            
-            if (!modal || !titulo || !contenido) return;
-            
-            titulo.innerHTML = `<i class="fas fa-receipt"></i> Detalle de Venta: ${venta.ticket_id}`;
-            
-            let detalleHTML = `
-                <div class="venta-info">
-                    <p><strong>Ticket:</strong> ${venta.ticket_id}</p>
-                    <p><strong>Fecha:</strong> ${new Date(venta.fecha).toLocaleString('es-ES')}</p>
-                    <p><strong>Estado:</strong> ${venta.anulada ? 'ANULADA' : 'ACTIVA'}</p>
-                    <p><strong>Subtotal:</strong> S/ ${parseFloat(venta.subtotal).toFixed(2)}</p>
-                    <p><strong>Descuento:</strong> S/ ${parseFloat(venta.descuento).toFixed(2)}</p>
-                    <p><strong>Total:</strong> S/ ${parseFloat(venta.total).toFixed(2)}</p>
-                </div>
-                
-                <h4>Productos:</h4>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Producto</th>
-                            <th>Código</th>
-                            <th>Cantidad</th>
-                            <th>Precio Unitario</th>
-                            <th>Subtotal</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-            
-            venta.detalle_ventas.forEach(detalle => {
-                detalleHTML += `
+            <h4>Productos:</h4>
+            <table class="data-table">
+                <thead>
                     <tr>
-                        <td>${detalle.productos.nombre}</td>
-                        <td>${detalle.productos.codigo_barra}</td>
-                        <td>${detalle.cantidad}</td>
-                        <td>S/ ${parseFloat(detalle.precio_unitario).toFixed(2)}</td>
-                        <td>S/ ${parseFloat(detalle.subtotal).toFixed(2)}</td>
+                        <th>Producto</th>
+                        <th>Código</th>
+                        <th>Cantidad</th>
+                        <th>Precio Unitario</th>
+                        <th>Subtotal</th>
                     </tr>
-                `;
-            });
-            
+                </thead>
+                <tbody>
+        `;
+        
+        venta.detalle_ventas.forEach(detalle => {
             detalleHTML += `
-                    </tbody>
-                </table>
-                
-                <h4>Pagos:</h4>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Medio de Pago</th>
-                            <th>Monto</th>
-                        </tr>
-                    </thead>
-                    <tbody>
+                <tr>
+                    <td>${detalle.productos.nombre}</td>
+                    <td>${detalle.productos.codigo_barra}</td>
+                    <td>${detalle.cantidad}</td>
+                    <td>S/ ${parseFloat(detalle.precio_unitario).toFixed(2)}</td>
+                    <td>S/ ${parseFloat(detalle.subtotal).toFixed(2)}</td>
+                </tr>
             `;
+        });
+        
+        detalleHTML += `
+                </tbody>
+            </table>
             
-            venta.pagos_venta.forEach(pago => {
-                detalleHTML += `
+            <h4>Pagos:</h4>
+            <table class="data-table">
+                <thead>
                     <tr>
-                        <td>${pago.medio_pago}</td>
-                        <td>S/ ${parseFloat(pago.monto).toFixed(2)}</td>
+                        <th>Medio de Pago</th>
+                        <th>Monto</th>
                     </tr>
-                `;
-            });
-            
+                </thead>
+                <tbody>
+        `;
+        
+        venta.pagos_venta.forEach(pago => {
             detalleHTML += `
-                    </tbody>
-                </table>
+                <tr>
+                    <td>${pago.medio_pago}</td>
+                    <td>S/ ${parseFloat(pago.monto).toFixed(2)}</td>
+                </tr>
             `;
-            
-            contenido.innerHTML = detalleHTML;
-            modal.classList.add('active');
-            
-        } catch (error) {
-            console.error('Error cargando detalle de venta:', error);
-            showNotification('Error cargando detalle de venta', 'error');
-        }
-    };
-    
-    window.verDetalleVenta(ventaId);
-}
+        });
+        
+        detalleHTML += `
+                </tbody>
+            </table>
+        `;
+        
+        contenido.innerHTML = detalleHTML;
+        modal.classList.add('active');
+        
+    } catch (error) {
+        console.error('Error cargando detalle de venta:', error);
+        showNotification('Error cargando detalle de venta', 'error');
+    }
+};
 
-function anularVenta(ventaId) {
-    // Esta función se llama desde HTML
-    window.anularVenta = async function(id) {
-        const tienePermiso = await hasPermission('anular_ventas');
-        if (!tienePermiso) {
-            showNotification('No tiene permisos para anular ventas', 'error');
-            return;
-        }
-        
-        if (!confirm('¿Está seguro de anular esta venta? Esta acción revertirá el stock y no se podrá deshacer.')) {
-            return;
-        }
-        
-        try {
-            const { error } = await supabaseClient
-                .from('ventas')
-                .update({
-                    anulada: true,
-                    usuario_anulacion_id: appState.usuario.id,
-                    fecha_anulacion: new Date().toISOString()
-                })
-                .eq('id', id);
-            
-            if (error) throw error;
-            
-            showNotification('Venta anulada correctamente', 'success');
-            cargarHistorial();
-            
-        } catch (error) {
-            console.error('Error anulando venta:', error);
-            showNotification('Error anulando venta', 'error');
-        }
-    };
+window.anularVenta = async function(id) {
+    const tienePermiso = await hasPermission('anular_ventas');
+    if (!tienePermiso) {
+        showNotification('No tiene permisos para anular ventas', 'error');
+        return;
+    }
     
-    window.anularVenta(ventaId);
-}
+    if (!confirm('¿Está seguro de anular esta venta? Esta acción revertirá el stock y no se podrá deshacer.')) {
+        return;
+    }
+    
+    try {
+        const { error } = await supabaseClient
+            .from('ventas')
+            .update({
+                anulada: true,
+                usuario_anulacion_id: appState.usuario.id,
+                fecha_anulacion: new Date().toISOString()
+            })
+            .eq('id', id);
+        
+        if (error) throw error;
+        
+        showNotification('Venta anulada correctamente', 'success');
+        cargarHistorial();
+        
+    } catch (error) {
+        console.error('Error anulando venta:', error);
+        showNotification('Error anulando venta', 'error');
+    }
+};
 
 // ==================== REPORTES ====================
 async function generarReporte() {
@@ -2736,58 +3562,53 @@ async function cargarConfiguracionPermisos() {
     }
 }
 
-function guardarPermisosUsuario(usuarioId) {
-    // Esta función se llama desde HTML
-    window.guardarPermisosUsuario = async function(id) {
-        try {
-            const checkboxes = document.querySelectorAll(`input[data-usuario="${id}"]`);
-            const permisosSeleccionados = [];
-            
-            checkboxes.forEach(checkbox => {
-                if (checkbox.checked) {
-                    permisosSeleccionados.push({
-                        usuario_id: id,
-                        permiso: checkbox.dataset.permiso,
-                        activo: true
-                    });
-                }
-            });
-            
-            // Verificar que el usuario es administrador
-            if (appState.usuario?.rol !== 'Administrador') {
-                showNotification('Solo administradores pueden modificar permisos', 'error');
-                return;
+window.guardarPermisosUsuario = async function(id) {
+    try {
+        const checkboxes = document.querySelectorAll(`input[data-usuario="${id}"]`);
+        const permisosSeleccionados = [];
+        
+        checkboxes.forEach(checkbox => {
+            if (checkbox.checked) {
+                permisosSeleccionados.push({
+                    usuario_id: id,
+                    permiso: checkbox.dataset.permiso,
+                    activo: true
+                });
             }
-            
-            // Primero, desactivar todos los permisos del usuario
-            const { error: deleteError } = await supabaseClient
-                .from('permisos')
-                .update({ activo: false })
-                .eq('usuario_id', id);
-            
-            if (deleteError) throw deleteError;
-            
-            // Luego, insertar/actualizar los permisos seleccionados
-            if (permisosSeleccionados.length > 0) {
-                for (const permiso of permisosSeleccionados) {
-                    const { error: upsertError } = await supabaseClient
-                        .from('permisos')
-                        .upsert(permiso, { onConflict: 'usuario_id,permiso' });
-                    
-                    if (upsertError) throw upsertError;
-                }
-            }
-            
-            showNotification('Permisos actualizados correctamente', 'success');
-            
-        } catch (error) {
-            console.error('Error guardando permisos:', error);
-            showNotification('Error guardando permisos', 'error');
+        });
+        
+        // Verificar que el usuario es administrador
+        if (appState.usuario?.rol !== 'Administrador') {
+            showNotification('Solo administradores pueden modificar permisos', 'error');
+            return;
         }
-    };
-    
-    window.guardarPermisosUsuario(usuarioId);
-}
+        
+        // Primero, desactivar todos los permisos del usuario
+        const { error: deleteError } = await supabaseClient
+            .from('permisos')
+            .update({ activo: false })
+            .eq('usuario_id', id);
+        
+        if (deleteError) throw deleteError;
+        
+        // Luego, insertar/actualizar los permisos seleccionados
+        if (permisosSeleccionados.length > 0) {
+            for (const permiso of permisosSeleccionados) {
+                const { error: upsertError } = await supabaseClient
+                    .from('permisos')
+                    .upsert(permiso, { onConflict: 'usuario_id,permiso' });
+                
+                if (upsertError) throw upsertError;
+            }
+        }
+        
+        showNotification('Permisos actualizados correctamente', 'success');
+        
+    } catch (error) {
+        console.error('Error guardando permisos:', error);
+        showNotification('Error guardando permisos', 'error');
+    }
+};
 
 async function cargarConfiguracionUsuarios() {
     // Solo administradores pueden ver esta sección
@@ -2891,10 +3712,7 @@ function showNotification(mensaje, tipo = 'info') {
 }
 
 // ==================== FUNCIONES GLOBALES PARA HTML ====================
-// Exportar funciones que se llaman desde HTML onclick
-window.actualizarCantidadCarrito = actualizarCantidadCarrito;
-window.eliminarDelCarrito = eliminarDelCarrito;
-window.eliminarPago = eliminarPago;
+// Las funciones globales ya fueron exportadas usando window.nombreFuncion
 
 // ==================== INICIALIZACIÓN ADICIONAL ====================
 // Detectar cambio de modo claro/oscuro
@@ -2920,4 +3738,4 @@ window.addEventListener('keydown', function(e) {
     }
 });
 
-console.log('Sistema POS cargado correctamente');
+console.log('Sistema POS AFMSOLUTIONS cargado correctamente');

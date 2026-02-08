@@ -29,24 +29,46 @@ async function initApp() {
         setupKeyboardShortcuts();
         await verificarCajaActiva();
         console.log('Sistema POS inicializado correctamente');
+        
+        // Verificar que todos los elementos críticos estén disponibles
+        setTimeout(() => {
+            verifyCriticalElements();
+        }, 1000);
     } catch (error) {
         console.error('Error inicializando aplicación:', error);
         showNotification('Error al inicializar la aplicación', 'error');
     }
 }
 
+function verifyCriticalElements() {
+    const criticalElements = [
+        'scanner-input',
+        'carrito-items',
+        'producto-info',
+        'form-producto',
+        'btn-finalizar-venta'
+    ];
+    
+    criticalElements.forEach(id => {
+        const element = document.getElementById(id);
+        if (!element) {
+            console.warn(`Elemento crítico no encontrado: ${id}`);
+        }
+    });
+}
+
 // ==================== AUTENTICACIÓN ====================
 async function checkSession() {
     try {
-        const { data: { session }, error } = await supabaseClient.auth.getSession();
+        const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
         
-        if (error) {
-            console.error('Error de sesión:', error);
+        if (sessionError) {
+            console.error('Error de sesión:', sessionError);
             return;
         }
         
-        if (session) {
-            // Crear usuario básico primero
+        if (session && session.user) {
+            // Usuario básico primero
             appState.usuario = {
                 id: session.user.id,
                 username: session.user.email || 'Usuario',
@@ -55,7 +77,7 @@ async function checkSession() {
             };
             appState.permisos = ['cargar_productos', 'acceder_caja'];
             
-            // Intentar cargar usuario real desde BD
+            // Intentar cargar usuario real desde BD con timeout
             try {
                 const { data: usuarioReal, error: usuarioError } = await supabaseClient
                     .from('usuarios')
@@ -66,19 +88,22 @@ async function checkSession() {
                 if (!usuarioError && usuarioReal) {
                     appState.usuario = usuarioReal;
                     
-                    // Cargar permisos si es cajero
+                    // Cargar permisos
                     if (usuarioReal.rol === 'Cajero') {
-                        const { data: permisosData } = await supabaseClient
-                            .from('permisos')
-                            .select('permiso')
-                            .eq('usuario_id', session.user.id)
-                            .eq('activo', true);
-                        
-                        if (permisosData) {
-                            appState.permisos = permisosData.map(p => p.permiso);
+                        try {
+                            const { data: permisosData } = await supabaseClient
+                                .from('permisos')
+                                .select('permiso')
+                                .eq('usuario_id', session.user.id)
+                                .eq('activo', true);
+                            
+                            if (permisosData) {
+                                appState.permisos = permisosData.map(p => p.permiso);
+                            }
+                        } catch (permisosError) {
+                            console.warn('Error cargando permisos, usando permisos básicos:', permisosError);
                         }
                     } else if (usuarioReal.rol === 'Administrador') {
-                        // Administradores tienen todos los permisos
                         appState.permisos = [
                             'cargar_productos',
                             'modificar_productos',
@@ -96,12 +121,22 @@ async function checkSession() {
             document.getElementById('login-screen').style.display = 'none';
             document.getElementById('app').style.display = 'flex';
             document.getElementById('user-name').textContent = appState.usuario.username;
-            updateNavigationPermissions();
             
-            // Enfocar campo scanner
+            // Actualizar navegación
+            setTimeout(() => {
+                updateNavigationPermissions();
+            }, 100);
+            
+            // Enfocar campo scanner si está en venta
             if (document.getElementById('seccion-venta').classList.contains('active')) {
-                setTimeout(() => document.getElementById('scanner-input').focus(), 100);
+                setTimeout(() => {
+                    const scanner = document.getElementById('scanner-input');
+                    if (scanner) scanner.focus();
+                }, 200);
             }
+            
+            // Verificar caja activa después de login
+            setTimeout(() => verificarCajaActiva(), 500);
         }
     } catch (error) {
         console.error('Error verificando sesión:', error);
@@ -265,9 +300,13 @@ function setupEventListeners() {
     });
     
     // Menú hamburguesa
-    document.getElementById('menu-toggle').addEventListener('click', function() {
-        document.getElementById('main-nav').classList.toggle('active');
-    });
+    const menuToggle = document.getElementById('menu-toggle');
+    if (menuToggle) {
+        menuToggle.addEventListener('click', function() {
+            const nav = document.getElementById('main-nav');
+            if (nav) nav.classList.toggle('active');
+        });
+    }
     
     // Cerrar menú al hacer clic fuera (en móvil)
     document.addEventListener('click', function(e) {
@@ -275,39 +314,65 @@ function setupEventListeners() {
         const toggle = document.getElementById('menu-toggle');
         
         if (window.innerWidth < 768 && 
-            nav.classList.contains('active') && 
+            nav && nav.classList.contains('active') && 
             !nav.contains(e.target) && 
-            !toggle.contains(e.target)) {
+            toggle && !toggle.contains(e.target)) {
             nav.classList.remove('active');
         }
     });
     
-    // Scanner
+    // Scanner - verificar que exista
     const scannerInput = document.getElementById('scanner-input');
-    scannerInput.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            const codigo = this.value.trim();
-            if (codigo) {
-                buscarProductoPorCodigo(codigo);
-                this.value = '';
+    if (scannerInput) {
+        scannerInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                const codigo = this.value.trim();
+                if (codigo) {
+                    buscarProductoPorCodigo(codigo);
+                    this.value = '';
+                }
             }
-        }
-    });
+        });
+    }
     
     // Buscador manual
-    document.getElementById('btn-buscar-manual').addEventListener('click', showBuscadorManual);
+    const btnBuscarManual = document.getElementById('btn-buscar-manual');
+    if (btnBuscarManual) {
+        btnBuscarManual.addEventListener('click', showBuscadorManual);
+    }
     
-    // Carrito
-    document.getElementById('btn-agregar-carrito').addEventListener('click', agregarAlCarrito);
-    document.getElementById('btn-limpiar-carrito').addEventListener('click', limpiarCarrito);
+    // Carrito - verificar que existan los botones
+    const btnAgregarCarrito = document.getElementById('btn-agregar-carrito');
+    if (btnAgregarCarrito) {
+        btnAgregarCarrito.addEventListener('click', agregarAlCarrito);
+    }
+    
+    const btnLimpiarCarrito = document.getElementById('btn-limpiar-carrito');
+    if (btnLimpiarCarrito) {
+        btnLimpiarCarrito.addEventListener('click', limpiarCarrito);
+    }
     
     // Cantidad
-    document.getElementById('btn-cantidad-menos').addEventListener('click', () => cambiarCantidad(-1));
-    document.getElementById('btn-cantidad-mas').addEventListener('click', () => cambiarCantidad(1));
-    document.getElementById('cantidad-producto').addEventListener('change', actualizarCantidad);
+    const btnCantidadMenos = document.getElementById('btn-cantidad-menos');
+    if (btnCantidadMenos) {
+        btnCantidadMenos.addEventListener('click', () => cambiarCantidad(-1));
+    }
+    
+    const btnCantidadMas = document.getElementById('btn-cantidad-mas');
+    if (btnCantidadMas) {
+        btnCantidadMas.addEventListener('click', () => cambiarCantidad(1));
+    }
+    
+    const cantidadProducto = document.getElementById('cantidad-producto');
+    if (cantidadProducto) {
+        cantidadProducto.addEventListener('change', actualizarCantidad);
+    }
     
     // Descuento
-    document.getElementById('btn-aplicar-descuento').addEventListener('click', aplicarDescuento);
+    const btnAplicarDescuento = document.getElementById('btn-aplicar-descuento');
+    if (btnAplicarDescuento) {
+        btnAplicarDescuento.addEventListener('click', aplicarDescuento);
+    }
     
     // Pagos
     document.querySelectorAll('.btn-pago').forEach(btn => {
@@ -316,28 +381,71 @@ function setupEventListeners() {
         });
     });
     
-    document.getElementById('btn-agregar-pago').addEventListener('click', agregarPago);
-    document.getElementById('btn-finalizar-venta').addEventListener('click', finalizarVenta);
-    document.getElementById('btn-cancelar-venta').addEventListener('click', cancelarVenta);
+    const btnAgregarPago = document.getElementById('btn-agregar-pago');
+    if (btnAgregarPago) {
+        btnAgregarPago.addEventListener('click', agregarPago);
+    }
+    
+    const btnFinalizarVenta = document.getElementById('btn-finalizar-venta');
+    if (btnFinalizarVenta) {
+        btnFinalizarVenta.addEventListener('click', finalizarVenta);
+    }
+    
+    const btnCancelarVenta = document.getElementById('btn-cancelar-venta');
+    if (btnCancelarVenta) {
+        btnCancelarVenta.addEventListener('click', cancelarVenta);
+    }
     
     // Productos
-    document.getElementById('btn-nuevo-producto').addEventListener('click', () => mostrarModalProducto());
-    document.getElementById('btn-refrescar-productos').addEventListener('click', cargarProductos);
-    document.getElementById('btn-filtrar-productos').addEventListener('click', cargarProductos);
-    document.getElementById('filtro-productos').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') cargarProductos();
-    });
+    const btnNuevoProducto = document.getElementById('btn-nuevo-producto');
+    if (btnNuevoProducto) {
+        btnNuevoProducto.addEventListener('click', () => mostrarModalProducto());
+    }
+    
+    const btnRefrescarProductos = document.getElementById('btn-refrescar-productos');
+    if (btnRefrescarProductos) {
+        btnRefrescarProductos.addEventListener('click', cargarProductos);
+    }
+    
+    const btnFiltrarProductos = document.getElementById('btn-filtrar-productos');
+    if (btnFiltrarProductos) {
+        btnFiltrarProductos.addEventListener('click', cargarProductos);
+    }
+    
+    const filtroProductos = document.getElementById('filtro-productos');
+    if (filtroProductos) {
+        filtroProductos.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') cargarProductos();
+        });
+    }
     
     // Historial
-    document.getElementById('btn-ventas-hoy').addEventListener('click', cargarVentasHoy);
-    document.getElementById('btn-filtrar-historial').addEventListener('click', cargarHistorial);
+    const btnVentasHoy = document.getElementById('btn-ventas-hoy');
+    if (btnVentasHoy) {
+        btnVentasHoy.addEventListener('click', cargarVentasHoy);
+    }
+    
+    const btnFiltrarHistorial = document.getElementById('btn-filtrar-historial');
+    if (btnFiltrarHistorial) {
+        btnFiltrarHistorial.addEventListener('click', cargarHistorial);
+    }
     
     // Caja
-    document.getElementById('btn-abrir-caja').addEventListener('click', mostrarModalAperturaCaja);
-    document.getElementById('btn-cerrar-caja').addEventListener('click', cerrarCaja);
+    const btnAbrirCaja = document.getElementById('btn-abrir-caja');
+    if (btnAbrirCaja) {
+        btnAbrirCaja.addEventListener('click', mostrarModalAperturaCaja);
+    }
+    
+    const btnCerrarCaja = document.getElementById('btn-cerrar-caja');
+    if (btnCerrarCaja) {
+        btnCerrarCaja.addEventListener('click', cerrarCaja);
+    }
     
     // Reportes
-    document.getElementById('btn-generar-reporte').addEventListener('click', generarReporte);
+    const btnGenerarReporte = document.getElementById('btn-generar-reporte');
+    if (btnGenerarReporte) {
+        btnGenerarReporte.addEventListener('click', generarReporte);
+    }
     
     // Configuración
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -350,7 +458,8 @@ function setupEventListeners() {
     // Modales
     document.querySelectorAll('.modal-close').forEach(btn => {
         btn.addEventListener('click', function() {
-            this.closest('.modal').classList.remove('active');
+            const modal = this.closest('.modal');
+            if (modal) modal.classList.remove('active');
         });
     });
     
@@ -364,18 +473,41 @@ function setupEventListeners() {
     });
     
     // Buscador de productos
-    document.getElementById('btn-buscar-productos').addEventListener('click', buscarProductosManual);
+    const btnBuscarProductos = document.getElementById('btn-buscar-productos');
+    if (btnBuscarProductos) {
+        btnBuscarProductos.addEventListener('click', buscarProductosManual);
+    }
     
-    // Formulario producto
-    document.getElementById('form-producto').addEventListener('submit', guardarProducto);
+    // Formulario producto - IMPORTANTE: verificar que exista
+    const formProducto = document.getElementById('form-producto');
+    if (formProducto) {
+        console.log('Formulario producto encontrado, agregando listener');
+        formProducto.addEventListener('submit', guardarProducto);
+    } else {
+        console.warn('Formulario producto NO encontrado');
+    }
     
     // Cálculo automático de precio
-    document.getElementById('producto-precio-costo').addEventListener('input', calcularPrecioVenta);
-    document.getElementById('producto-margen').addEventListener('input', calcularPrecioVenta);
-    document.getElementById('producto-precio-venta').addEventListener('input', calcularMargen);
+    const precioCostoInput = document.getElementById('producto-precio-costo');
+    if (precioCostoInput) {
+        precioCostoInput.addEventListener('input', calcularPrecioVenta);
+    }
+    
+    const margenInput = document.getElementById('producto-margen');
+    if (margenInput) {
+        margenInput.addEventListener('input', calcularPrecioVenta);
+    }
+    
+    const precioVentaInput = document.getElementById('producto-precio-venta');
+    if (precioVentaInput) {
+        precioVentaInput.addEventListener('input', calcularMargen);
+    }
     
     // Apertura caja
-    document.getElementById('form-apertura-caja').addEventListener('submit', abrirCaja);
+    const formAperturaCaja = document.getElementById('form-apertura-caja');
+    if (formAperturaCaja) {
+        formAperturaCaja.addEventListener('submit', abrirCaja);
+    }
 }
 
 function showSection(sectionId) {
@@ -390,18 +522,28 @@ function showSection(sectionId) {
     });
     
     // Mostrar sección seleccionada
-    document.getElementById(`seccion-${sectionId}`).classList.add('active');
+    const section = document.getElementById(`seccion-${sectionId}`);
+    if (section) {
+        section.classList.add('active');
+    }
     
     // Activar enlace correspondiente
-    document.querySelector(`.nav-link[data-section="${sectionId}"]`).classList.add('active');
+    const link = document.querySelector(`.nav-link[data-section="${sectionId}"]`);
+    if (link) {
+        link.classList.add('active');
+    }
     
     // Actualizar título
-    document.getElementById('current-section').textContent = sectionId.toUpperCase();
+    const currentSection = document.getElementById('current-section');
+    if (currentSection) {
+        currentSection.textContent = sectionId.toUpperCase();
+    }
     
     // Enfocar scanner si es sección venta
     if (sectionId === 'venta') {
         setTimeout(() => {
-            document.getElementById('scanner-input').focus();
+            const scanner = document.getElementById('scanner-input');
+            if (scanner) scanner.focus();
         }, 100);
     }
     
@@ -419,8 +561,10 @@ function showSection(sectionId) {
         case 'reportes':
             // Resetear fechas a hoy
             const hoy = new Date().toISOString().split('T')[0];
-            document.getElementById('reporte-fecha-inicio').value = hoy;
-            document.getElementById('reporte-fecha-fin').value = hoy;
+            const fechaInicio = document.getElementById('reporte-fecha-inicio');
+            const fechaFin = document.getElementById('reporte-fecha-fin');
+            if (fechaInicio) fechaInicio.value = hoy;
+            if (fechaFin) fechaFin.value = hoy;
             break;
         case 'configuracion':
             cargarConfiguracionTicket();
@@ -446,7 +590,8 @@ function setupKeyboardShortcuts() {
                 break;
             case 'F2':
                 e.preventDefault();
-                document.getElementById('descuento-input').focus();
+                const descuentoInput = document.getElementById('descuento-input');
+                if (descuentoInput) descuentoInput.focus();
                 break;
             case 'F3':
                 e.preventDefault();
@@ -480,17 +625,17 @@ function setupKeyboardShortcuts() {
                 });
                 break;
             case '1':
-                if (document.getElementById('seccion-venta').classList.contains('active')) {
+                if (document.getElementById('seccion-venta')?.classList.contains('active')) {
                     seleccionarMedioPago('EFECTIVO');
                 }
                 break;
             case '2':
-                if (document.getElementById('seccion-venta').classList.contains('active')) {
+                if (document.getElementById('seccion-venta')?.classList.contains('active')) {
                     seleccionarMedioPago('TARJETA');
                 }
                 break;
             case '3':
-                if (document.getElementById('seccion-venta').classList.contains('active')) {
+                if (document.getElementById('seccion-venta')?.classList.contains('active')) {
                     seleccionarMedioPago('TRANSFERENCIA/QR');
                 }
                 break;
@@ -532,11 +677,21 @@ function mostrarProductoEncontrado(producto) {
     appState.productoActual = producto;
     
     const productoInfo = document.getElementById('producto-info');
-    document.getElementById('producto-nombre').textContent = producto.nombre;
-    document.getElementById('producto-precio').textContent = `S/ ${parseFloat(producto.precio_venta).toFixed(2)}`;
-    document.getElementById('producto-stock').textContent = producto.stock;
-    document.getElementById('cantidad-producto').value = 1;
-    document.getElementById('cantidad-producto').max = producto.stock;
+    const productoNombre = document.getElementById('producto-nombre');
+    const productoPrecio = document.getElementById('producto-precio');
+    const productoStock = document.getElementById('producto-stock');
+    const cantidadProducto = document.getElementById('cantidad-producto');
+    
+    if (!productoInfo || !productoNombre || !productoPrecio || !productoStock || !cantidadProducto) {
+        console.error('Elementos de producto no encontrados');
+        return;
+    }
+    
+    productoNombre.textContent = producto.nombre;
+    productoPrecio.textContent = `S/ ${parseFloat(producto.precio_venta).toFixed(2)}`;
+    productoStock.textContent = producto.stock;
+    cantidadProducto.value = 1;
+    cantidadProducto.max = producto.stock;
     
     productoInfo.style.display = 'block';
     
@@ -549,8 +704,11 @@ function mostrarProductoEncontrado(producto) {
 
 function cambiarCantidad(delta) {
     const input = document.getElementById('cantidad-producto');
+    if (!input) return;
+    
     let nuevaCantidad = parseInt(input.value) + delta;
     
+    if (isNaN(nuevaCantidad)) nuevaCantidad = 1;
     if (nuevaCantidad < 1) nuevaCantidad = 1;
     if (nuevaCantidad > parseInt(input.max)) nuevaCantidad = parseInt(input.max);
     
@@ -559,6 +717,8 @@ function cambiarCantidad(delta) {
 
 function actualizarCantidad() {
     const input = document.getElementById('cantidad-producto');
+    if (!input) return;
+    
     let cantidad = parseInt(input.value);
     
     if (isNaN(cantidad) || cantidad < 1) cantidad = 1;
@@ -573,7 +733,10 @@ function agregarAlCarrito() {
         return;
     }
     
-    const cantidad = parseInt(document.getElementById('cantidad-producto').value);
+    const cantidadInput = document.getElementById('cantidad-producto');
+    if (!cantidadInput) return;
+    
+    const cantidad = parseInt(cantidadInput.value);
     
     if (cantidad > appState.productoActual.stock) {
         showNotification('Stock insuficiente', 'error');
@@ -601,9 +764,14 @@ function agregarAlCarrito() {
     
     // Resetear producto actual
     appState.productoActual = null;
-    document.getElementById('producto-info').style.display = 'none';
-    document.getElementById('scanner-input').value = '';
-    document.getElementById('scanner-input').focus();
+    const productoInfo = document.getElementById('producto-info');
+    if (productoInfo) productoInfo.style.display = 'none';
+    
+    const scannerInput = document.getElementById('scanner-input');
+    if (scannerInput) {
+        scannerInput.value = '';
+        scannerInput.focus();
+    }
     
     showNotification('Producto agregado al carrito', 'success');
 }
@@ -613,6 +781,8 @@ function actualizarCarritoUI() {
     const subtotalEl = document.getElementById('carrito-subtotal');
     const totalEl = document.getElementById('carrito-total');
     const btnFinalizar = document.getElementById('btn-finalizar-venta');
+    
+    if (!container || !subtotalEl || !totalEl || !btnFinalizar) return;
     
     if (appState.carrito.length === 0) {
         container.innerHTML = `
@@ -677,11 +847,13 @@ function actualizarCarritoUI() {
     const total = subtotal - descuento;
     
     subtotalEl.textContent = `S/ ${subtotal.toFixed(2)}`;
-    document.getElementById('carrito-descuento').textContent = `S/ ${descuento.toFixed(2)}`;
+    const descuentoEl = document.getElementById('carrito-descuento');
+    if (descuentoEl) descuentoEl.textContent = `S/ ${descuento.toFixed(2)}`;
     totalEl.textContent = `S/ ${total.toFixed(2)}`;
     
     // Actualizar total a pagar
-    document.getElementById('total-a-pagar').textContent = `S/ ${total.toFixed(2)}`;
+    const totalAPagarEl = document.getElementById('total-a-pagar');
+    if (totalAPagarEl) totalAPagarEl.textContent = `S/ ${total.toFixed(2)}`;
     
     // Habilitar botón finalizar si hay productos
     btnFinalizar.disabled = appState.carrito.length === 0 || appState.pagos.length === 0;
@@ -722,8 +894,11 @@ function limpiarCarrito() {
     appState.pagos = [];
     appState.descuento = { tipo: 'porcentaje', valor: 0 };
     
-    document.getElementById('descuento-input').value = '';
-    document.getElementById('descuento-tipo').value = 'porcentaje';
+    const descuentoInput = document.getElementById('descuento-input');
+    const descuentoTipo = document.getElementById('descuento-tipo');
+    
+    if (descuentoInput) descuentoInput.value = '';
+    if (descuentoTipo) descuentoTipo.value = 'porcentaje';
     
     actualizarCarritoUI();
     actualizarPagosUI();
@@ -731,8 +906,13 @@ function limpiarCarrito() {
 }
 
 function aplicarDescuento() {
-    const valor = parseFloat(document.getElementById('descuento-input').value) || 0;
-    const tipo = document.getElementById('descuento-tipo').value;
+    const descuentoInput = document.getElementById('descuento-input');
+    const descuentoTipo = document.getElementById('descuento-tipo');
+    
+    if (!descuentoInput || !descuentoTipo) return;
+    
+    const valor = parseFloat(descuentoInput.value) || 0;
+    const tipo = descuentoTipo.value;
     
     if (valor <= 0) {
         showNotification('Ingrese un valor válido para el descuento', 'warning');
@@ -760,8 +940,11 @@ function seleccionarMedioPago(medio) {
     });
     
     // Establecer medio seleccionado
-    document.getElementById('pago-monto').placeholder = `Monto en ${medio}`;
-    document.getElementById('pago-monto').focus();
+    const pagoMonto = document.getElementById('pago-monto');
+    if (pagoMonto) {
+        pagoMonto.placeholder = `Monto en ${medio}`;
+        pagoMonto.focus();
+    }
 }
 
 function agregarPago() {
@@ -772,7 +955,10 @@ function agregarPago() {
     }
     
     const medio = medioElement.dataset.medio;
-    const monto = parseFloat(document.getElementById('pago-monto').value);
+    const pagoMonto = document.getElementById('pago-monto');
+    if (!pagoMonto) return;
+    
+    const monto = parseFloat(pagoMonto.value);
     
     if (!monto || monto <= 0) {
         showNotification('Ingrese un monto válido', 'warning');
@@ -780,7 +966,10 @@ function agregarPago() {
     }
     
     // Verificar que no exceda el total
-    const totalAPagar = parseFloat(document.getElementById('carrito-total').textContent.replace('S/ ', ''));
+    const totalAPagarEl = document.getElementById('carrito-total');
+    if (!totalAPagarEl) return;
+    
+    const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('S/ ', ''));
     const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
     
     if (totalPagado + monto > totalAPagar) {
@@ -795,7 +984,7 @@ function agregarPago() {
     actualizarPagosUI();
     
     // Resetear campos
-    document.getElementById('pago-monto').value = '';
+    pagoMonto.value = '';
     showNotification('Pago agregado correctamente', 'success');
 }
 
@@ -804,6 +993,8 @@ function actualizarPagosUI() {
     const totalPagadoEl = document.getElementById('total-pagado');
     const cambioEl = document.getElementById('total-cambio');
     const btnFinalizar = document.getElementById('btn-finalizar-venta');
+    
+    if (!container || !totalPagadoEl || !cambioEl || !btnFinalizar) return;
     
     if (appState.pagos.length === 0) {
         container.innerHTML = `
@@ -821,7 +1012,10 @@ function actualizarPagosUI() {
     
     // Calcular total pagado
     const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
-    const totalAPagar = parseFloat(document.getElementById('carrito-total').textContent.replace('S/ ', ''));
+    const totalAPagarEl = document.getElementById('carrito-total');
+    if (!totalAPagarEl) return;
+    
+    const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('S/ ', ''));
     const cambio = totalPagado - totalAPagar;
     
     // Mostrar pagos
@@ -874,7 +1068,10 @@ async function finalizarVenta() {
     }
     
     // Verificar que el total pagado cubre el total
-    const totalAPagar = parseFloat(document.getElementById('carrito-total').textContent.replace('S/ ', ''));
+    const totalAPagarEl = document.getElementById('carrito-total');
+    if (!totalAPagarEl) return;
+    
+    const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('S/ ', ''));
     const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
     
     if (totalPagado < totalAPagar) {
@@ -884,6 +1081,8 @@ async function finalizarVenta() {
     
     // Deshabilitar botón para evitar múltiples clics
     const btnFinalizar = document.getElementById('btn-finalizar-venta');
+    if (!btnFinalizar) return;
+    
     btnFinalizar.disabled = true;
     btnFinalizar.classList.add('loading');
     
@@ -1013,8 +1212,11 @@ async function finalizarVenta() {
         appState.pagos = [];
         appState.descuento = { tipo: 'porcentaje', valor: 0 };
         
-        document.getElementById('descuento-input').value = '';
-        document.getElementById('descuento-tipo').value = 'porcentaje';
+        const descuentoInput = document.getElementById('descuento-input');
+        const descuentoTipo = document.getElementById('descuento-tipo');
+        
+        if (descuentoInput) descuentoInput.value = '';
+        if (descuentoTipo) descuentoTipo.value = 'porcentaje';
         
         actualizarCarritoUI();
         actualizarPagosUI();
@@ -1025,14 +1227,17 @@ async function finalizarVenta() {
         showNotification(`Venta finalizada: ${ticketId}`, 'success');
         
         // Enfocar scanner para próxima venta
-        document.getElementById('scanner-input').focus();
+        const scannerInput = document.getElementById('scanner-input');
+        if (scannerInput) scannerInput.focus();
         
     } catch (error) {
         console.error('Error finalizando venta:', error);
         showNotification(`Error: ${error.message}`, 'error');
     } finally {
-        btnFinalizar.disabled = false;
-        btnFinalizar.classList.remove('loading');
+        if (btnFinalizar) {
+            btnFinalizar.disabled = false;
+            btnFinalizar.classList.remove('loading');
+        }
     }
 }
 
@@ -1052,6 +1257,8 @@ async function generarTicket(venta) {
         
         // Construir ticket
         const ticketContent = document.getElementById('ticket-content');
+        if (!ticketContent) return;
+        
         const fecha = new Date(venta.fecha).toLocaleString('es-ES');
         
         let itemsHTML = '';
@@ -1200,6 +1407,8 @@ function actualizarUIEstadoCaja() {
     const statusDetalle = document.getElementById('caja-detalle-status');
     const operaciones = document.getElementById('caja-operaciones');
     
+    if (!statusElement || !statusDetalle || !operaciones) return;
+    
     if (appState.cajaActiva) {
         // Caja abierta
         statusElement.innerHTML = `<i class="fas fa-circle"></i> Caja: Abierta`;
@@ -1255,8 +1464,11 @@ function mostrarModalAperturaCaja() {
     }
     
     const modal = document.getElementById('modal-apertura-caja');
-    modal.classList.add('active');
-    document.getElementById('apertura-monto').focus();
+    if (modal) {
+        modal.classList.add('active');
+        const aperturaMonto = document.getElementById('apertura-monto');
+        if (aperturaMonto) aperturaMonto.focus();
+    }
 }
 
 async function abrirCaja(e) {
@@ -1268,7 +1480,10 @@ async function abrirCaja(e) {
         return;
     }
     
-    const monto = parseFloat(document.getElementById('apertura-monto').value);
+    const aperturaMonto = document.getElementById('apertura-monto');
+    if (!aperturaMonto) return;
+    
+    const monto = parseFloat(aperturaMonto.value);
     
     if (!monto || monto < 0) {
         showNotification('Ingrese un monto inicial válido', 'warning');
@@ -1309,8 +1524,12 @@ async function abrirCaja(e) {
             appState.cajaActiva = caja;
             actualizarUIEstadoCaja();
             
-            document.getElementById('modal-apertura-caja').classList.remove('active');
-            document.getElementById('form-apertura-caja').reset();
+            const modal = document.getElementById('modal-apertura-caja');
+            if (modal) modal.classList.remove('active');
+            
+            const form = document.getElementById('form-apertura-caja');
+            if (form) form.reset();
+            
             showNotification('Caja abierta correctamente', 'success');
         }
         
@@ -1363,22 +1582,30 @@ async function cargarResumenCaja() {
         });
         
         // Actualizar UI
-        document.getElementById('caja-monto-inicial').textContent = 
+        const montoInicialEl = document.getElementById('caja-monto-inicial');
+        const ventasEfectivoEl = document.getElementById('caja-ventas-efectivo');
+        const ventasTarjetaEl = document.getElementById('caja-ventas-tarjeta');
+        const ventasTransferenciaEl = document.getElementById('caja-ventas-transferencia');
+        const totalEstimadoEl = document.getElementById('caja-total-estimado');
+        const cierreMontoReal = document.getElementById('cierre-monto-real');
+        
+        if (montoInicialEl) montoInicialEl.textContent = 
             `S/ ${parseFloat(appState.cajaActiva.monto_inicial).toFixed(2)}`;
-        document.getElementById('caja-ventas-efectivo').textContent = 
+        if (ventasEfectivoEl) ventasEfectivoEl.textContent = 
             `S/ ${totalEfectivo.toFixed(2)}`;
-        document.getElementById('caja-ventas-tarjeta').textContent = 
+        if (ventasTarjetaEl) ventasTarjetaEl.textContent = 
             `S/ ${totalTarjeta.toFixed(2)}`;
-        document.getElementById('caja-ventas-transferencia').textContent = 
+        if (ventasTransferenciaEl) ventasTransferenciaEl.textContent = 
             `S/ ${totalTransferencia.toFixed(2)}`;
         
         const totalEstimado = parseFloat(appState.cajaActiva.monto_inicial) + 
             totalEfectivo + totalTarjeta + totalTransferencia;
-        document.getElementById('caja-total-estimado').textContent = 
+        
+        if (totalEstimadoEl) totalEstimadoEl.textContent = 
             `S/ ${totalEstimado.toFixed(2)}`;
         
         // Establecer monto real sugerido
-        document.getElementById('cierre-monto-real').value = totalEstimado.toFixed(2);
+        if (cierreMontoReal) cierreMontoReal.value = totalEstimado.toFixed(2);
         
     } catch (error) {
         console.error('Error cargando resumen de caja:', error);
@@ -1386,8 +1613,13 @@ async function cargarResumenCaja() {
 }
 
 async function cerrarCaja() {
-    const montoReal = parseFloat(document.getElementById('cierre-monto-real').value);
-    const observaciones = document.getElementById('cierre-observaciones').value;
+    const cierreMontoReal = document.getElementById('cierre-monto-real');
+    const cierreObservaciones = document.getElementById('cierre-observaciones');
+    
+    if (!cierreMontoReal) return;
+    
+    const montoReal = parseFloat(cierreMontoReal.value);
+    const observaciones = cierreObservaciones ? cierreObservaciones.value : '';
     
     if (!montoReal || montoReal < 0) {
         showNotification('Ingrese un monto real válido', 'warning');
@@ -1454,7 +1686,7 @@ async function cerrarCaja() {
         showNotification('Caja cerrada correctamente', 'success');
         
         // Resetear formulario
-        document.getElementById('cierre-observaciones').value = '';
+        if (cierreObservaciones) cierreObservaciones.value = '';
         
     } catch (error) {
         console.error('Error cerrando caja:', error);
@@ -1465,9 +1697,9 @@ async function cerrarCaja() {
 // ==================== PRODUCTOS ====================
 async function cargarProductos() {
     try {
-        const filtro = document.getElementById('filtro-productos').value;
-        const proveedor = document.getElementById('filtro-proveedor').value;
-        const estado = document.getElementById('filtro-estado').value;
+        const filtro = document.getElementById('filtro-productos');
+        const proveedor = document.getElementById('filtro-proveedor');
+        const estado = document.getElementById('filtro-estado');
         
         let query = supabaseClient
             .from('productos')
@@ -1475,18 +1707,21 @@ async function cargarProductos() {
             .order('nombre');
         
         // Aplicar filtros
-        if (filtro) {
-            query = query.or(`codigo_barra.ilike.%${filtro}%,nombre.ilike.%${filtro}%`);
+        if (filtro && filtro.value) {
+            query = query.or(`codigo_barra.ilike.%${filtro.value}%,nombre.ilike.%${filtro.value}%`);
         }
         
-        if (proveedor) {
-            query = query.eq('proveedor', proveedor);
+        if (proveedor && proveedor.value) {
+            query = query.eq('proveedor', proveedor.value);
         }
         
-        if (estado === 'activos') {
-            query = query.eq('activo', true);
-        } else if (estado === 'inactivos') {
-            query = query.eq('activo', false);
+        if (estado && estado.value) {
+            if (estado.value === 'activos') {
+                query = query.eq('activo', true);
+            } else if (estado.value === 'inactivos') {
+                query = query.eq('activo', false);
+            }
+            // 'todos' no aplica filtro
         }
         
         const { data: productos, error } = await query;
@@ -1494,6 +1729,8 @@ async function cargarProductos() {
         if (error) throw error;
         
         const tbody = document.getElementById('productos-body');
+        if (!tbody) return;
+        
         tbody.innerHTML = '';
         
         if (productos.length === 0) {
@@ -1543,16 +1780,27 @@ function mostrarModalProducto(producto = null) {
     const titulo = document.getElementById('modal-producto-titulo');
     const form = document.getElementById('form-producto');
     
+    if (!modal || !titulo || !form) return;
+    
     if (producto) {
         titulo.innerHTML = '<i class="fas fa-edit"></i> Editar Producto';
-        document.getElementById('producto-codigo').value = producto.codigo_barra;
-        document.getElementById('producto-nombre').value = producto.nombre;
-        document.getElementById('producto-precio-costo').value = producto.precio_costo;
-        document.getElementById('producto-margen').value = producto.margen_ganancia || '';
-        document.getElementById('producto-precio-venta').value = producto.precio_venta;
-        document.getElementById('producto-stock').value = producto.stock;
-        document.getElementById('producto-proveedor').value = producto.proveedor || '';
-        document.getElementById('producto-activo').value = producto.activo;
+        const codigoInput = document.getElementById('producto-codigo');
+        const nombreInput = document.getElementById('producto-nombre');
+        const precioCostoInput = document.getElementById('producto-precio-costo');
+        const precioVentaInput = document.getElementById('producto-precio-venta');
+        const stockInput = document.getElementById('producto-stock');
+        const proveedorInput = document.getElementById('producto-proveedor');
+        const activoSelect = document.getElementById('producto-activo');
+        const margenInput = document.getElementById('producto-margen');
+        
+        if (codigoInput) codigoInput.value = producto.codigo_barra;
+        if (nombreInput) nombreInput.value = producto.nombre;
+        if (precioCostoInput) precioCostoInput.value = producto.precio_costo;
+        if (precioVentaInput) precioVentaInput.value = producto.precio_venta;
+        if (stockInput) stockInput.value = producto.stock;
+        if (proveedorInput) proveedorInput.value = producto.proveedor || '';
+        if (activoSelect) activoSelect.value = producto.activo;
+        if (margenInput) margenInput.value = producto.margen_ganancia || '';
         
         form.dataset.productoId = producto.id;
     } else {
@@ -1562,31 +1810,46 @@ function mostrarModalProducto(producto = null) {
     }
     
     modal.classList.add('active');
-    document.getElementById('producto-codigo').focus();
+    const codigoInput = document.getElementById('producto-codigo');
+    if (codigoInput) codigoInput.focus();
 }
 
 function calcularPrecioVenta() {
-    const costo = parseFloat(document.getElementById('producto-precio-costo').value) || 0;
-    const margen = parseFloat(document.getElementById('producto-margen').value) || 0;
+    const costoInput = document.getElementById('producto-precio-costo');
+    const margenInput = document.getElementById('producto-margen');
+    const ventaInput = document.getElementById('producto-precio-venta');
+    
+    if (!costoInput || !margenInput || !ventaInput) return;
+    
+    const costo = parseFloat(costoInput.value) || 0;
+    const margen = parseFloat(margenInput.value) || 0;
     
     if (costo > 0 && margen > 0) {
         const precioVenta = costo * (1 + margen / 100);
-        document.getElementById('producto-precio-venta').value = precioVenta.toFixed(2);
+        ventaInput.value = precioVenta.toFixed(2);
     }
 }
 
 function calcularMargen() {
-    const costo = parseFloat(document.getElementById('producto-precio-costo').value) || 0;
-    const venta = parseFloat(document.getElementById('producto-precio-venta').value) || 0;
+    const costoInput = document.getElementById('producto-precio-costo');
+    const ventaInput = document.getElementById('producto-precio-venta');
+    const margenInput = document.getElementById('producto-margen');
+    
+    if (!costoInput || !ventaInput || !margenInput) return;
+    
+    const costo = parseFloat(costoInput.value) || 0;
+    const venta = parseFloat(ventaInput.value) || 0;
     
     if (costo > 0 && venta > 0) {
         const margen = ((venta - costo) / costo) * 100;
-        document.getElementById('producto-margen').value = margen.toFixed(2);
+        margenInput.value = margen.toFixed(2);
     }
 }
 
 async function guardarProducto(e) {
     e.preventDefault();
+    
+    console.log('Formulario enviado'); // Para debug
     
     // Verificar permiso
     const permiso = e.target.dataset.productoId ? 'modificar_productos' : 'cargar_productos';
@@ -1597,16 +1860,43 @@ async function guardarProducto(e) {
         return;
     }
     
+    // Obtener referencias a los elementos del formulario
+    const codigoInput = document.getElementById('producto-codigo');
+    const nombreInput = document.getElementById('producto-nombre');
+    const precioCostoInput = document.getElementById('producto-precio-costo');
+    const precioVentaInput = document.getElementById('producto-precio-venta');
+    const stockInput = document.getElementById('producto-stock');
+    const proveedorInput = document.getElementById('producto-proveedor');
+    const activoSelect = document.getElementById('producto-activo');
+    const margenInput = document.getElementById('producto-margen');
+    
+    // Verificar que todos los elementos existan
+    if (!codigoInput || !nombreInput || !precioCostoInput || !precioVentaInput || 
+        !stockInput || !activoSelect || !margenInput || !proveedorInput) {
+        console.error('Elementos del formulario no encontrados:', {
+            codigo: !!codigoInput,
+            nombre: !!nombreInput,
+            precioCosto: !!precioCostoInput,
+            precioVenta: !!precioVentaInput,
+            stock: !!stockInput,
+            activo: !!activoSelect,
+            margen: !!margenInput,
+            proveedor: !!proveedorInput
+        });
+        showNotification('Error: formulario incompleto', 'error');
+        return;
+    }
+    
+    // Usar valores con validación
     const producto = {
-        codigo_barra: document.getElementById('producto-codigo').value.trim(),
-        nombre: document.getElementById('producto-nombre').value.trim(),
-        precio_costo: parseFloat(document.getElementById('producto-precio-costo').value),
-        precio_venta: parseFloat(document.getElementById('producto-precio-venta').value),
-        stock: parseInt(document.getElementById('producto-stock').value),
-        proveedor: document.getElementById('producto-proveedor').value.trim() || null,
-        activo: document.getElementById('producto-activo').value === 'true',
-        margen_ganancia: document.getElementById('producto-margen').value ? 
-            parseFloat(document.getElementById('producto-margen').value) : null
+        codigo_barra: codigoInput.value ? codigoInput.value.trim() : '',
+        nombre: nombreInput.value ? nombreInput.value.trim() : '',
+        precio_costo: parseFloat(precioCostoInput.value) || 0,
+        precio_venta: parseFloat(precioVentaInput.value) || 0,
+        stock: parseInt(stockInput.value) || 0,
+        proveedor: proveedorInput.value ? proveedorInput.value.trim() : null,
+        activo: activoSelect.value === 'true',
+        margen_ganancia: margenInput.value ? parseFloat(margenInput.value) : null
     };
     
     // Validaciones
@@ -1726,17 +2016,19 @@ function eliminarProducto(productoId) {
 // ==================== BUSCADOR MANUAL ====================
 function showBuscadorManual() {
     const modal = document.getElementById('modal-buscador');
-    modal.classList.add('active');
-    
-    // Enfocar primer campo
-    document.getElementById('buscador-codigo').focus();
+    if (modal) {
+        modal.classList.add('active');
+        // Enfocar primer campo
+        const buscadorCodigo = document.getElementById('buscador-codigo');
+        if (buscadorCodigo) buscadorCodigo.focus();
+    }
 }
 
 async function buscarProductosManual() {
     try {
-        const codigo = document.getElementById('buscador-codigo').value;
-        const nombre = document.getElementById('buscador-nombre').value;
-        const proveedor = document.getElementById('buscador-proveedor').value;
+        const buscadorCodigo = document.getElementById('buscador-codigo');
+        const buscadorNombre = document.getElementById('buscador-nombre');
+        const buscadorProveedor = document.getElementById('buscador-proveedor');
         
         let query = supabaseClient
             .from('productos')
@@ -1744,16 +2036,16 @@ async function buscarProductosManual() {
             .eq('activo', true)
             .order('nombre');
         
-        if (codigo) {
-            query = query.ilike('codigo_barra', `%${codigo}%`);
+        if (buscadorCodigo && buscadorCodigo.value) {
+            query = query.ilike('codigo_barra', `%${buscadorCodigo.value}%`);
         }
         
-        if (nombre) {
-            query = query.ilike('nombre', `%${nombre}%`);
+        if (buscadorNombre && buscadorNombre.value) {
+            query = query.ilike('nombre', `%${buscadorNombre.value}%`);
         }
         
-        if (proveedor) {
-            query = query.eq('proveedor', proveedor);
+        if (buscadorProveedor && buscadorProveedor.value) {
+            query = query.eq('proveedor', buscadorProveedor.value);
         }
         
         const { data: productos, error } = await query.limit(50);
@@ -1761,6 +2053,8 @@ async function buscarProductosManual() {
         if (error) throw error;
         
         const tbody = document.getElementById('buscador-body');
+        if (!tbody) return;
+        
         tbody.innerHTML = '';
         
         if (productos.length === 0) {
@@ -1806,11 +2100,15 @@ function agregarDesdeBuscador(productoId) {
             mostrarProductoEncontrado(producto);
             
             // Cerrar modal
-            document.getElementById('modal-buscador').classList.remove('active');
+            const modal = document.getElementById('modal-buscador');
+            if (modal) modal.classList.remove('active');
             
             // Enfocar cantidad
-            document.getElementById('cantidad-producto').focus();
-            document.getElementById('cantidad-producto').select();
+            const cantidadProducto = document.getElementById('cantidad-producto');
+            if (cantidadProducto) {
+                cantidadProducto.focus();
+                cantidadProducto.select();
+            }
             
         } catch (error) {
             console.error('Error cargando producto:', error);
@@ -1824,24 +2122,27 @@ function agregarDesdeBuscador(productoId) {
 // ==================== HISTORIAL ====================
 async function cargarVentasHoy() {
     const hoy = new Date().toISOString().split('T')[0];
-    document.getElementById('filtro-fecha-inicio').value = hoy;
-    document.getElementById('filtro-fecha-fin').value = hoy;
+    const fechaInicio = document.getElementById('filtro-fecha-inicio');
+    const fechaFin = document.getElementById('filtro-fecha-fin');
+    
+    if (fechaInicio) fechaInicio.value = hoy;
+    if (fechaFin) fechaFin.value = hoy;
     
     await cargarHistorial();
 }
 
 async function cargarHistorial() {
     try {
-        const fechaInicio = document.getElementById('filtro-fecha-inicio').value;
-        const fechaFin = document.getElementById('filtro-fecha-fin').value;
+        const fechaInicio = document.getElementById('filtro-fecha-inicio');
+        const fechaFin = document.getElementById('filtro-fecha-fin');
         
-        if (!fechaInicio || !fechaFin) {
+        if (!fechaInicio || !fechaFin || !fechaInicio.value || !fechaFin.value) {
             showNotification('Seleccione un rango de fechas', 'warning');
             return;
         }
         
         // Ajustar fecha fin para incluir todo el día
-        const fechaFinAjustada = new Date(fechaFin);
+        const fechaFinAjustada = new Date(fechaFin.value);
         fechaFinAjustada.setHours(23, 59, 59, 999);
         
         const { data: ventas, error } = await supabaseClient
@@ -1857,13 +2158,15 @@ async function cargarHistorial() {
                     monto
                 )
             `)
-            .gte('fecha', fechaInicio)
+            .gte('fecha', fechaInicio.value)
             .lte('fecha', fechaFinAjustada.toISOString())
             .order('fecha', { ascending: false });
         
         if (error) throw error;
         
         const tbody = document.getElementById('historial-body');
+        if (!tbody) return;
+        
         tbody.innerHTML = '';
         
         if (ventas.length === 0) {
@@ -1951,6 +2254,8 @@ function verDetalleVenta(ventaId) {
             const modal = document.getElementById('modal-detalle-venta');
             const titulo = document.getElementById('modal-venta-titulo');
             const contenido = document.getElementById('detalle-venta-contenido');
+            
+            if (!modal || !titulo || !contenido) return;
             
             titulo.innerHTML = `<i class="fas fa-receipt"></i> Detalle de Venta: ${venta.ticket_id}`;
             
@@ -2071,16 +2376,16 @@ function anularVenta(ventaId) {
 // ==================== REPORTES ====================
 async function generarReporte() {
     try {
-        const fechaInicio = document.getElementById('reporte-fecha-inicio').value;
-        const fechaFin = document.getElementById('reporte-fecha-fin').value;
+        const fechaInicio = document.getElementById('reporte-fecha-inicio');
+        const fechaFin = document.getElementById('reporte-fecha-fin');
         
-        if (!fechaInicio || !fechaFin) {
+        if (!fechaInicio || !fechaFin || !fechaInicio.value || !fechaFin.value) {
             showNotification('Seleccione un rango de fechas', 'warning');
             return;
         }
         
         // Ajustar fecha fin para incluir todo el día
-        const fechaFinAjustada = new Date(fechaFin);
+        const fechaFinAjustada = new Date(fechaFin.value);
         fechaFinAjustada.setHours(23, 59, 59, 999);
         
         // Obtener ventas del período
@@ -2103,7 +2408,7 @@ async function generarReporte() {
                     monto
                 )
             `)
-            .gte('fecha', fechaInicio)
+            .gte('fecha', fechaInicio.value)
             .lte('fecha', fechaFinAjustada.toISOString())
             .eq('anulada', false);
         
@@ -2149,6 +2454,8 @@ async function generarReporte() {
         
         // Generar HTML del reporte
         const resultados = document.getElementById('reportes-resultados');
+        if (!resultados) return;
+        
         resultados.innerHTML = `
             <div class="reporte-resumen">
                 <div class="reporte-item">
@@ -2215,6 +2522,8 @@ async function cargarConfiguracionTicket() {
         if (error) throw error;
         
         const form = document.getElementById('config-ticket-form');
+        if (!form) return;
+        
         form.innerHTML = '';
         
         const ticketConfigs = config.filter(item => 
@@ -2253,7 +2562,10 @@ async function cargarConfiguracionTicket() {
         form.appendChild(btnDiv);
         
         // Asignar evento
-        document.getElementById('btn-guardar-config').addEventListener('click', guardarConfiguracionTicket);
+        const btnGuardar = document.getElementById('btn-guardar-config');
+        if (btnGuardar) {
+            btnGuardar.addEventListener('click', guardarConfiguracionTicket);
+        }
         
     } catch (error) {
         console.error('Error cargando configuración de ticket:', error);
@@ -2311,8 +2623,11 @@ function mostrarTabConfiguracion(tabId) {
     });
     
     // Mostrar tab seleccionado
-    document.getElementById(tabId).classList.add('active');
-    document.querySelector(`.tab-btn[data-tab="${tabId}"]`).classList.add('active');
+    const tab = document.getElementById(tabId);
+    const tabBtn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+    
+    if (tab) tab.classList.add('active');
+    if (tabBtn) tabBtn.classList.add('active');
     
     // Cargar contenido según tab
     if (tabId === 'config-permisos') {
@@ -2333,6 +2648,7 @@ async function cargarConfiguracionPermisos() {
         if (error) throw error;
         
         const permisosList = document.getElementById('config-permisos-list');
+        if (!permisosList) return;
         
         if (usuarios.length === 0) {
             permisosList.innerHTML = '<p>No hay cajeros registrados</p>';
@@ -2476,9 +2792,12 @@ function guardarPermisosUsuario(usuarioId) {
 async function cargarConfiguracionUsuarios() {
     // Solo administradores pueden ver esta sección
     if (appState.usuario?.rol !== 'Administrador') {
-        document.getElementById('config-usuarios-list').innerHTML = `
-            <p class="text-warning">Solo administradores pueden acceder a esta sección</p>
-        `;
+        const usuariosList = document.getElementById('config-usuarios-list');
+        if (usuariosList) {
+            usuariosList.innerHTML = `
+                <p class="text-warning">Solo administradores pueden acceder a esta sección</p>
+            `;
+        }
         return;
     }
     
@@ -2491,6 +2810,7 @@ async function cargarConfiguracionUsuarios() {
         if (error) throw error;
         
         const usuariosList = document.getElementById('config-usuarios-list');
+        if (!usuariosList) return;
         
         if (usuarios.length === 0) {
             usuariosList.innerHTML = '<p>No hay usuarios registrados</p>';
@@ -2535,9 +2855,12 @@ async function cargarConfiguracionUsuarios() {
         
     } catch (error) {
         console.error('Error cargando usuarios:', error);
-        document.getElementById('config-usuarios-list').innerHTML = `
-            <p>Error cargando usuarios: ${error.message}</p>
-        `;
+        const usuariosList = document.getElementById('config-usuarios-list');
+        if (usuariosList) {
+            usuariosList.innerHTML = `
+                <p>Error cargando usuarios: ${error.message}</p>
+            `;
+        }
     }
 }
 
@@ -2561,7 +2884,9 @@ function showNotification(mensaje, tipo = 'info') {
     
     // Auto-eliminar después de 5 segundos
     setTimeout(() => {
-        notification.remove();
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
     }, 5000);
 }
 
@@ -2582,7 +2907,8 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e =
 window.addEventListener('resize', function() {
     // Cerrar menú en móvil al cambiar a desktop
     if (window.innerWidth >= 768) {
-        document.getElementById('main-nav').classList.remove('active');
+        const nav = document.getElementById('main-nav');
+        if (nav) nav.classList.remove('active');
     }
 });
 

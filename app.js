@@ -1689,7 +1689,7 @@ async function cargarHistorialCajas() {
             .from('caja')
             .select(`
                 *,
-                usuarios (username)
+                usuarios!caja_usuario_id_fkey (username)
             `)
             .gte('fecha_apertura', fechaInicioVal)
             .lte('fecha_apertura', fechaFinAjustada.toISOString())
@@ -1812,23 +1812,25 @@ async function cargarDetallesCajaDia() {
         const fechaFin = new Date(fecha);
         fechaFin.setHours(23, 59, 59, 999);
         
+        // Primero obtener cajas
         const { data: cajas, error: cajasError } = await supabaseClient
             .from('caja')
             .select(`
                 *,
-                usuarios (username)
+                usuarios!caja_usuario_id_fkey (username)
             `)
             .gte('fecha_apertura', fechaInicio.toISOString())
             .lte('fecha_apertura', fechaFin.toISOString());
         
         if (cajasError) throw cajasError;
         
+        // Obtener ventas con la relación específica de usuario_id
         const { data: ventas, error: ventasError } = await supabaseClient
             .from('ventas')
             .select(`
                 *,
                 pagos_venta (medio_pago, monto),
-                usuarios (username)
+                usuarios!ventas_usuario_id_fkey (username)
             `)
             .gte('fecha', fechaInicio.toISOString())
             .lte('fecha', fechaFin.toISOString())
@@ -2069,7 +2071,7 @@ window.verDetalleCaja = async function(cajaId) {
             .from('caja')
             .select(`
                 *,
-                usuarios (username)
+                usuarios!caja_usuario_id_fkey (username)
             `)
             .eq('id', cajaId)
             .single();
@@ -2219,7 +2221,7 @@ async function imprimirResumenCaja() {
             .from('caja')
             .select(`
                 *,
-                usuarios (username)
+                usuarios!caja_usuario_id_fkey (username)
             `)
             .eq('id', appState.cajaActiva.id)
             .single();
@@ -2860,10 +2862,8 @@ async function cargarHistorial() {
                 fecha,
                 total,
                 anulada,
-                pagos_venta (
-                    medio_pago,
-                    monto
-                )
+                pagos_venta (medio_pago, monto),
+                usuarios!ventas_usuario_id_fkey (username)
             `)
             .gte('fecha', fechaInicio.value)
             .lte('fecha', fechaFinAjustada.toISOString())
@@ -2948,7 +2948,8 @@ window.verDetalleVenta = async function(id) {
                 pagos_venta (
                     medio_pago,
                     monto
-                )
+                ),
+                usuarios!ventas_usuario_id_fkey (username)
             `)
             .eq('id', id)
             .single();
@@ -2971,6 +2972,7 @@ window.verDetalleVenta = async function(id) {
                 <p><strong>Subtotal:</strong> S/ ${parseFloat(venta.subtotal).toFixed(2)}</p>
                 <p><strong>Descuento:</strong> S/ ${parseFloat(venta.descuento).toFixed(2)}</p>
                 <p><strong>Total:</strong> S/ ${parseFloat(venta.total).toFixed(2)}</p>
+                <p><strong>Atendido por:</strong> ${venta.usuarios?.username || 'N/A'}</p>
             </div>
             
             <h4>Productos:</h4>

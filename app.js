@@ -534,11 +534,6 @@ function showSection(sectionId) {
             const fechaFin = document.getElementById('reporte-fecha-fin');
             if (fechaInicio) fechaInicio.value = hoy;
             if (fechaFin) fechaFin.value = hoy;
-            
-            // Cargar reporte automáticamente al entrar a la sección
-            setTimeout(() => {
-                generarReporte();
-            }, 500);
             break;
         case 'configuracion':
             cargarConfiguracionTicket();
@@ -3256,56 +3251,38 @@ async function generarReporte() {
             return;
         }
         
-        const btnGenerar = document.getElementById('btn-generar-reporte');
-        if (btnGenerar) {
-            btnGenerar.classList.add('loading');
-            btnGenerar.disabled = true;
-        }
-        
-        // Ajustar fecha fin para incluir todo el día
         const fechaFinAjustada = new Date(fechaFin.value);
         fechaFinAjustada.setHours(23, 59, 59, 999);
         
-        console.log('Generando reporte desde:', fechaInicio.value, 'hasta:', fechaFin.value);
-        
-        // Consultar ventas con sus detalles y pagos
         const { data: ventas, error } = await supabaseClient
             .from('ventas')
             .select(`
-                *,
+                id,
+                total,
+                descuento,
+                anulada,
                 detalle_ventas (
                     cantidad,
                     precio_unitario,
-                    subtotal,
                     productos (
-                        nombre,
                         precio_costo
                     )
                 ),
                 pagos_venta (
                     medio_pago,
                     monto
-                ),
-                usuarios (
-                    username
                 )
             `)
-            .gte('fecha', fechaInicio.value + 'T00:00:00')
+            .gte('fecha', fechaInicio.value)
             .lte('fecha', fechaFinAjustada.toISOString())
-            .eq('anulada', false)
-            .order('fecha', { ascending: false });
+            .eq('anulada', false);
         
-        if (error) {
-            console.error('Error en consulta de ventas:', error);
-            throw error;
-        }
-        
-        console.log('Ventas obtenidas para reporte:', ventas?.length || 0);
+        if (error) throw error;
         
         let totalVentas = 0;
         let totalDescuentos = 0;
         let totalGanancias = 0;
-        let cantidadVentas = ventas?.length || 0;
+        let cantidadVentas = ventas.length;
         
         const mediosPago = {
             'EFECTIVO': 0,
@@ -3313,198 +3290,85 @@ async function generarReporte() {
             'TRANSFERENCIA/QR': 0
         };
         
-        // Procesar ventas para obtener estadísticas
-        if (ventas && ventas.length > 0) {
-            ventas.forEach(venta => {
-                totalVentas += parseFloat(venta.total) || 0;
-                totalDescuentos += parseFloat(venta.descuento) || 0;
-                
-                // Calcular ganancias de los productos vendidos
-                if (venta.detalle_ventas && venta.detalle_ventas.length > 0) {
-                    venta.detalle_ventas.forEach(detalle => {
-                        const precioCosto = parseFloat(detalle.productos?.precio_costo) || 0;
-                        const precioVenta = parseFloat(detalle.precio_unitario) || 0;
-                        const cantidad = parseInt(detalle.cantidad) || 0;
-                        const ganancia = (precioVenta - precioCosto) * cantidad;
-                        totalGanancias += ganancia;
-                    });
-                }
-                
-                // Sumar por medio de pago
-                if (venta.pagos_venta && venta.pagos_venta.length > 0) {
-                    venta.pagos_venta.forEach(pago => {
-                        const medio = pago.medio_pago;
-                        const monto = parseFloat(pago.monto) || 0;
-                        
-                        if (mediosPago.hasOwnProperty(medio)) {
-                            mediosPago[medio] += monto;
-                        } else {
-                            mediosPago[medio] = monto;
-                        }
-                    });
-                }
-            });
-        }
+        ventas.forEach(venta => {
+            totalVentas += parseFloat(venta.total);
+            totalDescuentos += parseFloat(venta.descuento);
+            
+            if (venta.detalle_ventas && venta.detalle_ventas.length > 0) {
+                venta.detalle_ventas.forEach(detalle => {
+                    const costo = parseFloat(detalle.productos.precio_costo) || 0;
+                    const ganancia = (detalle.precio_unitario - costo) * detalle.cantidad;
+                    totalGanancias += ganancia;
+                });
+            }
+            
+            if (venta.pagos_venta && venta.pagos_venta.length > 0) {
+                venta.pagos_venta.forEach(pago => {
+                    if (mediosPago[pago.medio_pago] !== undefined) {
+                        mediosPago[pago.medio_pago] += parseFloat(pago.monto);
+                    }
+                });
+            }
+        });
         
         const ticketPromedio = cantidadVentas > 0 ? totalVentas / cantidadVentas : 0;
         
         const resultados = document.getElementById('reportes-resultados');
-        if (!resultados) {
-            console.error('Elemento reportes-resultados no encontrado');
-            return;
-        }
+        if (!resultados) return;
         
-        // Generar HTML del reporte
         resultados.innerHTML = `
             <div class="reporte-resumen">
-                <div class="reporte-item bg-primary">
-                    <h4><i class="fas fa-chart-line"></i> VENTAS TOTALES</h4>
+                <div class="reporte-item">
+                    <h4>VENTAS TOTALES</h4>
                     <div class="reporte-valor">S/ ${totalVentas.toFixed(2)}</div>
-                    <small>${cantidadVentas} transacciones</small>
                 </div>
-                <div class="reporte-item bg-success">
-                    <h4><i class="fas fa-money-bill-wave"></i> GANANCIAS</h4>
+                <div class="reporte-item">
+                    <h4>GANANCIAS</h4>
                     <div class="reporte-valor">S/ ${totalGanancias.toFixed(2)}</div>
-                    <small>Margen: ${totalVentas > 0 ? ((totalGanancias / totalVentas) * 100).toFixed(1) : '0'}%</small>
                 </div>
-                <div class="reporte-item bg-info">
-                    <h4><i class="fas fa-receipt"></i> CANT. VENTAS</h4>
+                <div class="reporte-item">
+                    <h4>CANT. VENTAS</h4>
                     <div class="reporte-valor">${cantidadVentas}</div>
-                    <small>Periodo: ${fechaInicio.value} al ${fechaFin.value}</small>
                 </div>
-                <div class="reporte-item bg-warning">
-                    <h4><i class="fas fa-ticket-alt"></i> TICKET PROMEDIO</h4>
+                <div class="reporte-item">
+                    <h4>TICKET PROMEDIO</h4>
                     <div class="reporte-valor">S/ ${ticketPromedio.toFixed(2)}</div>
-                    <small>Por transacción</small>
                 </div>
-                <div class="reporte-item bg-secondary">
-                    <h4><i class="fas fa-percentage"></i> DESCUENTOS</h4>
+                <div class="reporte-item">
+                    <h4>DESCUENTOS</h4>
                     <div class="reporte-valor">S/ ${totalDescuentos.toFixed(2)}</div>
-                    <small>Total aplicado</small>
                 </div>
             </div>
             
-            <div class="reporte-desglose mt-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h3><i class="fas fa-credit-card"></i> Desglose por Medio de Pago</h3>
-                    </div>
-                    <div class="card-body">
-                        <table class="data-table">
-                            <thead>
+            <div class="reporte-desglose">
+                <h3>Desglose por Medio de Pago</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Medio de Pago</th>
+                            <th>Total</th>
+                            <th>Porcentaje</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${Object.entries(mediosPago).map(([medio, total]) => {
+                            const porcentaje = totalVentas > 0 ? (total / totalVentas * 100) : 0;
+                            return `
                                 <tr>
-                                    <th>Medio de Pago</th>
-                                    <th>Total</th>
-                                    <th>Porcentaje</th>
-                                    <th>Cantidad</th>
+                                    <td>${medio}</td>
+                                    <td>S/ ${total.toFixed(2)}</td>
+                                    <td>${porcentaje.toFixed(1)}%</td>
                                 </tr>
-                            </thead>
-                            <tbody>
-                                ${Object.entries(mediosPago).map(([medio, total]) => {
-                                    const porcentaje = totalVentas > 0 ? (total / totalVentas * 100) : 0;
-                                    // Contar cuántas ventas usaron este medio
-                                    const cantidadMedio = ventas?.filter(v => 
-                                        v.pagos_venta?.some(p => p.medio_pago === medio)
-                                    ).length || 0;
-                                    return `
-                                        <tr>
-                                            <td><i class="${getMedioPagoIcon(medio)}"></i> ${medio}</td>
-                                            <td><strong>S/ ${total.toFixed(2)}</strong></td>
-                                            <td>${porcentaje.toFixed(1)}%</td>
-                                            <td>${cantidadMedio}</td>
-                                        </tr>
-                                    `;
-                                }).join('')}
-                                <tr class="total-row">
-                                    <td><strong>TOTAL</strong></td>
-                                    <td><strong>S/ ${totalVentas.toFixed(2)}</strong></td>
-                                    <td><strong>100%</strong></td>
-                                    <td><strong>${cantidadVentas}</strong></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
             </div>
-            
-            ${ventas && ventas.length > 0 ? `
-            <div class="reporte-detalle mt-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h3><i class="fas fa-list"></i> Detalle de Ventas (${ventas.length})</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Ticket</th>
-                                        <th>Fecha</th>
-                                        <th>Usuario</th>
-                                        <th>Subtotal</th>
-                                        <th>Descuento</th>
-                                        <th>Total</th>
-                                        <th>Medios de Pago</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${ventas.slice(0, 10).map(venta => {
-                                        const fecha = new Date(venta.fecha).toLocaleString('es-ES');
-                                        const usuario = venta.usuarios?.username || 'N/A';
-                                        const medios = venta.pagos_venta?.map(p => 
-                                            `${p.medio_pago}: S/${p.monto}`
-                                        ).join('<br>') || 'Sin pagos';
-                                        
-                                        return `
-                                            <tr>
-                                                <td>${venta.ticket_id}</td>
-                                                <td>${fecha}</td>
-                                                <td>${usuario}</td>
-                                                <td>S/ ${parseFloat(venta.subtotal).toFixed(2)}</td>
-                                                <td>S/ ${parseFloat(venta.descuento).toFixed(2)}</td>
-                                                <td><strong>S/ ${parseFloat(venta.total).toFixed(2)}</strong></td>
-                                                <td>${medios}</td>
-                                            </tr>
-                                        `;
-                                    }).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                        ${ventas.length > 10 ? 
-                            `<p class="text-center mt-2"><small>Mostrando 10 de ${ventas.length} ventas</small></p>` : 
-                            ''
-                        }
-                    </div>
-                </div>
-            </div>
-            ` : ''}
         `;
-        
-        showNotification(`Reporte generado: ${cantidadVentas} ventas encontradas`, 'success');
         
     } catch (error) {
         console.error('Error generando reporte:', error);
-        showNotification('Error generando reporte: ' + error.message, 'error');
-        
-        const resultados = document.getElementById('reportes-resultados');
-        if (resultados) {
-            resultados.innerHTML = `
-                <div class="empty-reportes">
-                    <i class="fas fa-exclamation-triangle fa-3x text-danger"></i>
-                    <p>Error al generar el reporte</p>
-                    <p class="text-muted">${error.message}</p>
-                    <button class="btn btn-primary mt-3" onclick="generarReporte()">
-                        <i class="fas fa-redo"></i> Reintentar
-                    </button>
-                </div>
-            `;
-        }
-    } finally {
-        const btnGenerar = document.getElementById('btn-generar-reporte');
-        if (btnGenerar) {
-            btnGenerar.classList.remove('loading');
-            btnGenerar.disabled = false;
-        }
+        showNotification('Error generando reporte', 'error');
     }
 }
 

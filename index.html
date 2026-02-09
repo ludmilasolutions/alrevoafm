@@ -484,36 +484,53 @@
             </section>
 
             <!-- Sección de Reportes -->
-            <section id="seccion-reportes" class="content-section">
-                <div class="section-header">
-                    <h2><i class="fas fa-chart-bar"></i> Reportes y Ganancias</h2>
-                </div>
-                
-                <div class="reportes-panel">
-                    <div class="reportes-filtros">
-                        <div class="input-group">
-                            <label for="reporte-fecha-inicio">Fecha Inicio:</label>
-                            <input type="date" id="reporte-fecha-inicio">
-                        </div>
-                        <div class="input-group">
-                            <label for="reporte-fecha-fin">Fecha Fin:</label>
-                            <input type="date" id="reporte-fecha-fin">
-                        </div>
-                        <button id="btn-generar-reporte" class="btn btn-primary">
-                            <i class="fas fa-chart-line"></i> Generar Reporte
-                        </button>
-                    </div>
-                    
-                    <div class="reportes-resultados" id="reportes-resultados">
-                        <!-- Reportes se cargan dinámicamente -->
-                        <div class="empty-reportes">
-                            <i class="fas fa-chart-bar fa-3x"></i>
-                            <p>Seleccione un rango de fechas y genere un reporte</p>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
+<section id="seccion-reportes" class="content-section">
+    <div class="section-header">
+        <h2><i class="fas fa-chart-bar"></i> Reportes y Ganancias</h2>
+        <div class="section-actions">
+            <button id="btn-refrescar-reportes" class="btn">
+                <i class="fas fa-sync"></i> Refrescar
+            </button>
+            <button id="btn-imprimir-reporte" class="btn btn-secondary">
+                <i class="fas fa-print"></i> Imprimir
+            </button>
+        </div>
+    </div>
+    
+    <div class="reportes-panel">
+        <div class="reportes-filtros">
+            <div class="input-group">
+                <label for="reporte-fecha-inicio">Fecha Inicio:</label>
+                <input type="date" id="reporte-fecha-inicio">
+            </div>
+            <div class="input-group">
+                <label for="reporte-fecha-fin">Fecha Fin:</label>
+                <input type="date" id="reporte-fecha-fin">
+            </div>
+            <div class="input-group">
+                <label for="reporte-tipo">Tipo de Reporte:</label>
+                <select id="reporte-tipo">
+                    <option value="general">General</option>
+                    <option value="ventas">Ventas</option>
+                    <option value="productos">Productos</option>
+                    <option value="ganancias">Ganancias</option>
+                </select>
+            </div>
+            <button id="btn-generar-reporte" class="btn btn-primary">
+                <i class="fas fa-chart-line"></i> Generar Reporte
+            </button>
+        </div>
+        
+        <div class="reportes-resultados" id="reportes-resultados">
+            <!-- Reportes se cargan dinámicamente -->
+            <div class="empty-reportes">
+                <i class="fas fa-chart-bar fa-3x"></i>
+                <p>Seleccione un rango de fechas y genere un reporte</p>
+                <p>Fecha actual: <span id="fecha-actual"></span></p>
+            </div>
+        </div>
+    </div>
+</section>
             <!-- Sección de Configuración -->
             <section id="seccion-configuracion" class="content-section">
                 <div class="section-header">

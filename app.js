@@ -303,17 +303,29 @@ function setupEventListeners() {
         }
     });
     
-    // Agregar producto automáticamente al escanear
+    // MODIFICACIÓN 1: Escáner automático - agregar producto automáticamente al escanear
     const scannerInput = document.getElementById('scanner-input');
     if (scannerInput) {
-        scannerInput.addEventListener('keypress', function(e) {
+        scannerInput.addEventListener('keypress', async function(e) {
             if (e.key === 'Enter') {
+                e.preventDefault();
                 const codigo = this.value.trim();
                 if (codigo) {
-                    buscarYAgregarProducto(codigo);
+                    await buscarYAgregarProducto(codigo);
                     this.value = '';
                 }
             }
+        });
+        
+        // También agregar evento para cuando el usuario pega un código
+        scannerInput.addEventListener('paste', async function(e) {
+            setTimeout(async () => {
+                const codigo = this.value.trim();
+                if (codigo) {
+                    await buscarYAgregarProducto(codigo);
+                    this.value = '';
+                }
+            }, 10);
         });
     }
     
@@ -1473,6 +1485,7 @@ function actualizarUIEstadoCaja() {
                 <h3>Caja Abierta</h3>
                 <p>Monto inicial: $ ${parseFloat(appState.cajaActiva.monto_inicial).toFixed(2)}</p>
                 <p>Hora apertura: ${new Date(appState.cajaActiva.fecha_apertura).toLocaleTimeString()}</p>
+                <p>Usuario: ${appState.usuario?.username || 'N/A'}</p>
             </div>
         `;
         
@@ -1484,16 +1497,21 @@ function actualizarUIEstadoCaja() {
         statusElement.innerHTML = `<i class="fas fa-circle"></i> Caja: Cerrada`;
         statusElement.classList.remove('abierta');
         
+        // MODIFICACIÓN 2: Permitir a cajeros abrir cajas
+        const puedeAbrirCaja = appState.usuario?.rol === 'Administrador' || 
+                               appState.usuario?.rol === 'Cajero' ||
+                               appState.permisos.includes('acceder_caja');
+        
         statusDetalle.innerHTML = `
             <div class="caja-cerrada">
                 <i class="fas fa-lock fa-3x"></i>
                 <h3>Caja Cerrada</h3>
                 <p>No hay caja activa en este momento</p>
-                ${appState.usuario?.rol === 'Administrador' ? 
+                ${puedeAbrirCaja ? 
                     `<button id="btn-abrir-caja" class="btn btn-primary">
                         <i class="fas fa-unlock"></i> Abrir Caja
                     </button>` : 
-                    '<p class="text-warning">Solo administradores pueden abrir caja</p>'
+                    '<p class="text-warning">No tiene permisos para abrir caja</p>'
                 }
             </div>
         `;
@@ -1508,8 +1526,13 @@ function actualizarUIEstadoCaja() {
 }
 
 function mostrarModalAperturaCaja() {
-    if (appState.usuario?.rol !== 'Administrador') {
-        showNotification('Solo administradores pueden abrir caja', 'error');
+    // MODIFICACIÓN 2: Permitir a cajeros abrir cajas
+    const puedeAbrirCaja = appState.usuario?.rol === 'Administrador' || 
+                           appState.usuario?.rol === 'Cajero' ||
+                           appState.permisos.includes('acceder_caja');
+    
+    if (!puedeAbrirCaja) {
+        showNotification('No tiene permisos para abrir caja', 'error');
         return;
     }
     
@@ -1524,8 +1547,13 @@ function mostrarModalAperturaCaja() {
 async function abrirCaja(e) {
     e.preventDefault();
     
-    if (appState.usuario?.rol !== 'Administrador') {
-        showNotification('Solo administradores pueden abrir caja', 'error');
+    // MODIFICACIÓN 2: Permitir a cajeros abrir cajas
+    const puedeAbrirCaja = appState.usuario?.rol === 'Administrador' || 
+                           appState.usuario?.rol === 'Cajero' ||
+                           appState.permisos.includes('acceder_caja');
+    
+    if (!puedeAbrirCaja) {
+        showNotification('No tiene permisos para abrir caja', 'error');
         return;
     }
     
@@ -1655,6 +1683,14 @@ async function cargarResumenCaja() {
 }
 
 async function cerrarCaja() {
+    // MODIFICACIÓN 2: Validar permisos para cerrar caja
+    if (appState.usuario?.rol !== 'Administrador') {
+        if (appState.cajaActiva.usuario_id !== appState.usuario.id) {
+            showNotification('Solo puede cerrar cajas que usted haya abierto', 'error');
+            return;
+        }
+    }
+    
     const cierreMontoReal = document.getElementById('cierre-monto-real');
     const cierreObservaciones = document.getElementById('cierre-observaciones');
     
@@ -1848,7 +1884,7 @@ async function cargarHistorialCajas() {
                         <button class="btn btn-sm" onclick="verDetalleCaja('${caja.id}')">
                             <i class="fas fa-eye"></i>
                         </button>
-                        ${!caja.fecha_cierre && appState.usuario?.rol === 'Administrador' ? `
+                        ${!caja.fecha_cierre && (appState.usuario?.rol === 'Administrador' || appState.cajaActiva?.usuario_id === appState.usuario.id) ? `
                             <button class="btn btn-sm btn-danger" onclick="forzarCerrarCaja('${caja.id}')">
                                 <i class="fas fa-lock"></i>
                             </button>
@@ -3949,10 +3985,10 @@ function imprimirReporte() {
                 .data-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
                 .data-table th, .data-table td { padding: 10px; border: 1px solid #ddd; text-align: left; }
                 .data-table th { background: #f5f5f5; }
-                @media print {
-                    body { margin: 0; padding: 10px; }
-                    .no-print { display: none; }
-                }
+                .totales { margin-top: 30px; padding: 20px; background: #f9f9f9; border-radius: 5px; }
+                .firma { margin-top: 50px; text-align: center; }
+                .firma-line { border-top: 1px solid #333; width: 300px; margin: 0 auto 10px; }
+                @media print { body { margin: 0; padding: 10px; } }
             </style>
         </head>
         <body>

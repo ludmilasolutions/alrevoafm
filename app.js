@@ -28,6 +28,10 @@ async function initApp() {
         setupEventListeners();
         setupKeyboardShortcuts();
         await verificarCajaActiva();
+        
+        // Inicializar fechas de reportes
+        inicializarFechasReportes();
+        
         console.log('Sistema POS inicializado correctamente');
         
         setTimeout(() => {
@@ -299,7 +303,7 @@ function setupEventListeners() {
         }
     });
     
-    // MODIFICACIÓN: Agregar producto automáticamente al escanear
+    // Agregar producto automáticamente al escanear
     const scannerInput = document.getElementById('scanner-input');
     if (scannerInput) {
         scannerInput.addEventListener('keypress', function(e) {
@@ -486,6 +490,16 @@ function setupEventListeners() {
     if (formAperturaCaja) {
         formAperturaCaja.addEventListener('submit', abrirCaja);
     }
+    
+    const btnRefrescarReportes = document.getElementById('btn-refrescar-reportes');
+    if (btnRefrescarReportes) {
+        btnRefrescarReportes.addEventListener('click', generarReporte);
+    }
+    
+    const btnImprimirReporte = document.getElementById('btn-imprimir-reporte');
+    if (btnImprimirReporte) {
+        btnImprimirReporte.addEventListener('click', imprimirReporte);
+    }
 }
 
 function showSection(sectionId) {
@@ -530,13 +544,12 @@ function showSection(sectionId) {
             cargarEstadoCaja();
             break;
         case 'reportes':
-            const hoy = new Date().toISOString().split('T')[0];
-            const fechaInicio = document.getElementById('reporte-fecha-inicio');
-            const fechaFin = document.getElementById('reporte-fecha-fin');
-            if (fechaInicio) fechaInicio.value = hoy;
-            if (fechaFin) fechaFin.value = hoy;
+            inicializarFechasReportes();
             // Cargar reportes automáticamente
-            setTimeout(() => generarReporte(), 500);
+            setTimeout(() => {
+                const btnGenerar = document.getElementById('btn-generar-reporte');
+                if (btnGenerar) btnGenerar.click();
+            }, 100);
             break;
         case 'configuracion':
             cargarConfiguracionTicket();
@@ -613,7 +626,6 @@ function setupKeyboardShortcuts() {
 }
 
 // ==================== GESTIÓN DE PRODUCTOS ====================
-// MODIFICACIÓN: Nueva función para buscar y agregar producto automáticamente
 async function buscarYAgregarProducto(codigo) {
     if (!codigo || codigo.trim() === '') return;
     
@@ -668,7 +680,6 @@ async function buscarYAgregarProducto(codigo) {
     }
 }
 
-// Función original mantenida para búsqueda manual
 async function buscarProductoPorCodigo(codigo) {
     if (!codigo || codigo.trim() === '') return;
     
@@ -1720,7 +1731,7 @@ async function cerrarCaja() {
     }
 }
 
-// ==================== HISTORIAL DE CAJAS MEJORADO ====================
+// ==================== HISTORIAL DE CAJAS ====================
 async function cargarHistorialCajas() {
     try {
         console.log('Cargando historial de cajas...');
@@ -1728,7 +1739,6 @@ async function cargarHistorialCajas() {
         const fechaInicio = document.getElementById('caja-fecha-inicio');
         const fechaFin = document.getElementById('caja-fecha-fin');
         
-        // Valores por defecto
         const hoy = new Date().toISOString().split('T')[0];
         const hace30Dias = new Date();
         hace30Dias.setDate(hace30Dias.getDate() - 30);
@@ -1742,7 +1752,6 @@ async function cargarHistorialCajas() {
         
         console.log('Consultando desde:', fechaInicioVal, 'hasta:', fechaFinVal);
         
-        // Consulta simple de cajas
         const { data: cajas, error } = await supabaseClient
             .from('caja')
             .select('*')
@@ -1773,7 +1782,6 @@ async function cargarHistorialCajas() {
             return;
         }
         
-        // Obtener usuarios en una sola consulta
         const userIds = [...new Set(cajas.map(c => c.usuario_id).filter(id => id))];
         let usuariosMap = {};
         
@@ -1884,7 +1892,6 @@ async function cargarDetallesCajaDia() {
         const fechaInput = document.getElementById('detalle-fecha');
         let fecha = fechaInput?.value;
         
-        // Si no hay fecha seleccionada, usar hoy
         if (!fecha) {
             fecha = new Date().toISOString().split('T')[0];
             if (fechaInput) fechaInput.value = fecha;
@@ -1895,7 +1902,6 @@ async function cargarDetallesCajaDia() {
         const fechaInicio = fecha + 'T00:00:00';
         const fechaFin = fecha + 'T23:59:59';
         
-        // Obtener cajas del día
         const { data: cajas, error: cajasError } = await supabaseClient
             .from('caja')
             .select('*')
@@ -1907,7 +1913,6 @@ async function cargarDetallesCajaDia() {
             throw cajasError;
         }
         
-        // Obtener ventas del día
         const { data: ventas, error: ventasError } = await supabaseClient
             .from('ventas')
             .select('*')
@@ -2002,7 +2007,6 @@ async function cargarDetallesCajaDia() {
         }
         
         if (ventas && ventas.length > 0) {
-            // Obtener pagos para todas las ventas
             const ventaIds = ventas.map(v => v.id);
             const { data: pagos, error: pagosError } = await supabaseClient
                 .from('pagos_venta')
@@ -2014,7 +2018,6 @@ async function cargarDetallesCajaDia() {
             let ventasTarjeta = 0;
             let ventasTransferencia = 0;
             
-            // Agrupar pagos por venta
             const pagosPorVenta = {};
             if (pagos && !pagosError) {
                 pagos.forEach(pago => {
@@ -2078,7 +2081,6 @@ async function cargarDetallesCajaDia() {
                                 <div class="list-group" style="max-height: 300px; overflow-y: auto;">
             `;
             
-            // Obtener usuarios para las ventas
             const userIds = [...new Set(ventas.map(v => v.usuario_id).filter(id => id))];
             let usuariosMap = {};
             
@@ -2095,7 +2097,6 @@ async function cargarDetallesCajaDia() {
                 }
             }
             
-            // Mostrar solo las últimas 5 ventas
             const ultimasVentas = ventas.slice(0, 5);
             
             for (const venta of ultimasVentas) {
@@ -2547,14 +2548,12 @@ async function cargarHistorial() {
             return;
         }
         
-        // Valores por defecto si están vacíos
         const hoy = new Date().toISOString().split('T')[0];
         if (!fechaInicio.value) fechaInicio.value = hoy;
         if (!fechaFin.value) fechaFin.value = hoy;
         
         console.log('Consultando ventas desde:', fechaInicio.value, 'hasta:', fechaFin.value);
         
-        // Consulta principal de ventas
         const { data: ventas, error: ventasError } = await supabaseClient
             .from('ventas')
             .select('*')
@@ -2582,10 +2581,8 @@ async function cargarHistorial() {
             return;
         }
         
-        // Obtener IDs de ventas para consultas posteriores
         const ventaIds = ventas.map(v => v.id);
         
-        // Obtener todos los pagos en una sola consulta
         const { data: pagos, error: pagosError } = await supabaseClient
             .from('pagos_venta')
             .select('*')
@@ -2595,7 +2592,6 @@ async function cargarHistorial() {
             console.error('Error obteniendo pagos:', pagosError);
         }
         
-        // Agrupar pagos por venta_id
         const pagosPorVenta = {};
         if (pagos) {
             pagos.forEach(pago => {
@@ -2606,7 +2602,6 @@ async function cargarHistorial() {
             });
         }
         
-        // Obtener usuarios si es necesario
         const userIds = [...new Set(ventas.map(v => v.usuario_id).filter(id => id))];
         let usuariosMap = {};
         
@@ -2623,7 +2618,6 @@ async function cargarHistorial() {
             }
         }
         
-        // Renderizar cada venta
         ventas.forEach(venta => {
             const pagosVenta = pagosPorVenta[venta.id] || [];
             const medios = {};
@@ -2679,7 +2673,6 @@ window.verDetalleVenta = async function(id) {
     try {
         console.log('Obteniendo detalle de venta:', id);
         
-        // Obtener venta
         const { data: venta, error: ventaError } = await supabaseClient
             .from('ventas')
             .select('*')
@@ -2691,7 +2684,6 @@ window.verDetalleVenta = async function(id) {
             throw ventaError;
         }
         
-        // Obtener detalles de la venta
         const { data: detalles, error: detallesError } = await supabaseClient
             .from('detalle_ventas')
             .select(`
@@ -2707,7 +2699,6 @@ window.verDetalleVenta = async function(id) {
             throw detallesError;
         }
         
-        // Obtener pagos
         const { data: pagos, error: pagosError } = await supabaseClient
             .from('pagos_venta')
             .select('medio_pago, monto')
@@ -2718,7 +2709,6 @@ window.verDetalleVenta = async function(id) {
             throw pagosError;
         }
         
-        // Obtener usuario
         let nombreUsuario = 'N/A';
         if (venta.usuario_id) {
             const { data: usuario } = await supabaseClient
@@ -3300,35 +3290,64 @@ window.agregarDesdeBuscador = async function(id) {
 };
 
 // ==================== REPORTES ====================
+function inicializarFechasReportes() {
+    const hoy = new Date().toISOString().split('T')[0];
+    const hace7Dias = new Date();
+    hace7Dias.setDate(hace7Dias.getDate() - 7);
+    const hace7DiasStr = hace7Dias.toISOString().split('T')[0];
+    
+    const fechaInicio = document.getElementById('reporte-fecha-inicio');
+    const fechaFin = document.getElementById('reporte-fecha-fin');
+    const fechaActualSpan = document.getElementById('fecha-actual');
+    
+    if (fechaInicio) fechaInicio.value = hace7DiasStr;
+    if (fechaFin) fechaFin.value = hoy;
+    if (fechaActualSpan) fechaActualSpan.textContent = hoy;
+}
+
 async function generarReporte() {
     try {
-        const fechaInicio = document.getElementById('reporte-fecha-inicio');
-        const fechaFin = document.getElementById('reporte-fecha-fin');
+        console.log('Generando reporte...');
         
-        if (!fechaInicio || !fechaFin || !fechaInicio.value || !fechaFin.value) {
-            showNotification('Seleccione un rango de fechas', 'warning');
+        const fechaInicioInput = document.getElementById('reporte-fecha-inicio');
+        const fechaFinInput = document.getElementById('reporte-fecha-fin');
+        const tipoReporte = document.getElementById('reporte-tipo')?.value || 'general';
+        
+        const hoy = new Date().toISOString().split('T')[0];
+        const hace7Dias = new Date();
+        hace7Dias.setDate(hace7Dias.getDate() - 7);
+        const hace7DiasStr = hace7Dias.toISOString().split('T')[0];
+        
+        if (!fechaInicioInput.value) fechaInicioInput.value = hace7DiasStr;
+        if (!fechaFinInput.value) fechaFinInput.value = hoy;
+        
+        const fechaInicio = fechaInicioInput.value;
+        const fechaFin = fechaFinInput.value;
+        
+        console.log('Consultando reporte desde:', fechaInicio, 'hasta:', fechaFin, 'tipo:', tipoReporte);
+        
+        if (new Date(fechaInicio) > new Date(fechaFin)) {
+            showNotification('La fecha de inicio no puede ser mayor a la fecha fin', 'error');
             return;
         }
         
-        const fechaFinAjustada = new Date(fechaFin.value);
-        fechaFinAjustada.setHours(23, 59, 59, 999);
+        const btn = document.getElementById('btn-generar-reporte');
+        if (btn) {
+            btn.classList.add('loading');
+            btn.disabled = true;
+        }
         
-        // MODIFICACIÓN: Consulta mejorada para obtener reportes reales
         const { data: ventas, error: ventasError } = await supabaseClient
             .from('ventas')
             .select(`
-                id,
-                total,
-                descuento,
-                anulada,
-                fecha,
+                *,
                 detalle_ventas (
                     cantidad,
                     precio_unitario,
                     subtotal,
                     productos (
-                        precio_costo,
-                        nombre
+                        nombre,
+                        precio_costo
                     )
                 ),
                 pagos_venta (
@@ -3336,249 +3355,624 @@ async function generarReporte() {
                     monto
                 )
             `)
-            .gte('fecha', fechaInicio.value + 'T00:00:00')
-            .lte('fecha', fechaFinAjustada.toISOString())
+            .gte('fecha', fechaInicio + 'T00:00:00')
+            .lte('fecha', fechaFin + 'T23:59:59')
             .eq('anulada', false)
             .order('fecha', { ascending: false });
         
         if (ventasError) {
-            console.error('Error obteniendo ventas para reporte:', ventasError);
+            console.error('Error obteniendo ventas:', ventasError);
             throw ventasError;
         }
         
-        console.log(`Ventas obtenidas para reporte: ${ventas?.length || 0}`);
+        console.log('Ventas obtenidas para reporte:', ventas?.length || 0);
         
-        if (!ventas || ventas.length === 0) {
-            const resultados = document.getElementById('reportes-resultados');
-            if (resultados) {
-                resultados.innerHTML = `
-                    <div class="empty-reportes">
-                        <i class="fas fa-chart-bar fa-3x"></i>
-                        <p>No hay ventas en el período seleccionado</p>
-                        <p>Fecha: ${fechaInicio.value} al ${fechaFin.value}</p>
-                    </div>
-                `;
-            }
-            return;
+        const { data: productos, error: productosError } = await supabaseClient
+            .from('productos')
+            .select('*')
+            .eq('activo', true);
+        
+        if (productosError) {
+            console.error('Error obteniendo productos:', productosError);
+            throw productosError;
         }
         
-        let totalVentas = 0;
-        let totalDescuentos = 0;
-        let totalGanancias = 0;
-        let cantidadVentas = ventas.length;
-        let totalCosto = 0;
+        const { data: cajas, error: cajasError } = await supabaseClient
+            .from('caja')
+            .select('*')
+            .gte('fecha_apertura', fechaInicio + 'T00:00:00')
+            .lte('fecha_apertura', fechaFin + 'T23:59:59');
         
-        const mediosPago = {
-            'EFECTIVO': 0,
-            'TARJETA': 0,
-            'TRANSFERENCIA/QR': 0
-        };
+        if (cajasError) {
+            console.error('Error obteniendo cajas:', cajasError);
+            throw cajasError;
+        }
         
-        const productosVendidos = {};
-        const ventasPorDia = {};
+        let reporteHTML = '';
         
-        // Procesar todas las ventas
-        ventas.forEach(venta => {
-            totalVentas += parseFloat(venta.total) || 0;
-            totalDescuentos += parseFloat(venta.descuento) || 0;
-            
-            // Fecha para agrupación diaria
-            const fecha = venta.fecha.split('T')[0];
-            if (!ventasPorDia[fecha]) {
-                ventasPorDia[fecha] = {
-                    ventas: 0,
-                    cantidad: 0
-                };
-            }
-            ventasPorDia[fecha].ventas += parseFloat(venta.total) || 0;
-            ventasPorDia[fecha].cantidad += 1;
-            
-            // Procesar detalles de venta para ganancias
-            if (venta.detalle_ventas && venta.detalle_ventas.length > 0) {
-                venta.detalle_ventas.forEach(detalle => {
-                    const costo = parseFloat(detalle.productos?.precio_costo) || 0;
-                    const ganancia = (parseFloat(detalle.precio_unitario) || 0) - costo;
-                    const gananciaTotal = ganancia * (detalle.cantidad || 1);
-                    totalGanancias += gananciaTotal;
-                    totalCosto += costo * (detalle.cantidad || 1);
-                    
-                    // Contabilizar productos vendidos
-                    const productoNombre = detalle.productos?.nombre || 'Desconocido';
-                    if (!productosVendidos[productoNombre]) {
-                        productosVendidos[productoNombre] = {
-                            cantidad: 0,
-                            total: 0
-                        };
-                    }
-                    productosVendidos[productoNombre].cantidad += detalle.cantidad || 0;
-                    productosVendidos[productoNombre].total += parseFloat(detalle.subtotal) || 0;
-                });
-            }
-            
-            // Procesar pagos
-            if (venta.pagos_venta && venta.pagos_venta.length > 0) {
-                venta.pagos_venta.forEach(pago => {
-                    if (mediosPago[pago.medio_pago] !== undefined) {
-                        mediosPago[pago.medio_pago] += parseFloat(pago.monto) || 0;
-                    }
-                });
-            }
-        });
-        
-        const ticketPromedio = cantidadVentas > 0 ? totalVentas / cantidadVentas : 0;
-        const margenGanancia = totalCosto > 0 ? (totalGanancias / totalCosto) * 100 : 0;
-        
-        // Ordenar productos más vendidos
-        const productosTop = Object.entries(productosVendidos)
-            .sort((a, b) => b[1].cantidad - a[1].cantidad)
-            .slice(0, 10);
-        
-        // Ordenar días por fecha
-        const diasOrdenados = Object.entries(ventasPorDia)
-            .sort((a, b) => new Date(a[0]) - new Date(b[0]));
+        switch(tipoReporte) {
+            case 'general':
+                reporteHTML = await generarReporteGeneral(ventas, productos, cajas, fechaInicio, fechaFin);
+                break;
+            case 'ventas':
+                reporteHTML = generarReporteVentas(ventas, fechaInicio, fechaFin);
+                break;
+            case 'productos':
+                reporteHTML = generarReporteProductos(ventas, productos, fechaInicio, fechaFin);
+                break;
+            case 'ganancias':
+                reporteHTML = generarReporteGanancias(ventas, fechaInicio, fechaFin);
+                break;
+            default:
+                reporteHTML = await generarReporteGeneral(ventas, productos, cajas, fechaInicio, fechaFin);
+        }
         
         const resultados = document.getElementById('reportes-resultados');
-        if (!resultados) return;
+        if (resultados) {
+            resultados.innerHTML = reporteHTML;
+        }
         
-        resultados.innerHTML = `
-            <div class="reporte-resumen">
-                <div class="reporte-item">
-                    <h4>VENTAS TOTALES</h4>
-                    <div class="reporte-valor">$ ${totalVentas.toFixed(2)}</div>
-                    <small>${cantidadVentas} transacciones</small>
+        showNotification(`Reporte generado correctamente (${ventas?.length || 0} ventas)`, 'success');
+        
+    } catch (error) {
+        console.error('Error generando reporte:', error);
+        showNotification('Error generando reporte: ' + error.message, 'error');
+        
+        const resultados = document.getElementById('reportes-resultados');
+        if (resultados) {
+            resultados.innerHTML = `
+                <div class="error-reportes">
+                    <i class="fas fa-exclamation-triangle fa-3x"></i>
+                    <p>Error generando reporte</p>
+                    <p>${error.message}</p>
+                    <p>Verifique la conexión y los datos</p>
                 </div>
-                <div class="reporte-item">
-                    <h4>GANANCIAS</h4>
-                    <div class="reporte-valor">$ ${totalGanancias.toFixed(2)}</div>
-                    <small>${margenGanancia.toFixed(1)}% de margen</small>
-                </div>
-                <div class="reporte-item">
-                    <h4>TICKET PROMEDIO</h4>
-                    <div class="reporte-valor">$ ${ticketPromedio.toFixed(2)}</div>
-                    <small>Por venta</small>
-                </div>
-                <div class="reporte-item">
-                    <h4>DESCUENTOS</h4>
-                    <div class="reporte-valor">$ ${totalDescuentos.toFixed(2)}</div>
-                    <small>${totalVentas > 0 ? ((totalDescuentos / totalVentas) * 100).toFixed(1) : '0'}% del total</small>
+            `;
+        }
+    } finally {
+        const btn = document.getElementById('btn-generar-reporte');
+        if (btn) {
+            btn.classList.remove('loading');
+            btn.disabled = false;
+        }
+    }
+}
+
+async function generarReporteGeneral(ventas, productos, cajas, fechaInicio, fechaFin) {
+    let totalVentas = 0;
+    let totalProductosVendidos = 0;
+    let totalGanancias = 0;
+    let totalDescuentos = 0;
+    
+    const ventasPorDia = {};
+    const productosVendidos = {};
+    const mediosPago = {
+        'EFECTIVO': 0,
+        'TARJETA': 0,
+        'TRANSFERENCIA/QR': 0
+    };
+    
+    ventas?.forEach(venta => {
+        totalVentas += parseFloat(venta.total) || 0;
+        totalDescuentos += parseFloat(venta.descuento) || 0;
+        
+        const fecha = venta.fecha.split('T')[0];
+        if (!ventasPorDia[fecha]) {
+            ventasPorDia[fecha] = {
+                ventas: 0,
+                cantidad: 0
+            };
+        }
+        ventasPorDia[fecha].ventas += parseFloat(venta.total) || 0;
+        ventasPorDia[fecha].cantidad += 1;
+        
+        if (venta.detalle_ventas) {
+            venta.detalle_ventas.forEach(detalle => {
+                totalProductosVendidos += detalle.cantidad || 0;
+                
+                const productoNombre = detalle.productos?.nombre || 'Desconocido';
+                if (!productosVendidos[productoNombre]) {
+                    productosVendidos[productoNombre] = {
+                        cantidad: 0,
+                        total: 0
+                    };
+                }
+                productosVendidos[productoNombre].cantidad += detalle.cantidad || 0;
+                productosVendidos[productoNombre].total += parseFloat(detalle.subtotal) || 0;
+                
+                const costo = parseFloat(detalle.productos?.precio_costo) || 0;
+                const ganancia = (parseFloat(detalle.precio_unitario) || 0) - costo;
+                totalGanancias += ganancia * (detalle.cantidad || 1);
+            });
+        }
+        
+        if (venta.pagos_venta) {
+            venta.pagos_venta.forEach(pago => {
+                if (mediosPago[pago.medio_pago] !== undefined) {
+                    mediosPago[pago.medio_pago] += parseFloat(pago.monto) || 0;
+                }
+            });
+        }
+    });
+    
+    const ticketPromedio = ventas?.length > 0 ? totalVentas / ventas.length : 0;
+    
+    const productosTop = Object.entries(productosVendidos)
+        .sort((a, b) => b[1].cantidad - a[1].cantidad)
+        .slice(0, 10);
+    
+    const diasOrdenados = Object.entries(ventasPorDia)
+        .sort((a, b) => new Date(a[0]) - new Date(b[0]));
+    
+    return `
+        <div class="reporte-header">
+            <h3><i class="fas fa-chart-bar"></i> Reporte General</h3>
+            <p>Período: ${fechaInicio} al ${fechaFin}</p>
+        </div>
+        
+        <div class="reporte-resumen">
+            <div class="reporte-item">
+                <h4>TOTAL VENTAS</h4>
+                <div class="reporte-valor">$ ${totalVentas.toFixed(2)}</div>
+                <small>${ventas?.length || 0} transacciones</small>
+            </div>
+            <div class="reporte-item">
+                <h4>GANANCIAS</h4>
+                <div class="reporte-valor">$ ${totalGanancias.toFixed(2)}</div>
+                <small>${totalVentas > 0 ? ((totalGanancias / totalVentas) * 100).toFixed(1) : '0'}% de margen</small>
+            </div>
+            <div class="reporte-item">
+                <h4>TICKET PROMEDIO</h4>
+                <div class="reporte-valor">$ ${ticketPromedio.toFixed(2)}</div>
+                <small>Por venta</small>
+            </div>
+            <div class="reporte-item">
+                <h4>PRODUCTOS VENDIDOS</h4>
+                <div class="reporte-valor">${totalProductosVendidos}</div>
+                <small>Unidades totales</small>
+            </div>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <div class="reporte-desglose">
+                    <h4><i class="fas fa-money-check-alt"></i> Medios de Pago</h4>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Medio de Pago</th>
+                                <th>Total</th>
+                                <th>Porcentaje</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${Object.entries(mediosPago).map(([medio, total]) => {
+                                const porcentaje = totalVentas > 0 ? (total / totalVentas * 100) : 0;
+                                return `
+                                    <tr>
+                                        <td>${medio}</td>
+                                        <td>$ ${total.toFixed(2)}</td>
+                                        <td>${porcentaje.toFixed(1)}%</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
                 </div>
             </div>
             
-            <div class="reporte-desglose">
-                <h3><i class="fas fa-money-check-alt"></i> Desglose por Medio de Pago</h3>
+            <div class="col-md-6">
+                <div class="reporte-desglose">
+                    <h4><i class="fas fa-star"></i> Productos Más Vendidos</h4>
+                    <div style="max-height: 300px; overflow-y: auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Producto</th>
+                                    <th>Cantidad</th>
+                                    <th>Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${productosTop.map(([nombre, datos]) => `
+                                    <tr>
+                                        <td>${nombre}</td>
+                                        <td>${datos.cantidad}</td>
+                                        <td>$ ${datos.total.toFixed(2)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="mt-4">
+            <h4><i class="fas fa-calendar-alt"></i> Ventas por Día</h4>
+            <div style="max-height: 300px; overflow-y: auto;">
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>Medio de Pago</th>
+                            <th>Fecha</th>
+                            <th>Ventas</th>
                             <th>Total</th>
-                            <th>Porcentaje</th>
-                            <th>Cant. Transacciones</th>
+                            <th>Promedio</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${Object.entries(mediosPago).map(([medio, total]) => {
-                            const porcentaje = totalVentas > 0 ? (total / totalVentas * 100) : 0;
-                            // Contar transacciones por medio de pago
-                            let transacciones = 0;
-                            ventas.forEach(venta => {
-                                if (venta.pagos_venta && venta.pagos_venta.some(p => p.medio_pago === medio)) {
-                                    transacciones++;
-                                }
-                            });
+                        ${diasOrdenados.map(([fecha, datos]) => `
+                            <tr>
+                                <td>${fecha}</td>
+                                <td>${datos.cantidad}</td>
+                                <td>$ ${datos.ventas.toFixed(2)}</td>
+                                <td>$ ${(datos.ventas / datos.cantidad).toFixed(2)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="mt-4 p-3 bg-light rounded">
+            <h4><i class="fas fa-info-circle"></i> Resumen del Período</h4>
+            <div class="row">
+                <div class="col-md-4">
+                    <p><strong>Total Descuentos:</strong> $ ${totalDescuentos.toFixed(2)}</p>
+                    <p><strong>Total Cajas:</strong> ${cajas?.length || 0}</p>
+                </div>
+                <div class="col-md-4">
+                    <p><strong>Días con Ventas:</strong> ${diasOrdenados.length}</p>
+                    <p><strong>Productos Diferentes:</strong> ${Object.keys(productosVendidos).length}</p>
+                </div>
+                <div class="col-md-4">
+                    <p><strong>Ventas/Día Promedio:</strong> $ ${diasOrdenados.length > 0 ? (totalVentas / diasOrdenados.length).toFixed(2) : '0'}</p>
+                    <p><strong>Productos/Venta Promedio:</strong> ${ventas?.length > 0 ? (totalProductosVendidos / ventas.length).toFixed(1) : '0'}</p>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function generarReporteVentas(ventas, fechaInicio, fechaFin) {
+    if (!ventas || ventas.length === 0) {
+        return `
+            <div class="empty-reportes">
+                <i class="fas fa-receipt fa-3x"></i>
+                <p>No hay ventas en este período</p>
+                <p>${fechaInicio} al ${fechaFin}</p>
+            </div>
+        `;
+    }
+    
+    let html = `
+        <div class="reporte-header">
+            <h3><i class="fas fa-receipt"></i> Reporte de Ventas</h3>
+            <p>Período: ${fechaInicio} al ${fechaFin} | Total: ${ventas.length} ventas</p>
+        </div>
+        
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Ticket</th>
+                        <th>Fecha</th>
+                        <th>Subtotal</th>
+                        <th>Descuento</th>
+                        <th>Total</th>
+                        <th>Medios de Pago</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    ventas.forEach(venta => {
+        const fecha = new Date(venta.fecha).toLocaleString('es-ES');
+        const mediosPago = {};
+        
+        if (venta.pagos_venta && venta.pagos_venta.length > 0) {
+            venta.pagos_venta.forEach(pago => {
+                if (!mediosPago[pago.medio_pago]) {
+                    mediosPago[pago.medio_pago] = 0;
+                }
+                mediosPago[pago.medio_pago] += parseFloat(pago.monto);
+            });
+        }
+        
+        const mediosTexto = Object.entries(mediosPago)
+            .map(([medio, monto]) => `${medio}: $ ${monto.toFixed(2)}`)
+            .join(', ');
+        
+        html += `
+            <tr>
+                <td>${venta.ticket_id}</td>
+                <td>${fecha}</td>
+                <td>$ ${parseFloat(venta.subtotal).toFixed(2)}</td>
+                <td>$ ${parseFloat(venta.descuento).toFixed(2)}</td>
+                <td>$ ${parseFloat(venta.total).toFixed(2)}</td>
+                <td>${mediosTexto || 'Sin pagos registrados'}</td>
+                <td>
+                    <button class="btn btn-sm" onclick="verDetalleVenta('${venta.id}')">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    return html;
+}
+
+function generarReporteProductos(ventas, productos, fechaInicio, fechaFin) {
+    const productosVendidos = {};
+    
+    ventas?.forEach(venta => {
+        if (venta.detalle_ventas) {
+            venta.detalle_ventas.forEach(detalle => {
+                const productoNombre = detalle.productos?.nombre || 'Desconocido';
+                if (!productosVendidos[productoNombre]) {
+                    productosVendidos[productoNombre] = {
+                        cantidad: 0,
+                        total: 0,
+                        costo: 0,
+                        ganancia: 0
+                    };
+                }
+                productosVendidos[productoNombre].cantidad += detalle.cantidad || 0;
+                productosVendidos[productoNombre].total += parseFloat(detalle.subtotal) || 0;
+                
+                const costoUnitario = parseFloat(detalle.productos?.precio_costo) || 0;
+                productosVendidos[productoNombre].costo += costoUnitario * (detalle.cantidad || 0);
+                productosVendidos[productoNombre].ganancia = 
+                    productosVendidos[productoNombre].total - productosVendidos[productoNombre].costo;
+            });
+        }
+    });
+    
+    const productosArray = Object.entries(productosVendidos)
+        .map(([nombre, datos]) => ({ nombre, ...datos }))
+        .sort((a, b) => b.cantidad - a.cantidad);
+    
+    return `
+        <div class="reporte-header">
+            <h3><i class="fas fa-boxes"></i> Reporte de Productos</h3>
+            <p>Período: ${fechaInicio} al ${fechaFin}</p>
+        </div>
+        
+        <div class="reporte-resumen">
+            <div class="reporte-item">
+                <h4>PRODUCTOS VENDIDOS</h4>
+                <div class="reporte-valor">${productosArray.length}</div>
+                <small>Productos diferentes</small>
+            </div>
+            <div class="reporte-item">
+                <h4>UNIDADES TOTALES</h4>
+                <div class="reporte-valor">${productosArray.reduce((sum, p) => sum + p.cantidad, 0)}</div>
+                <small>Unidades vendidas</small>
+            </div>
+            <div class="reporte-item">
+                <h4>TOTAL VENTAS</h4>
+                <div class="reporte-valor">$ ${productosArray.reduce((sum, p) => sum + p.total, 0).toFixed(2)}</div>
+                <small>En productos</small>
+            </div>
+            <div class="reporte-item">
+                <h4>GANANCIAS</h4>
+                <div class="reporte-valor">$ ${productosArray.reduce((sum, p) => sum + p.ganancia, 0).toFixed(2)}</div>
+                <small>Por productos</small>
+            </div>
+        </div>
+        
+        <div class="mt-4">
+            <h4><i class="fas fa-list-ol"></i> Detalle de Productos Vendidos</h4>
+            <div style="max-height: 400px; overflow-y: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th>Cantidad</th>
+                            <th>Ventas</th>
+                            <th>Costo</th>
+                            <th>Ganancia</th>
+                            <th>Margen %</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${productosArray.map(producto => {
+                            const margen = producto.costo > 0 ? 
+                                (producto.ganancia / producto.costo * 100) : 0;
                             return `
                                 <tr>
-                                    <td>${medio}</td>
-                                    <td>$ ${total.toFixed(2)}</td>
-                                    <td>${porcentaje.toFixed(1)}%</td>
-                                    <td>${transacciones}</td>
+                                    <td>${producto.nombre}</td>
+                                    <td>${producto.cantidad}</td>
+                                    <td>$ ${producto.total.toFixed(2)}</td>
+                                    <td>$ ${producto.costo.toFixed(2)}</td>
+                                    <td>$ ${producto.ganancia.toFixed(2)}</td>
+                                    <td>${margen.toFixed(1)}%</td>
                                 </tr>
                             `;
                         }).join('')}
                     </tbody>
                 </table>
             </div>
+        </div>
+    `;
+}
+
+function generarReporteGanancias(ventas, fechaInicio, fechaFin) {
+    let totalVentas = 0;
+    let totalCosto = 0;
+    let totalGanancias = 0;
+    let totalDescuentos = 0;
+    
+    const gananciasPorDia = {};
+    
+    ventas?.forEach(venta => {
+        totalVentas += parseFloat(venta.total) || 0;
+        totalDescuentos += parseFloat(venta.descuento) || 0;
+        
+        const fecha = venta.fecha.split('T')[0];
+        
+        if (!gananciasPorDia[fecha]) {
+            gananciasPorDia[fecha] = {
+                ventas: 0,
+                costo: 0,
+                ganancia: 0
+            };
+        }
+        
+        if (venta.detalle_ventas) {
+            let ventaCosto = 0;
+            let ventaGanancia = 0;
             
-            <div class="row mt-4">
-                <div class="col-md-6">
-                    <div class="reporte-desglose">
-                        <h3><i class="fas fa-chart-line"></i> Ventas por Día</h3>
-                        <div style="height: 300px; overflow-y: auto;">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Fecha</th>
-                                        <th>Cant. Ventas</th>
-                                        <th>Total</th>
-                                        <th>Promedio</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${diasOrdenados.map(([fecha, datos]) => `
-                                        <tr>
-                                            <td>${fecha}</td>
-                                            <td>${datos.cantidad}</td>
-                                            <td>$ ${datos.ventas.toFixed(2)}</td>
-                                            <td>$ ${(datos.ventas / datos.cantidad).toFixed(2)}</td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
+            venta.detalle_ventas.forEach(detalle => {
+                const costo = parseFloat(detalle.productos?.precio_costo) || 0;
+                const precio = parseFloat(detalle.precio_unitario) || 0;
+                const cantidad = detalle.cantidad || 0;
                 
-                <div class="col-md-6">
-                    <div class="reporte-desglose">
-                        <h3><i class="fas fa-star"></i> Productos Más Vendidos</h3>
-                        <div style="height: 300px; overflow-y: auto;">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Producto</th>
-                                        <th>Cantidad</th>
-                                        <th>Total</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${productosTop.map(([nombre, datos]) => `
-                                        <tr>
-                                            <td>${nombre}</td>
-                                            <td>${datos.cantidad}</td>
-                                            <td>$ ${datos.total.toFixed(2)}</td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
+                ventaCosto += costo * cantidad;
+                ventaGanancia += (precio - costo) * cantidad;
+            });
             
-            <div class="mt-4 p-3 bg-light rounded">
-                <h4><i class="fas fa-info-circle"></i> Resumen del Período</h4>
-                <div class="row">
-                    <div class="col-md-4">
-                        <p><strong>Fecha Inicio:</strong> ${fechaInicio.value}</p>
-                        <p><strong>Fecha Fin:</strong> ${fechaFin.value}</p>
-                    </div>
-                    <div class="col-md-4">
-                        <p><strong>Total Días con Ventas:</strong> ${diasOrdenados.length}</p>
-                        <p><strong>Productos Diferentes Vendidos:</strong> ${Object.keys(productosVendidos).length}</p>
-                    </div>
-                    <div class="col-md-4">
-                        <p><strong>Margen de Ganancia:</strong> ${margenGanancia.toFixed(2)}%</p>
-                        <p><strong>Eficiencia de Descuentos:</strong> ${totalVentas > 0 ? ((totalDescuentos / totalVentas) * 100).toFixed(2) : '0'}%</p>
-                    </div>
+            totalCosto += ventaCosto;
+            totalGanancias += ventaGanancia;
+            
+            gananciasPorDia[fecha].ventas += parseFloat(venta.total) || 0;
+            gananciasPorDia[fecha].costo += ventaCosto;
+            gananciasPorDia[fecha].ganancia += ventaGanancia;
+        }
+    });
+    
+    const margenTotal = totalCosto > 0 ? (totalGanancias / totalCosto * 100) : 0;
+    
+    const diasOrdenados = Object.entries(gananciasPorDia)
+        .sort((a, b) => new Date(a[0]) - new Date(b[0]));
+    
+    return `
+        <div class="reporte-header">
+            <h3><i class="fas fa-money-bill-wave"></i> Reporte de Ganancias</h3>
+            <p>Período: ${fechaInicio} al ${fechaFin}</p>
+        </div>
+        
+        <div class="reporte-resumen">
+            <div class="reporte-item">
+                <h4>VENTAS TOTALES</h4>
+                <div class="reporte-valor">$ ${totalVentas.toFixed(2)}</div>
+                <small>Ingresos brutos</small>
+            </div>
+            <div class="reporte-item">
+                <h4>COSTOS TOTALES</h4>
+                <div class="reporte-valor">$ ${totalCosto.toFixed(2)}</div>
+                <small>Inversión en productos</small>
+            </div>
+            <div class="reporte-item">
+                <h4>GANANCIAS NETAS</h4>
+                <div class="reporte-valor">$ ${totalGanancias.toFixed(2)}</div>
+                <small>Utilidad real</small>
+            </div>
+            <div class="reporte-item">
+                <h4>MARGEN %</h4>
+                <div class="reporte-valor">${margenTotal.toFixed(1)}%</div>
+                <small>Rentabilidad</small>
+            </div>
+        </div>
+        
+        <div class="mt-4">
+            <h4><i class="fas fa-chart-line"></i> Evolución Diaria de Ganancias</h4>
+            <div style="max-height: 300px; overflow-y: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Ventas</th>
+                            <th>Costos</th>
+                            <th>Ganancias</th>
+                            <th>Margen %</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${diasOrdenados.map(([fecha, datos]) => {
+                            const margenDia = datos.costo > 0 ? 
+                                (datos.ganancia / datos.costo * 100) : 0;
+                            return `
+                                <tr>
+                                    <td>${fecha}</td>
+                                    <td>$ ${datos.ventas.toFixed(2)}</td>
+                                    <td>$ ${datos.costo.toFixed(2)}</td>
+                                    <td>$ ${datos.ganancia.toFixed(2)}</td>
+                                    <td>${margenDia.toFixed(1)}%</td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="mt-4 p-3 bg-light rounded">
+            <h4><i class="fas fa-calculator"></i> Análisis de Rentabilidad</h4>
+            <div class="row">
+                <div class="col-md-6">
+                    <p><strong>Descuentos Aplicados:</strong> $ ${totalDescuentos.toFixed(2)}</p>
+                    <p><strong>Ventas Netas:</strong> $ ${(totalVentas + totalDescuentos).toFixed(2)}</p>
+                </div>
+                <div class="col-md-6">
+                    <p><strong>Ganancia/Venta Promedio:</strong> $ ${ventas?.length > 0 ? (totalGanancias / ventas.length).toFixed(2) : '0'}</p>
+                    <p><strong>Rentabilidad Diaria Promedio:</strong> $ ${diasOrdenados.length > 0 ? (totalGanancias / diasOrdenados.length).toFixed(2) : '0'}</p>
                 </div>
             </div>
-        `;
-        
-        showNotification(`Reporte generado para ${cantidadVentas} ventas`, 'success');
-        
-    } catch (error) {
-        console.error('Error generando reporte:', error);
-        showNotification('Error generando reporte: ' + error.message, 'error');
-    }
+        </div>
+    `;
+}
+
+function imprimirReporte() {
+    const contenido = document.getElementById('reportes-resultados').innerHTML;
+    const ventana = window.open('', '_blank');
+    
+    ventana.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Reporte AFMSOLUTIONS POS</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                .reporte-header { text-align: center; margin-bottom: 30px; }
+                .reporte-resumen { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 30px; }
+                .reporte-item { text-align: center; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+                .reporte-valor { font-size: 24px; font-weight: bold; color: #2c3e50; }
+                .data-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+                .data-table th, .data-table td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+                .data-table th { background: #f5f5f5; }
+                @media print {
+                    body { margin: 0; padding: 10px; }
+                    .no-print { display: none; }
+                }
+            </style>
+        </head>
+        <body>
+            ${contenido}
+            <div class="no-print" style="margin-top: 30px; text-align: center;">
+                <button onclick="window.print()" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                    Imprimir Reporte
+                </button>
+            </div>
+            <script>
+                window.onload = function() {
+                    // Auto-print option
+                    // window.print();
+                };
+            </script>
+        </body>
+        </html>
+    `);
+    
+    ventana.document.close();
 }
 
 // ==================== CONFIGURACIÓN ====================

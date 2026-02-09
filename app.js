@@ -1527,7 +1527,6 @@ async function cargarResumenCaja() {
             .from('ventas')
             .select(`
                 id,
-                total,
                 pagos_venta (
                     medio_pago,
                     monto
@@ -1665,42 +1664,47 @@ async function cerrarCaja() {
 // ==================== HISTORIAL DE CAJAS MEJORADO ====================
 async function cargarHistorialCajas() {
     try {
+        console.log('Cargando historial de cajas...');
+        
         const fechaInicio = document.getElementById('caja-fecha-inicio');
         const fechaFin = document.getElementById('caja-fecha-fin');
         
-        const hoy = new Date();
+        // Valores por defecto
+        const hoy = new Date().toISOString().split('T')[0];
         const hace30Dias = new Date();
-        hace30Dias.setDate(hoy.getDate() - 30);
+        hace30Dias.setDate(hace30Dias.getDate() - 30);
+        const hace30DiasStr = hace30Dias.toISOString().split('T')[0];
         
-        if (fechaInicio && !fechaInicio.value) {
-            fechaInicio.value = hace30Dias.toISOString().split('T')[0];
-        }
-        if (fechaFin && !fechaFin.value) {
-            fechaFin.value = hoy.toISOString().split('T')[0];
-        }
+        if (fechaInicio) fechaInicio.value = fechaInicio.value || hace30DiasStr;
+        if (fechaFin) fechaFin.value = fechaFin.value || hoy;
         
-        const fechaInicioVal = fechaInicio?.value || hace30Dias.toISOString().split('T')[0];
-        const fechaFinVal = fechaFin?.value || hoy.toISOString().split('T')[0];
+        const fechaInicioVal = fechaInicio?.value || hace30DiasStr;
+        const fechaFinVal = fechaFin?.value || hoy;
         
-        const fechaFinAjustada = new Date(fechaFinVal);
-        fechaFinAjustada.setHours(23, 59, 59, 999);
+        console.log('Consultando desde:', fechaInicioVal, 'hasta:', fechaFinVal);
         
+        // Consulta simple de cajas
         const { data: cajas, error } = await supabaseClient
             .from('caja')
-            .select(`
-                *,
-                usuarios!caja_usuario_id_fkey (username)
-            `)
-            .gte('fecha_apertura', fechaInicioVal)
-            .lte('fecha_apertura', fechaFinAjustada.toISOString())
+            .select('*')
+            .gte('fecha_apertura', fechaInicioVal + 'T00:00:00')
+            .lte('fecha_apertura', fechaFinVal + 'T23:59:59')
             .order('fecha_apertura', { ascending: false });
         
-        if (error) throw error;
+        if (error) {
+            console.error('Error en consulta de cajas:', error);
+            throw error;
+        }
+        
+        console.log('Cajas obtenidas:', cajas);
         
         const contenedor = document.getElementById('historial-cajas');
-        if (!contenedor) return;
+        if (!contenedor) {
+            console.error('Contenedor de historial de cajas no encontrado');
+            return;
+        }
         
-        if (cajas.length === 0) {
+        if (!cajas || cajas.length === 0) {
             contenedor.innerHTML = `
                 <div class="empty-reportes">
                     <i class="fas fa-cash-register fa-3x"></i>
@@ -1710,55 +1714,68 @@ async function cargarHistorialCajas() {
             return;
         }
         
+        // Obtener usuarios en una sola consulta
+        const userIds = [...new Set(cajas.map(c => c.usuario_id).filter(id => id))];
+        let usuariosMap = {};
+        
+        if (userIds.length > 0) {
+            const { data: usuarios, error: usuariosError } = await supabaseClient
+                .from('usuarios')
+                .select('id, username')
+                .in('id', userIds);
+            
+            if (!usuariosError && usuarios) {
+                usuarios.forEach(u => {
+                    usuariosMap[u.id] = u.username;
+                });
+            }
+        }
+        
         let html = `
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Fecha Apertura</th>
-                        <th>Fecha Cierre</th>
-                        <th>Usuario</th>
-                        <th>Monto Inicial</th>
-                        <th>Total Efectivo</th>
-                        <th>Total Tarjeta</th>
-                        <th>Total Transferencia</th>
-                        <th>Total Estimado</th>
-                        <th>Monto Real</th>
-                        <th>Diferencia</th>
-                        <th>Estado</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Fecha Apertura</th>
+                            <th>Fecha Cierre</th>
+                            <th>Usuario</th>
+                            <th>Monto Inicial</th>
+                            <th>Total Efectivo</th>
+                            <th>Total Tarjeta</th>
+                            <th>Total Transferencia</th>
+                            <th>Total Ventas</th>
+                            <th>Total Estimado</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
         `;
         
         cajas.forEach(caja => {
-            const totalVentas = (parseFloat(caja.total_ventas_efectivo) || 0) +
-                               (parseFloat(caja.total_ventas_tarjeta) || 0) +
-                               (parseFloat(caja.total_ventas_transferencia) || 0);
-            
+            const totalVentasEfectivo = parseFloat(caja.total_ventas_efectivo) || 0;
+            const totalVentasTarjeta = parseFloat(caja.total_ventas_tarjeta) || 0;
+            const totalVentasTransferencia = parseFloat(caja.total_ventas_transferencia) || 0;
+            const totalVentas = totalVentasEfectivo + totalVentasTarjeta + totalVentasTransferencia;
             const totalEstimado = (parseFloat(caja.monto_inicial) || 0) + totalVentas;
-            const montoReal = parseFloat(caja.monto_real) || totalEstimado;
-            const diferencia = montoReal - totalEstimado;
             
             const estado = caja.fecha_cierre ? 'Cerrada' : 'Abierta';
             const estadoClase = caja.fecha_cierre ? 'text-success' : 'text-warning';
+            const usuarioNombre = usuariosMap[caja.usuario_id] || 'N/A';
             
             html += `
                 <tr>
                     <td>${caja.id}</td>
                     <td>${new Date(caja.fecha_apertura).toLocaleString('es-ES')}</td>
                     <td>${caja.fecha_cierre ? new Date(caja.fecha_cierre).toLocaleString('es-ES') : 'En curso'}</td>
-                    <td>${caja.usuarios?.username || 'N/A'}</td>
+                    <td>${usuarioNombre}</td>
                     <td>S/ ${parseFloat(caja.monto_inicial).toFixed(2)}</td>
-                    <td>S/ ${parseFloat(caja.total_ventas_efectivo || 0).toFixed(2)}</td>
-                    <td>S/ ${parseFloat(caja.total_ventas_tarjeta || 0).toFixed(2)}</td>
-                    <td>S/ ${parseFloat(caja.total_ventas_transferencia || 0).toFixed(2)}</td>
+                    <td>S/ ${totalVentasEfectivo.toFixed(2)}</td>
+                    <td>S/ ${totalVentasTarjeta.toFixed(2)}</td>
+                    <td>S/ ${totalVentasTransferencia.toFixed(2)}</td>
+                    <td>S/ ${totalVentas.toFixed(2)}</td>
                     <td>S/ ${totalEstimado.toFixed(2)}</td>
-                    <td>S/ ${montoReal.toFixed(2)}</td>
-                    <td class="${diferencia >= 0 ? 'text-success' : 'text-danger'}">
-                        ${diferencia >= 0 ? '+' : ''}S/ ${diferencia.toFixed(2)}
-                    </td>
                     <td><span class="${estadoClase}">${estado}</span></td>
                     <td class="acciones">
                         <button class="btn btn-sm" onclick="verDetalleCaja('${caja.id}')">
@@ -1775,15 +1792,22 @@ async function cargarHistorialCajas() {
         });
         
         html += `
-                </tbody>
-            </table>
+                    </tbody>
+                </table>
+            </div>
             
             <div class="mt-4 p-3 bg-light rounded">
                 <h5>Resumen del Período</h5>
-                <div class="d-flex justify-content-between">
+                <div class="d-flex justify-content-between flex-wrap">
                     <span>Total Cajas: <strong>${cajas.length}</strong></span>
                     <span>Cajas Abiertas: <strong>${cajas.filter(c => !c.fecha_cierre).length}</strong></span>
                     <span>Cajas Cerradas: <strong>${cajas.filter(c => c.fecha_cierre).length}</strong></span>
+                    <span>Total Ventas: <strong>S/ ${cajas.reduce((sum, c) => {
+                        const efectivo = parseFloat(c.total_ventas_efectivo) || 0;
+                        const tarjeta = parseFloat(c.total_ventas_tarjeta) || 0;
+                        const transferencia = parseFloat(c.total_ventas_transferencia) || 0;
+                        return sum + efectivo + tarjeta + transferencia;
+                    }, 0).toFixed(2)}</strong></span>
                 </div>
             </div>
         `;
@@ -1792,56 +1816,60 @@ async function cargarHistorialCajas() {
         
     } catch (error) {
         console.error('Error cargando historial de cajas:', error);
-        showNotification('Error cargando historial de cajas', 'error');
+        showNotification('Error cargando historial de cajas: ' + error.message, 'error');
     }
 }
 
 async function cargarDetallesCajaDia() {
     try {
         const fechaInput = document.getElementById('detalle-fecha');
-        const fecha = fechaInput?.value || new Date().toISOString().split('T')[0];
+        let fecha = fechaInput?.value;
         
+        // Si no hay fecha seleccionada, usar hoy
         if (!fecha) {
-            showNotification('Seleccione una fecha', 'warning');
+            fecha = new Date().toISOString().split('T')[0];
+            if (fechaInput) fechaInput.value = fecha;
+        }
+        
+        console.log('Cargando detalles para fecha:', fecha);
+        
+        const fechaInicio = fecha + 'T00:00:00';
+        const fechaFin = fecha + 'T23:59:59';
+        
+        // Obtener cajas del día
+        const { data: cajas, error: cajasError } = await supabaseClient
+            .from('caja')
+            .select('*')
+            .gte('fecha_apertura', fechaInicio)
+            .lte('fecha_apertura', fechaFin);
+        
+        if (cajasError) {
+            console.error('Error obteniendo cajas:', cajasError);
+            throw cajasError;
+        }
+        
+        // Obtener ventas del día
+        const { data: ventas, error: ventasError } = await supabaseClient
+            .from('ventas')
+            .select('*')
+            .gte('fecha', fechaInicio)
+            .lte('fecha', fechaFin)
+            .eq('anulada', false);
+        
+        if (ventasError) {
+            console.error('Error obteniendo ventas:', ventasError);
+            throw ventasError;
+        }
+        
+        console.log(`Cajas: ${cajas?.length || 0}, Ventas: ${ventas?.length || 0}`);
+        
+        const contenedor = document.getElementById('detalles-caja-dia');
+        if (!contenedor) {
+            console.error('Contenedor de detalles no encontrado');
             return;
         }
         
-        const fechaInicio = new Date(fecha);
-        fechaInicio.setHours(0, 0, 0, 0);
-        
-        const fechaFin = new Date(fecha);
-        fechaFin.setHours(23, 59, 59, 999);
-        
-        // Primero obtener cajas
-        const { data: cajas, error: cajasError } = await supabaseClient
-            .from('caja')
-            .select(`
-                *,
-                usuarios!caja_usuario_id_fkey (username)
-            `)
-            .gte('fecha_apertura', fechaInicio.toISOString())
-            .lte('fecha_apertura', fechaFin.toISOString());
-        
-        if (cajasError) throw cajasError;
-        
-        // Obtener ventas con la relación específica de usuario_id
-        const { data: ventas, error: ventasError } = await supabaseClient
-            .from('ventas')
-            .select(`
-                *,
-                pagos_venta (medio_pago, monto),
-                usuarios!ventas_usuario_id_fkey (username)
-            `)
-            .gte('fecha', fechaInicio.toISOString())
-            .lte('fecha', fechaFin.toISOString())
-            .eq('anulada', false);
-        
-        if (ventasError) throw ventasError;
-        
-        const contenedor = document.getElementById('detalles-caja-dia');
-        if (!contenedor) return;
-        
-        if (cajas.length === 0 && ventas.length === 0) {
+        if ((!cajas || cajas.length === 0) && (!ventas || ventas.length === 0)) {
             contenedor.innerHTML = `
                 <div class="empty-reportes">
                     <i class="fas fa-calendar-day fa-3x"></i>
@@ -1853,18 +1881,28 @@ async function cargarDetallesCajaDia() {
         
         let html = '<div class="row">';
         
-        if (cajas.length > 0) {
+        if (cajas && cajas.length > 0) {
             html += `
                 <div class="col-md-6 mb-4">
                     <div class="card">
                         <div class="card-header">
-                            <h5><i class="fas fa-cash-register"></i> Cajas del Día</h5>
+                            <h5><i class="fas fa-cash-register"></i> Cajas del Día (${cajas.length})</h5>
                         </div>
                         <div class="card-body">
                             <div class="list-group">
             `;
             
-            cajas.forEach(caja => {
+            for (const caja of cajas) {
+                let nombreUsuario = 'N/A';
+                if (caja.usuario_id) {
+                    const { data: usuario } = await supabaseClient
+                        .from('usuarios')
+                        .select('username')
+                        .eq('id', caja.usuario_id)
+                        .maybeSingle();
+                    if (usuario) nombreUsuario = usuario.username;
+                }
+                
                 const totalVentas = (parseFloat(caja.total_ventas_efectivo) || 0) +
                                    (parseFloat(caja.total_ventas_tarjeta) || 0) +
                                    (parseFloat(caja.total_ventas_transferencia) || 0);
@@ -1877,7 +1915,7 @@ async function cargarDetallesCajaDia() {
                                 ${caja.fecha_cierre ? 'Cerrada' : 'Abierta'}
                             </span>
                         </div>
-                        <div class="text-muted small">Usuario: ${caja.usuarios?.username || 'N/A'}</div>
+                        <div class="text-muted small">Usuario: ${nombreUsuario}</div>
                         <div class="mt-2">
                             <div class="d-flex justify-content-between">
                                 <span>Inicial:</span>
@@ -1894,7 +1932,7 @@ async function cargarDetallesCajaDia() {
                         </div>
                     </div>
                 `;
-            });
+            }
             
             html += `
                             </div>
@@ -1904,18 +1942,36 @@ async function cargarDetallesCajaDia() {
             `;
         }
         
-        if (ventas.length > 0) {
+        if (ventas && ventas.length > 0) {
+            // Obtener pagos para todas las ventas
+            const ventaIds = ventas.map(v => v.id);
+            const { data: pagos, error: pagosError } = await supabaseClient
+                .from('pagos_venta')
+                .select('*')
+                .in('venta_id', ventaIds);
+            
             let totalVentas = 0;
             let ventasEfectivo = 0;
             let ventasTarjeta = 0;
             let ventasTransferencia = 0;
-            let cantidadVentas = ventas.length;
+            
+            // Agrupar pagos por venta
+            const pagosPorVenta = {};
+            if (pagos && !pagosError) {
+                pagos.forEach(pago => {
+                    if (!pagosPorVenta[pago.venta_id]) {
+                        pagosPorVenta[pago.venta_id] = [];
+                    }
+                    pagosPorVenta[pago.venta_id].push(pago);
+                });
+            }
             
             ventas.forEach(venta => {
                 totalVentas += parseFloat(venta.total) || 0;
                 
-                if (venta.pagos_venta && venta.pagos_venta.length > 0) {
-                    venta.pagos_venta.forEach(pago => {
+                const pagosVenta = pagosPorVenta[venta.id] || [];
+                if (pagosVenta.length > 0) {
+                    pagosVenta.forEach(pago => {
                         const monto = parseFloat(pago.monto) || 0;
                         if (pago.medio_pago === 'EFECTIVO') {
                             ventasEfectivo += monto;
@@ -1932,13 +1988,13 @@ async function cargarDetallesCajaDia() {
                 <div class="col-md-6 mb-4">
                     <div class="card">
                         <div class="card-header">
-                            <h5><i class="fas fa-receipt"></i> Ventas del Día</h5>
+                            <h5><i class="fas fa-receipt"></i> Ventas del Día (${ventas.length})</h5>
                         </div>
                         <div class="card-body">
                             <div class="resumen-grid">
                                 <div class="resumen-item">
                                     <span>Cantidad de Ventas:</span>
-                                    <strong>${cantidadVentas}</strong>
+                                    <strong>${ventas.length}</strong>
                                 </div>
                                 <div class="resumen-item">
                                     <span>Total Ventas:</span>
@@ -1963,7 +2019,29 @@ async function cargarDetallesCajaDia() {
                                 <div class="list-group" style="max-height: 300px; overflow-y: auto;">
             `;
             
-            ventas.slice(0, 10).forEach(venta => {
+            // Obtener usuarios para las ventas
+            const userIds = [...new Set(ventas.map(v => v.usuario_id).filter(id => id))];
+            let usuariosMap = {};
+            
+            if (userIds.length > 0) {
+                const { data: usuarios } = await supabaseClient
+                    .from('usuarios')
+                    .select('id, username')
+                    .in('id', userIds);
+                
+                if (usuarios) {
+                    usuarios.forEach(u => {
+                        usuariosMap[u.id] = u.username;
+                    });
+                }
+            }
+            
+            // Mostrar solo las últimas 5 ventas
+            const ultimasVentas = ventas.slice(0, 5);
+            
+            for (const venta of ultimasVentas) {
+                const nombreUsuario = usuariosMap[venta.usuario_id] || 'N/A';
+                
                 html += `
                     <div class="list-item">
                         <div class="d-flex justify-content-between">
@@ -1972,11 +2050,11 @@ async function cargarDetallesCajaDia() {
                         </div>
                         <div class="text-muted small">
                             ${new Date(venta.fecha).toLocaleTimeString('es-ES')} - 
-                            ${venta.usuarios?.username || 'N/A'}
+                            ${nombreUsuario}
                         </div>
                     </div>
                 `;
-            });
+            }
             
             html += `
                                 </div>
@@ -1993,7 +2071,7 @@ async function cargarDetallesCajaDia() {
         
     } catch (error) {
         console.error('Error cargando detalles del día:', error);
-        showNotification('Error cargando detalles del día', 'error');
+        showNotification('Error cargando detalles del día: ' + error.message, 'error');
     }
 }
 
@@ -2069,10 +2147,7 @@ window.verDetalleCaja = async function(cajaId) {
     try {
         const { data: caja, error: cajaError } = await supabaseClient
             .from('caja')
-            .select(`
-                *,
-                usuarios!caja_usuario_id_fkey (username)
-            `)
+            .select('*')
             .eq('id', cajaId)
             .single();
         
@@ -2091,6 +2166,16 @@ window.verDetalleCaja = async function(cajaId) {
         
         if (ventasError) throw ventasError;
         
+        let nombreUsuario = 'N/A';
+        if (caja.usuario_id) {
+            const { data: usuario } = await supabaseClient
+                .from('usuarios')
+                .select('username')
+                .eq('id', caja.usuario_id)
+                .maybeSingle();
+            if (usuario) nombreUsuario = usuario.username;
+        }
+        
         let detalleHTML = `
             <div class="card">
                 <div class="card-header">
@@ -2099,7 +2184,7 @@ window.verDetalleCaja = async function(cajaId) {
                 <div class="card-body">
                     <div class="row mb-4">
                         <div class="col-md-6">
-                            <p><strong>Usuario:</strong> ${caja.usuarios?.username || 'N/A'}</p>
+                            <p><strong>Usuario:</strong> ${nombreUsuario}</p>
                             <p><strong>Fecha Apertura:</strong> ${new Date(caja.fecha_apertura).toLocaleString('es-ES')}</p>
                             <p><strong>Monto Inicial:</strong> S/ ${parseFloat(caja.monto_inicial).toFixed(2)}</p>
                         </div>
@@ -2219,10 +2304,7 @@ async function imprimirResumenCaja() {
     try {
         const { data: caja, error: cajaError } = await supabaseClient
             .from('caja')
-            .select(`
-                *,
-                usuarios!caja_usuario_id_fkey (username)
-            `)
+            .select('*')
             .eq('id', appState.cajaActiva.id)
             .single();
         
@@ -2295,7 +2377,6 @@ async function imprimirResumenCaja() {
                 <div class="header">
                     <h1>RESUMEN DE CAJA</h1>
                     <p>ID: ${caja.id} | Fecha: ${new Date(caja.fecha_apertura).toLocaleString('es-ES')}</p>
-                    <p>Usuario: ${caja.usuarios?.username || 'N/A'}</p>
                 </div>
                 
                 <div class="info-grid">
@@ -2384,6 +2465,336 @@ async function imprimirResumenCaja() {
         showNotification('Error generando resumen', 'error');
     }
 }
+
+// ==================== HISTORIAL ====================
+async function cargarVentasHoy() {
+    const hoy = new Date().toISOString().split('T')[0];
+    const fechaInicio = document.getElementById('filtro-fecha-inicio');
+    const fechaFin = document.getElementById('filtro-fecha-fin');
+    
+    if (fechaInicio) fechaInicio.value = hoy;
+    if (fechaFin) fechaFin.value = hoy;
+    
+    await cargarHistorial();
+}
+
+async function cargarHistorial() {
+    try {
+        const fechaInicio = document.getElementById('filtro-fecha-inicio');
+        const fechaFin = document.getElementById('filtro-fecha-fin');
+        
+        if (!fechaInicio || !fechaFin) {
+            showNotification('Seleccione un rango de fechas', 'warning');
+            return;
+        }
+        
+        // Valores por defecto si están vacíos
+        const hoy = new Date().toISOString().split('T')[0];
+        if (!fechaInicio.value) fechaInicio.value = hoy;
+        if (!fechaFin.value) fechaFin.value = hoy;
+        
+        console.log('Consultando ventas desde:', fechaInicio.value, 'hasta:', fechaFin.value);
+        
+        // Consulta principal de ventas
+        const { data: ventas, error: ventasError } = await supabaseClient
+            .from('ventas')
+            .select('*')
+            .gte('fecha', fechaInicio.value + 'T00:00:00')
+            .lte('fecha', fechaFin.value + 'T23:59:59')
+            .order('fecha', { ascending: false });
+        
+        if (ventasError) {
+            console.error('Error en consulta de ventas:', ventasError);
+            throw ventasError;
+        }
+        
+        console.log('Ventas obtenidas:', ventas?.length || 0);
+        
+        const tbody = document.getElementById('historial-body');
+        if (!tbody) {
+            console.error('Elemento tbody no encontrado');
+            return;
+        }
+        
+        tbody.innerHTML = '';
+        
+        if (!ventas || ventas.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center">No hay ventas en este período</td></tr>';
+            return;
+        }
+        
+        // Obtener IDs de ventas para consultas posteriores
+        const ventaIds = ventas.map(v => v.id);
+        
+        // Obtener todos los pagos en una sola consulta
+        const { data: pagos, error: pagosError } = await supabaseClient
+            .from('pagos_venta')
+            .select('*')
+            .in('venta_id', ventaIds);
+        
+        if (pagosError) {
+            console.error('Error obteniendo pagos:', pagosError);
+        }
+        
+        // Agrupar pagos por venta_id
+        const pagosPorVenta = {};
+        if (pagos) {
+            pagos.forEach(pago => {
+                if (!pagosPorVenta[pago.venta_id]) {
+                    pagosPorVenta[pago.venta_id] = [];
+                }
+                pagosPorVenta[pago.venta_id].push(pago);
+            });
+        }
+        
+        // Obtener usuarios si es necesario
+        const userIds = [...new Set(ventas.map(v => v.usuario_id).filter(id => id))];
+        let usuariosMap = {};
+        
+        if (userIds.length > 0) {
+            const { data: usuarios, error: usuariosError } = await supabaseClient
+                .from('usuarios')
+                .select('id, username')
+                .in('id', userIds);
+            
+            if (!usuariosError && usuarios) {
+                usuarios.forEach(u => {
+                    usuariosMap[u.id] = u.username;
+                });
+            }
+        }
+        
+        // Renderizar cada venta
+        ventas.forEach(venta => {
+            const pagosVenta = pagosPorVenta[venta.id] || [];
+            const medios = {};
+            
+            pagosVenta.forEach(pago => {
+                if (!medios[pago.medio_pago]) {
+                    medios[pago.medio_pago] = 0;
+                }
+                medios[pago.medio_pago] += parseFloat(pago.monto);
+            });
+            
+            const mediosTexto = Object.entries(medios)
+                .map(([medio, monto]) => `${medio}: S/ ${monto.toFixed(2)}`)
+                .join('<br>');
+            
+            const fecha = new Date(venta.fecha).toLocaleString('es-ES');
+            const usuarioNombre = usuariosMap[venta.usuario_id] || 'N/A';
+            
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${venta.ticket_id}</td>
+                <td>${fecha}</td>
+                <td>${usuarioNombre}</td>
+                <td>S/ ${parseFloat(venta.total).toFixed(2)}</td>
+                <td>${mediosTexto || 'Sin pagos registrados'}</td>
+                <td>
+                    <span class="${venta.anulada ? 'text-danger' : 'text-success'}">
+                        ${venta.anulada ? 'ANULADA' : 'ACTIVA'}
+                    </span>
+                </td>
+                <td class="acciones">
+                    <button class="btn btn-sm" onclick="verDetalleVenta('${venta.id}')">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    ${!venta.anulada && appState.usuario?.rol === 'Administrador' ? `
+                        <button class="btn btn-sm btn-danger" onclick="anularVenta('${venta.id}')">
+                            <i class="fas fa-ban"></i>
+                        </button>
+                    ` : ''}
+                </td>
+            `;
+            
+            tbody.appendChild(tr);
+        });
+        
+    } catch (error) {
+        console.error('Error cargando historial:', error);
+        showNotification('Error cargando historial: ' + error.message, 'error');
+    }
+}
+
+window.verDetalleVenta = async function(id) {
+    try {
+        console.log('Obteniendo detalle de venta:', id);
+        
+        // Obtener venta
+        const { data: venta, error: ventaError } = await supabaseClient
+            .from('ventas')
+            .select('*')
+            .eq('id', id)
+            .single();
+        
+        if (ventaError) {
+            console.error('Error obteniendo venta:', ventaError);
+            throw ventaError;
+        }
+        
+        // Obtener detalles de la venta
+        const { data: detalles, error: detallesError } = await supabaseClient
+            .from('detalle_ventas')
+            .select(`
+                cantidad,
+                precio_unitario,
+                subtotal,
+                productos (nombre, codigo_barra)
+            `)
+            .eq('venta_id', id);
+        
+        if (detallesError) {
+            console.error('Error obteniendo detalles:', detallesError);
+            throw detallesError;
+        }
+        
+        // Obtener pagos
+        const { data: pagos, error: pagosError } = await supabaseClient
+            .from('pagos_venta')
+            .select('medio_pago, monto')
+            .eq('venta_id', id);
+        
+        if (pagosError) {
+            console.error('Error obteniendo pagos:', pagosError);
+            throw pagosError;
+        }
+        
+        // Obtener usuario
+        let nombreUsuario = 'N/A';
+        if (venta.usuario_id) {
+            const { data: usuario } = await supabaseClient
+                .from('usuarios')
+                .select('username')
+                .eq('id', venta.usuario_id)
+                .maybeSingle();
+            if (usuario) nombreUsuario = usuario.username;
+        }
+        
+        const modal = document.getElementById('modal-detalle-venta');
+        const titulo = document.getElementById('modal-venta-titulo');
+        const contenido = document.getElementById('detalle-venta-contenido');
+        
+        if (!modal || !titulo || !contenido) {
+            console.error('Elementos del modal no encontrados');
+            return;
+        }
+        
+        titulo.innerHTML = `<i class="fas fa-receipt"></i> Detalle de Venta: ${venta.ticket_id}`;
+        
+        let detalleHTML = `
+            <div class="venta-info">
+                <p><strong>Ticket:</strong> ${venta.ticket_id}</p>
+                <p><strong>Fecha:</strong> ${new Date(venta.fecha).toLocaleString('es-ES')}</p>
+                <p><strong>Estado:</strong> ${venta.anulada ? 'ANULADA' : 'ACTIVA'}</p>
+                <p><strong>Atendido por:</strong> ${nombreUsuario}</p>
+                <p><strong>Subtotal:</strong> S/ ${parseFloat(venta.subtotal).toFixed(2)}</p>
+                <p><strong>Descuento:</strong> S/ ${parseFloat(venta.descuento).toFixed(2)}</p>
+                <p><strong>Total:</strong> S/ ${parseFloat(venta.total).toFixed(2)}</p>
+            </div>
+        `;
+        
+        if (detalles && detalles.length > 0) {
+            detalleHTML += `
+                <h4>Productos:</h4>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th>Código</th>
+                            <th>Cantidad</th>
+                            <th>Precio Unitario</th>
+                            <th>Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            detalles.forEach(detalle => {
+                detalleHTML += `
+                    <tr>
+                        <td>${detalle.productos?.nombre || 'N/A'}</td>
+                        <td>${detalle.productos?.codigo_barra || 'N/A'}</td>
+                        <td>${detalle.cantidad}</td>
+                        <td>S/ ${parseFloat(detalle.precio_unitario).toFixed(2)}</td>
+                        <td>S/ ${parseFloat(detalle.subtotal).toFixed(2)}</td>
+                    </tr>
+                `;
+            });
+            
+            detalleHTML += `
+                    </tbody>
+                </table>
+            `;
+        }
+        
+        if (pagos && pagos.length > 0) {
+            detalleHTML += `
+                <h4>Pagos:</h4>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Medio de Pago</th>
+                            <th>Monto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            pagos.forEach(pago => {
+                detalleHTML += `
+                    <tr>
+                        <td>${pago.medio_pago}</td>
+                        <td>S/ ${parseFloat(pago.monto).toFixed(2)}</td>
+                    </tr>
+                `;
+            });
+            
+            detalleHTML += `
+                    </tbody>
+                </table>
+            `;
+        }
+        
+        contenido.innerHTML = detalleHTML;
+        modal.classList.add('active');
+        
+    } catch (error) {
+        console.error('Error cargando detalle de venta:', error);
+        showNotification('Error cargando detalle de venta: ' + error.message, 'error');
+    }
+};
+
+window.anularVenta = async function(id) {
+    const tienePermiso = await hasPermission('anular_ventas');
+    if (!tienePermiso) {
+        showNotification('No tiene permisos para anular ventas', 'error');
+        return;
+    }
+    
+    if (!confirm('¿Está seguro de anular esta venta? Esta acción revertirá el stock y no se podrá deshacer.')) {
+        return;
+    }
+    
+    try {
+        const { error } = await supabaseClient
+            .from('ventas')
+            .update({
+                anulada: true,
+                usuario_anulacion_id: appState.usuario.id,
+                fecha_anulacion: new Date().toISOString()
+            })
+            .eq('id', id);
+        
+        if (error) throw error;
+        
+        showNotification('Venta anulada correctamente', 'success');
+        cargarHistorial();
+        
+    } catch (error) {
+        console.error('Error anulando venta:', error);
+        showNotification('Error anulando venta', 'error');
+    }
+};
 
 // ==================== PRODUCTOS ====================
 async function cargarProductos() {
@@ -2826,248 +3237,6 @@ window.agregarDesdeBuscador = async function(id) {
     } catch (error) {
         console.error('Error cargando producto:', error);
         showNotification('Error cargando producto', 'error');
-    }
-};
-
-// ==================== HISTORIAL ====================
-async function cargarVentasHoy() {
-    const hoy = new Date().toISOString().split('T')[0];
-    const fechaInicio = document.getElementById('filtro-fecha-inicio');
-    const fechaFin = document.getElementById('filtro-fecha-fin');
-    
-    if (fechaInicio) fechaInicio.value = hoy;
-    if (fechaFin) fechaFin.value = hoy;
-    
-    await cargarHistorial();
-}
-
-async function cargarHistorial() {
-    try {
-        const fechaInicio = document.getElementById('filtro-fecha-inicio');
-        const fechaFin = document.getElementById('filtro-fecha-fin');
-        
-        if (!fechaInicio || !fechaFin || !fechaInicio.value || !fechaFin.value) {
-            showNotification('Seleccione un rango de fechas', 'warning');
-            return;
-        }
-        
-        const fechaFinAjustada = new Date(fechaFin.value);
-        fechaFinAjustada.setHours(23, 59, 59, 999);
-        
-        const { data: ventas, error } = await supabaseClient
-            .from('ventas')
-            .select(`
-                id,
-                ticket_id,
-                fecha,
-                total,
-                anulada,
-                pagos_venta (medio_pago, monto),
-                usuarios!ventas_usuario_id_fkey (username)
-            `)
-            .gte('fecha', fechaInicio.value)
-            .lte('fecha', fechaFinAjustada.toISOString())
-            .order('fecha', { ascending: false });
-        
-        if (error) throw error;
-        
-        const tbody = document.getElementById('historial-body');
-        if (!tbody) return;
-        
-        tbody.innerHTML = '';
-        
-        if (ventas.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center">No hay ventas en este período</td></tr>';
-            return;
-        }
-        
-        ventas.forEach(venta => {
-            const medios = {};
-            if (venta.pagos_venta && venta.pagos_venta.length > 0) {
-                venta.pagos_venta.forEach(pago => {
-                    if (!medios[pago.medio_pago]) {
-                        medios[pago.medio_pago] = 0;
-                    }
-                    medios[pago.medio_pago] += parseFloat(pago.monto);
-                });
-            }
-            
-            const mediosTexto = Object.entries(medios)
-                .map(([medio, monto]) => `${medio}: S/ ${monto.toFixed(2)}`)
-                .join('<br>');
-            
-            const fecha = new Date(venta.fecha).toLocaleString('es-ES');
-            
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${venta.ticket_id}</td>
-                <td>${fecha}</td>
-                <td>S/ ${parseFloat(venta.total).toFixed(2)}</td>
-                <td>${mediosTexto || 'Sin pagos'}</td>
-                <td>
-                    <span class="${venta.anulada ? 'text-danger' : 'text-success'}">
-                        ${venta.anulada ? 'ANULADA' : 'ACTIVA'}
-                    </span>
-                </td>
-                <td class="acciones">
-                    <button class="btn btn-sm" onclick="verDetalleVenta('${venta.id}')">
-                        <i class="fas fa-eye"></i>
-                    </button>
-                    ${!venta.anulada ? `
-                        <button class="btn btn-sm btn-danger" onclick="anularVenta('${venta.id}')">
-                            <i class="fas fa-ban"></i>
-                        </button>
-                    ` : ''}
-                </td>
-            `;
-            
-            tbody.appendChild(tr);
-        });
-        
-    } catch (error) {
-        console.error('Error cargando historial:', error);
-        showNotification('Error cargando historial', 'error');
-    }
-}
-
-window.verDetalleVenta = async function(id) {
-    try {
-        const { data: venta, error } = await supabaseClient
-            .from('ventas')
-            .select(`
-                *,
-                detalle_ventas (
-                    cantidad,
-                    precio_unitario,
-                    subtotal,
-                    productos (
-                        nombre,
-                        codigo_barra
-                    )
-                ),
-                pagos_venta (
-                    medio_pago,
-                    monto
-                ),
-                usuarios!ventas_usuario_id_fkey (username)
-            `)
-            .eq('id', id)
-            .single();
-        
-        if (error) throw error;
-        
-        const modal = document.getElementById('modal-detalle-venta');
-        const titulo = document.getElementById('modal-venta-titulo');
-        const contenido = document.getElementById('detalle-venta-contenido');
-        
-        if (!modal || !titulo || !contenido) return;
-        
-        titulo.innerHTML = `<i class="fas fa-receipt"></i> Detalle de Venta: ${venta.ticket_id}`;
-        
-        let detalleHTML = `
-            <div class="venta-info">
-                <p><strong>Ticket:</strong> ${venta.ticket_id}</p>
-                <p><strong>Fecha:</strong> ${new Date(venta.fecha).toLocaleString('es-ES')}</p>
-                <p><strong>Estado:</strong> ${venta.anulada ? 'ANULADA' : 'ACTIVA'}</p>
-                <p><strong>Subtotal:</strong> S/ ${parseFloat(venta.subtotal).toFixed(2)}</p>
-                <p><strong>Descuento:</strong> S/ ${parseFloat(venta.descuento).toFixed(2)}</p>
-                <p><strong>Total:</strong> S/ ${parseFloat(venta.total).toFixed(2)}</p>
-                <p><strong>Atendido por:</strong> ${venta.usuarios?.username || 'N/A'}</p>
-            </div>
-            
-            <h4>Productos:</h4>
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Producto</th>
-                        <th>Código</th>
-                        <th>Cantidad</th>
-                        <th>Precio Unitario</th>
-                        <th>Subtotal</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-        
-        venta.detalle_ventas.forEach(detalle => {
-            detalleHTML += `
-                <tr>
-                    <td>${detalle.productos.nombre}</td>
-                    <td>${detalle.productos.codigo_barra}</td>
-                    <td>${detalle.cantidad}</td>
-                    <td>S/ ${parseFloat(detalle.precio_unitario).toFixed(2)}</td>
-                    <td>S/ ${parseFloat(detalle.subtotal).toFixed(2)}</td>
-                </tr>
-            `;
-        });
-        
-        detalleHTML += `
-                </tbody>
-            </table>
-            
-            <h4>Pagos:</h4>
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Medio de Pago</th>
-                        <th>Monto</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-        
-        venta.pagos_venta.forEach(pago => {
-            detalleHTML += `
-                <tr>
-                    <td>${pago.medio_pago}</td>
-                    <td>S/ ${parseFloat(pago.monto).toFixed(2)}</td>
-                </tr>
-            `;
-        });
-        
-        detalleHTML += `
-                </tbody>
-            </table>
-        `;
-        
-        contenido.innerHTML = detalleHTML;
-        modal.classList.add('active');
-        
-    } catch (error) {
-        console.error('Error cargando detalle de venta:', error);
-        showNotification('Error cargando detalle de venta', 'error');
-    }
-};
-
-window.anularVenta = async function(id) {
-    const tienePermiso = await hasPermission('anular_ventas');
-    if (!tienePermiso) {
-        showNotification('No tiene permisos para anular ventas', 'error');
-        return;
-    }
-    
-    if (!confirm('¿Está seguro de anular esta venta? Esta acción revertirá el stock y no se podrá deshacer.')) {
-        return;
-    }
-    
-    try {
-        const { error } = await supabaseClient
-            .from('ventas')
-            .update({
-                anulada: true,
-                usuario_anulacion_id: appState.usuario.id,
-                fecha_anulacion: new Date().toISOString()
-            })
-            .eq('id', id);
-        
-        if (error) throw error;
-        
-        showNotification('Venta anulada correctamente', 'success');
-        cargarHistorial();
-        
-    } catch (error) {
-        console.error('Error anulando venta:', error);
-        showNotification('Error anulando venta', 'error');
     }
 };
 

@@ -213,12 +213,12 @@ document.getElementById('logout-btn').addEventListener('click', async function()
             </div>
         `;
         
-        document.getElementById('carrito-subtotal').textContent = 'S/ 0.00';
-        document.getElementById('carrito-descuento').textContent = 'S/ 0.00';
-        document.getElementById('carrito-total').textContent = 'S/ 0.00';
-        document.getElementById('total-a-pagar').textContent = 'S/ 0.00';
-        document.getElementById('total-pagado').textContent = 'S/ 0.00';
-        document.getElementById('total-cambio').textContent = 'S/ 0.00';
+        document.getElementById('carrito-subtotal').textContent = '$ 0.00';
+        document.getElementById('carrito-descuento').textContent = '$ 0.00';
+        document.getElementById('carrito-total').textContent = '$ 0.00';
+        document.getElementById('total-a-pagar').textContent = '$ 0.00';
+        document.getElementById('total-pagado').textContent = '$ 0.00';
+        document.getElementById('total-cambio').textContent = '$ 0.00';
         document.getElementById('btn-finalizar-venta').disabled = true;
         
         document.getElementById('app').style.display = 'none';
@@ -299,13 +299,14 @@ function setupEventListeners() {
         }
     });
     
+    // MODIFICACIÓN: Agregar producto automáticamente al escanear
     const scannerInput = document.getElementById('scanner-input');
     if (scannerInput) {
         scannerInput.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 const codigo = this.value.trim();
                 if (codigo) {
-                    buscarProductoPorCodigo(codigo);
+                    buscarYAgregarProducto(codigo);
                     this.value = '';
                 }
             }
@@ -354,7 +355,7 @@ function setupEventListeners() {
                 const totalAPagarEl = document.getElementById('carrito-total');
                 const pagoMonto = document.getElementById('pago-monto');
                 if (totalAPagarEl && pagoMonto) {
-                    const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('S/ ', ''));
+                    const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('$ ', ''));
                     const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
                     const falta = totalAPagar - totalPagado;
                     
@@ -534,6 +535,8 @@ function showSection(sectionId) {
             const fechaFin = document.getElementById('reporte-fecha-fin');
             if (fechaInicio) fechaInicio.value = hoy;
             if (fechaFin) fechaFin.value = hoy;
+            // Cargar reportes automáticamente
+            setTimeout(() => generarReporte(), 500);
             break;
         case 'configuracion':
             cargarConfiguracionTicket();
@@ -610,6 +613,62 @@ function setupKeyboardShortcuts() {
 }
 
 // ==================== GESTIÓN DE PRODUCTOS ====================
+// MODIFICACIÓN: Nueva función para buscar y agregar producto automáticamente
+async function buscarYAgregarProducto(codigo) {
+    if (!codigo || codigo.trim() === '') return;
+    
+    try {
+        const { data: producto, error } = await supabaseClient
+            .from('productos')
+            .select('*')
+            .eq('codigo_barra', codigo.trim())
+            .eq('activo', true)
+            .single();
+        
+        if (error) {
+            if (error.code === 'PGRST116') {
+                showNotification('Producto no encontrado', 'warning');
+            } else {
+                throw error;
+            }
+            return;
+        }
+        
+        if (producto) {
+            // Verificar si el producto ya está en el carrito
+            const index = appState.carrito.findIndex(item => 
+                item.producto.id === producto.id);
+            
+            if (index !== -1) {
+                // Si ya está en el carrito, incrementar cantidad
+                appState.carrito[index].cantidad += 1;
+                showNotification(`${producto.nombre} - Cantidad aumentada a ${appState.carrito[index].cantidad}`, 'success');
+            } else {
+                // Si no está, agregarlo al carrito
+                appState.carrito.push({
+                    producto: producto,
+                    cantidad: 1,
+                    precioUnitario: producto.precio_venta
+                });
+                showNotification(`${producto.nombre} agregado al carrito`, 'success');
+            }
+            
+            actualizarCarritoUI();
+            
+            // Limpiar el input del scanner y mantener el foco
+            const scannerInput = document.getElementById('scanner-input');
+            if (scannerInput) {
+                scannerInput.value = '';
+                scannerInput.focus();
+            }
+        }
+    } catch (error) {
+        console.error('Error buscando producto:', error);
+        showNotification('Error buscando producto', 'error');
+    }
+}
+
+// Función original mantenida para búsqueda manual
 async function buscarProductoPorCodigo(codigo) {
     if (!codigo || codigo.trim() === '') return;
     
@@ -654,7 +713,7 @@ function mostrarProductoEncontrado(producto) {
     }
     
     productoNombre.textContent = producto.nombre;
-    productoPrecio.textContent = `S/ ${parseFloat(producto.precio_venta).toFixed(2)}`;
+    productoPrecio.textContent = `$ ${parseFloat(producto.precio_venta).toFixed(2)}`;
     productoStock.textContent = producto.stock;
     cantidadProducto.value = 1;
     cantidadProducto.max = producto.stock;
@@ -771,7 +830,7 @@ function actualizarCarritoUI() {
                 <div class="carrito-item-nombre">${item.producto.nombre}</div>
                 <div class="carrito-item-codigo">${item.producto.codigo_barra}</div>
             </div>
-            <div class="carrito-item-precio">S/ ${item.precioUnitario.toFixed(2)}</div>
+            <div class="carrito-item-precio">$ ${item.precioUnitario.toFixed(2)}</div>
             <div class="carrito-item-cantidad">
                 <button class="btn btn-sm" onclick="actualizarCantidadCarrito(${index}, -1)">
                     <i class="fas fa-minus"></i>
@@ -781,7 +840,7 @@ function actualizarCarritoUI() {
                     <i class="fas fa-plus"></i>
                 </button>
             </div>
-            <div class="carrito-item-total">S/ ${itemTotal.toFixed(2)}</div>
+            <div class="carrito-item-total">$ ${itemTotal.toFixed(2)}</div>
             <button class="carrito-item-remove" onclick="eliminarDelCarrito(${index})">
                 <i class="fas fa-trash"></i>
             </button>
@@ -803,13 +862,13 @@ function actualizarCarritoUI() {
     
     const total = subtotal - descuento;
     
-    subtotalEl.textContent = `S/ ${subtotal.toFixed(2)}`;
+    subtotalEl.textContent = `$ ${subtotal.toFixed(2)}`;
     const descuentoEl = document.getElementById('carrito-descuento');
-    if (descuentoEl) descuentoEl.textContent = `S/ ${descuento.toFixed(2)}`;
-    totalEl.textContent = `S/ ${total.toFixed(2)}`;
+    if (descuentoEl) descuentoEl.textContent = `$ ${descuento.toFixed(2)}`;
+    totalEl.textContent = `$ ${total.toFixed(2)}`;
     
     const totalAPagarEl = document.getElementById('total-a-pagar');
-    if (totalAPagarEl) totalAPagarEl.textContent = `S/ ${total.toFixed(2)}`;
+    if (totalAPagarEl) totalAPagarEl.textContent = `$ ${total.toFixed(2)}`;
     
     btnFinalizar.disabled = appState.carrito.length === 0 || appState.pagos.length === 0;
 }
@@ -936,7 +995,7 @@ function agregarPago() {
         const totalAPagarEl = document.getElementById('carrito-total');
         if (!totalAPagarEl) return;
         
-        const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('S/ ', ''));
+        const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('$ ', ''));
         const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
         const falta = totalAPagar - totalPagado;
         
@@ -960,7 +1019,7 @@ function agregarPago() {
     pagoMonto.value = '';
     pagoMonto.focus();
     
-    showNotification(`Pago de S/ ${monto.toFixed(2)} agregado (${medio})`, 'success');
+    showNotification(`Pago de $ ${monto.toFixed(2)} agregado (${medio})`, 'success');
 }
 
 function actualizarPagosUI() {
@@ -979,8 +1038,8 @@ function actualizarPagosUI() {
             </div>
         `;
         
-        totalPagadoEl.textContent = 'S/ 0.00';
-        cambioEl.textContent = 'S/ 0.00';
+        totalPagadoEl.textContent = '$ 0.00';
+        cambioEl.textContent = '$ 0.00';
         btnFinalizar.disabled = true;
         return;
     }
@@ -999,7 +1058,7 @@ function actualizarPagosUI() {
     const totalAPagarEl = document.getElementById('carrito-total');
     if (!totalAPagarEl) return;
     
-    const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('S/ ', ''));
+    const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('$ ', ''));
     const cambio = totalPagado - totalAPagar;
     
     container.innerHTML = '';
@@ -1012,7 +1071,7 @@ function actualizarPagosUI() {
                 <strong>${medio}</strong>
             </div>
             <div class="pago-monto">
-                S/ ${monto.toFixed(2)}
+                $ ${monto.toFixed(2)}
             </div>
             <button class="pago-item-remove" onclick="eliminarPagosPorMedio('${medio}')" title="Eliminar todos los pagos de ${medio}">
                 <i class="fas fa-times"></i>
@@ -1022,13 +1081,13 @@ function actualizarPagosUI() {
         container.appendChild(div);
     });
     
-    totalPagadoEl.textContent = `S/ ${totalPagado.toFixed(2)}`;
+    totalPagadoEl.textContent = `$ ${totalPagado.toFixed(2)}`;
     
     if (cambio >= 0) {
-        cambioEl.textContent = `S/ ${cambio.toFixed(2)}`;
+        cambioEl.textContent = `$ ${cambio.toFixed(2)}`;
         cambioEl.className = 'cambio-positivo';
     } else {
-        cambioEl.textContent = `S/ ${Math.abs(cambio).toFixed(2)}`;
+        cambioEl.textContent = `$ ${Math.abs(cambio).toFixed(2)}`;
         cambioEl.className = 'cambio-negativo';
     }
     
@@ -1038,9 +1097,9 @@ function actualizarPagosUI() {
     const pagoMontoInput = document.getElementById('pago-monto');
     if (pagoMontoInput) {
         if (cambio < 0) {
-            pagoMontoInput.placeholder = `Falta: S/ ${Math.abs(cambio).toFixed(2)}`;
+            pagoMontoInput.placeholder = `Falta: $ ${Math.abs(cambio).toFixed(2)}`;
         } else if (cambio > 0) {
-            pagoMontoInput.placeholder = `Vuelto: S/ ${cambio.toFixed(2)}`;
+            pagoMontoInput.placeholder = `Vuelto: $ ${cambio.toFixed(2)}`;
         } else {
             const medioActivo = document.querySelector('.btn-pago.active');
             pagoMontoInput.placeholder = medioActivo ? `Monto en ${medioActivo.dataset.medio}` : 'Monto a pagar';
@@ -1074,7 +1133,7 @@ async function finalizarVenta() {
     const totalAPagarEl = document.getElementById('carrito-total');
     if (!totalAPagarEl) return;
     
-    const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('S/ ', ''));
+    const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('$ ', ''));
     const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
     
     if (totalPagado < totalAPagar) {
@@ -1252,7 +1311,7 @@ async function generarTicket(venta) {
             itemsHTML += `
                 <div class="ticket-item">
                     <div>${item.producto.nombre} x${item.cantidad}</div>
-                    <div>S/ ${totalItem.toFixed(2)}</div>
+                    <div>$ ${totalItem.toFixed(2)}</div>
                 </div>
             `;
         });
@@ -1276,15 +1335,15 @@ async function generarTicket(venta) {
             <div class="ticket-totals">
                 <div class="ticket-item">
                     <div>Subtotal:</div>
-                    <div>S/ ${venta.subtotal.toFixed(2)}</div>
+                    <div>$ ${venta.subtotal.toFixed(2)}</div>
                 </div>
                 <div class="ticket-item">
                     <div>Descuento:</div>
-                    <div>S/ ${venta.descuento.toFixed(2)}</div>
+                    <div>$ ${venta.descuento.toFixed(2)}</div>
                 </div>
                 <div class="ticket-item">
                     <div><strong>TOTAL:</strong></div>
-                    <div><strong>S/ ${venta.total.toFixed(2)}</strong></div>
+                    <div><strong>$ ${venta.total.toFixed(2)}</strong></div>
                 </div>
                 
                 <div style="margin-top: 10px; border-top: 1px dashed #000; padding-top: 10px;">
@@ -1292,14 +1351,14 @@ async function generarTicket(venta) {
                     ${appState.pagos.map(pago => `
                         <div class="ticket-item">
                             <div>${pago.medio}:</div>
-                            <div>S/ ${pago.monto.toFixed(2)}</div>
+                            <div>$ ${pago.monto.toFixed(2)}</div>
                         </div>
                     `).join('')}
                     
                     ${cambio > 0 ? `
                         <div class="ticket-item">
                             <div>Cambio:</div>
-                            <div>S/ ${cambio.toFixed(2)}</div>
+                            <div>$ ${cambio.toFixed(2)}</div>
                         </div>
                     ` : ''}
                 </div>
@@ -1401,7 +1460,7 @@ function actualizarUIEstadoCaja() {
             <div class="caja-abierta">
                 <i class="fas fa-unlock fa-3x text-success"></i>
                 <h3>Caja Abierta</h3>
-                <p>Monto inicial: S/ ${parseFloat(appState.cajaActiva.monto_inicial).toFixed(2)}</p>
+                <p>Monto inicial: $ ${parseFloat(appState.cajaActiva.monto_inicial).toFixed(2)}</p>
                 <p>Hora apertura: ${new Date(appState.cajaActiva.fecha_apertura).toLocaleTimeString()}</p>
             </div>
         `;
@@ -1563,19 +1622,19 @@ async function cargarResumenCaja() {
         const cierreMontoReal = document.getElementById('cierre-monto-real');
         
         if (montoInicialEl) montoInicialEl.textContent = 
-            `S/ ${parseFloat(appState.cajaActiva.monto_inicial).toFixed(2)}`;
+            `$ ${parseFloat(appState.cajaActiva.monto_inicial).toFixed(2)}`;
         if (ventasEfectivoEl) ventasEfectivoEl.textContent = 
-            `S/ ${totalEfectivo.toFixed(2)}`;
+            `$ ${totalEfectivo.toFixed(2)}`;
         if (ventasTarjetaEl) ventasTarjetaEl.textContent = 
-            `S/ ${totalTarjeta.toFixed(2)}`;
+            `$ ${totalTarjeta.toFixed(2)}`;
         if (ventasTransferenciaEl) ventasTransferenciaEl.textContent = 
-            `S/ ${totalTransferencia.toFixed(2)}`;
+            `$ ${totalTransferencia.toFixed(2)}`;
         
         const totalEstimado = parseFloat(appState.cajaActiva.monto_inicial) + 
             totalEfectivo + totalTarjeta + totalTransferencia;
         
         if (totalEstimadoEl) totalEstimadoEl.textContent = 
-            `S/ ${totalEstimado.toFixed(2)}`;
+            `$ ${totalEstimado.toFixed(2)}`;
         
         if (cierreMontoReal) cierreMontoReal.value = totalEstimado.toFixed(2);
         
@@ -1770,12 +1829,12 @@ async function cargarHistorialCajas() {
                     <td>${new Date(caja.fecha_apertura).toLocaleString('es-ES')}</td>
                     <td>${caja.fecha_cierre ? new Date(caja.fecha_cierre).toLocaleString('es-ES') : 'En curso'}</td>
                     <td>${usuarioNombre}</td>
-                    <td>S/ ${parseFloat(caja.monto_inicial).toFixed(2)}</td>
-                    <td>S/ ${totalVentasEfectivo.toFixed(2)}</td>
-                    <td>S/ ${totalVentasTarjeta.toFixed(2)}</td>
-                    <td>S/ ${totalVentasTransferencia.toFixed(2)}</td>
-                    <td>S/ ${totalVentas.toFixed(2)}</td>
-                    <td>S/ ${totalEstimado.toFixed(2)}</td>
+                    <td>$ ${parseFloat(caja.monto_inicial).toFixed(2)}</td>
+                    <td>$ ${totalVentasEfectivo.toFixed(2)}</td>
+                    <td>$ ${totalVentasTarjeta.toFixed(2)}</td>
+                    <td>$ ${totalVentasTransferencia.toFixed(2)}</td>
+                    <td>$ ${totalVentas.toFixed(2)}</td>
+                    <td>$ ${totalEstimado.toFixed(2)}</td>
                     <td><span class="${estadoClase}">${estado}</span></td>
                     <td class="acciones">
                         <button class="btn btn-sm" onclick="verDetalleCaja('${caja.id}')">
@@ -1802,7 +1861,7 @@ async function cargarHistorialCajas() {
                     <span>Total Cajas: <strong>${cajas.length}</strong></span>
                     <span>Cajas Abiertas: <strong>${cajas.filter(c => !c.fecha_cierre).length}</strong></span>
                     <span>Cajas Cerradas: <strong>${cajas.filter(c => c.fecha_cierre).length}</strong></span>
-                    <span>Total Ventas: <strong>S/ ${cajas.reduce((sum, c) => {
+                    <span>Total Ventas: <strong>$ ${cajas.reduce((sum, c) => {
                         const efectivo = parseFloat(c.total_ventas_efectivo) || 0;
                         const tarjeta = parseFloat(c.total_ventas_tarjeta) || 0;
                         const transferencia = parseFloat(c.total_ventas_transferencia) || 0;
@@ -1919,15 +1978,15 @@ async function cargarDetallesCajaDia() {
                         <div class="mt-2">
                             <div class="d-flex justify-content-between">
                                 <span>Inicial:</span>
-                                <span>S/ ${parseFloat(caja.monto_inicial).toFixed(2)}</span>
+                                <span>$ ${parseFloat(caja.monto_inicial).toFixed(2)}</span>
                             </div>
                             <div class="d-flex justify-content-between">
                                 <span>Ventas:</span>
-                                <span>S/ ${totalVentas.toFixed(2)}</span>
+                                <span>$ ${totalVentas.toFixed(2)}</span>
                             </div>
                             <div class="d-flex justify-content-between">
                                 <span>Total:</span>
-                                <span>S/ ${(parseFloat(caja.monto_inicial) + totalVentas).toFixed(2)}</span>
+                                <span>$ ${(parseFloat(caja.monto_inicial) + totalVentas).toFixed(2)}</span>
                             </div>
                         </div>
                     </div>
@@ -1998,19 +2057,19 @@ async function cargarDetallesCajaDia() {
                                 </div>
                                 <div class="resumen-item">
                                     <span>Total Ventas:</span>
-                                    <strong>S/ ${totalVentas.toFixed(2)}</strong>
+                                    <strong>$ ${totalVentas.toFixed(2)}</strong>
                                 </div>
                                 <div class="resumen-item">
                                     <span>Efectivo:</span>
-                                    <strong>S/ ${ventasEfectivo.toFixed(2)}</strong>
+                                    <strong>$ ${ventasEfectivo.toFixed(2)}</strong>
                                 </div>
                                 <div class="resumen-item">
                                     <span>Tarjeta:</span>
-                                    <strong>S/ ${ventasTarjeta.toFixed(2)}</strong>
+                                    <strong>$ ${ventasTarjeta.toFixed(2)}</strong>
                                 </div>
                                 <div class="resumen-item">
                                     <span>Transferencia:</span>
-                                    <strong>S/ ${ventasTransferencia.toFixed(2)}</strong>
+                                    <strong>$ ${ventasTransferencia.toFixed(2)}</strong>
                                 </div>
                             </div>
                             
@@ -2046,7 +2105,7 @@ async function cargarDetallesCajaDia() {
                     <div class="list-item">
                         <div class="d-flex justify-content-between">
                             <strong>${venta.ticket_id}</strong>
-                            <span>S/ ${parseFloat(venta.total).toFixed(2)}</span>
+                            <span>$ ${parseFloat(venta.total).toFixed(2)}</span>
                         </div>
                         <div class="text-muted small">
                             ${new Date(venta.fecha).toLocaleTimeString('es-ES')} - 
@@ -2123,7 +2182,7 @@ async function cargarVentasDelDiaEnCaja() {
                     <i class="fas fa-money-bill-wave"></i>
                 </div>
                 <div class="stats-info">
-                    <h4>S/ ${totalVentas.toFixed(2)}</h4>
+                    <h4>$ ${totalVentas.toFixed(2)}</h4>
                     <span>Total del Día</span>
                 </div>
             </div>
@@ -2132,7 +2191,7 @@ async function cargarVentasDelDiaEnCaja() {
                     <i class="fas fa-chart-line"></i>
                 </div>
                 <div class="stats-info">
-                    <h4>S/ ${ticketPromedio.toFixed(2)}</h4>
+                    <h4>$ ${ticketPromedio.toFixed(2)}</h4>
                     <span>Ticket Promedio</span>
                 </div>
             </div>
@@ -2186,13 +2245,13 @@ window.verDetalleCaja = async function(cajaId) {
                         <div class="col-md-6">
                             <p><strong>Usuario:</strong> ${nombreUsuario}</p>
                             <p><strong>Fecha Apertura:</strong> ${new Date(caja.fecha_apertura).toLocaleString('es-ES')}</p>
-                            <p><strong>Monto Inicial:</strong> S/ ${parseFloat(caja.monto_inicial).toFixed(2)}</p>
+                            <p><strong>Monto Inicial:</strong> $ ${parseFloat(caja.monto_inicial).toFixed(2)}</p>
                         </div>
                         <div class="col-md-6">
                             <p><strong>Fecha Cierre:</strong> ${caja.fecha_cierre ? new Date(caja.fecha_cierre).toLocaleString('es-ES') : 'En curso'}</p>
-                            <p><strong>Total Ventas Efectivo:</strong> S/ ${parseFloat(caja.total_ventas_efectivo || 0).toFixed(2)}</p>
-                            <p><strong>Total Ventas Tarjeta:</strong> S/ ${parseFloat(caja.total_ventas_tarjeta || 0).toFixed(2)}</p>
-                            <p><strong>Total Ventas Transferencia:</strong> S/ ${parseFloat(caja.total_ventas_transferencia || 0).toFixed(2)}</p>
+                            <p><strong>Total Ventas Efectivo:</strong> $ ${parseFloat(caja.total_ventas_efectivo || 0).toFixed(2)}</p>
+                            <p><strong>Total Ventas Tarjeta:</strong> $ ${parseFloat(caja.total_ventas_tarjeta || 0).toFixed(2)}</p>
+                            <p><strong>Total Ventas Transferencia:</strong> $ ${parseFloat(caja.total_ventas_transferencia || 0).toFixed(2)}</p>
                         </div>
                     </div>
         `;
@@ -2225,14 +2284,14 @@ window.verDetalleCaja = async function(cajaId) {
                 }
                 
                 const mediosTexto = Object.entries(medios)
-                    .map(([medio, monto]) => `${medio}: S/ ${monto.toFixed(2)}`)
+                    .map(([medio, monto]) => `${medio}: $ ${monto.toFixed(2)}`)
                     .join(', ');
                 
                 detalleHTML += `
                     <tr>
                         <td>${venta.ticket_id}</td>
                         <td>${new Date(venta.fecha).toLocaleTimeString('es-ES')}</td>
-                        <td>S/ ${parseFloat(venta.total).toFixed(2)}</td>
+                        <td>$ ${parseFloat(venta.total).toFixed(2)}</td>
                         <td>${mediosTexto || 'Sin pagos'}</td>
                     </tr>
                 `;
@@ -2382,19 +2441,19 @@ async function imprimirResumenCaja() {
                 <div class="info-grid">
                     <div class="info-item">
                         <h3>Monto Inicial</h3>
-                        <div class="valor">S/ ${parseFloat(caja.monto_inicial).toFixed(2)}</div>
+                        <div class="valor">$ ${parseFloat(caja.monto_inicial).toFixed(2)}</div>
                     </div>
                     <div class="info-item">
                         <h3>Ventas Totales</h3>
-                        <div class="valor">S/ ${totalVentas.toFixed(2)}</div>
+                        <div class="valor">$ ${totalVentas.toFixed(2)}</div>
                     </div>
                     <div class="info-item">
                         <h3>Total Estimado</h3>
-                        <div class="valor">S/ ${totalEstimado.toFixed(2)}</div>
+                        <div class="valor">$ ${totalEstimado.toFixed(2)}</div>
                     </div>
                     <div class="info-item">
                         <h3>Monto Real</h3>
-                        <div class="valor">S/ ${montoReal.toFixed(2)}</div>
+                        <div class="valor">$ ${montoReal.toFixed(2)}</div>
                     </div>
                 </div>
                 
@@ -2410,17 +2469,17 @@ async function imprimirResumenCaja() {
                     <tbody>
                         <tr>
                             <td>EFECTIVO</td>
-                            <td>S/ ${ventasEfectivo.toFixed(2)}</td>
+                            <td>$ ${ventasEfectivo.toFixed(2)}</td>
                             <td>${totalVentas > 0 ? ((ventasEfectivo / totalVentas) * 100).toFixed(1) : '0'}%</td>
                         </tr>
                         <tr>
                             <td>TARJETA</td>
-                            <td>S/ ${ventasTarjeta.toFixed(2)}</td>
+                            <td>$ ${ventasTarjeta.toFixed(2)}</td>
                             <td>${totalVentas > 0 ? ((ventasTarjeta / totalVentas) * 100).toFixed(1) : '0'}%</td>
                         </tr>
                         <tr>
                             <td>TRANSFERENCIA/QR</td>
-                            <td>S/ ${ventasTransferencia.toFixed(2)}</td>
+                            <td>$ ${ventasTransferencia.toFixed(2)}</td>
                             <td>${totalVentas > 0 ? ((ventasTransferencia / totalVentas) * 100).toFixed(1) : '0'}%</td>
                         </tr>
                     </tbody>
@@ -2430,16 +2489,16 @@ async function imprimirResumenCaja() {
                     <h3>Resumen Final</h3>
                     <div style="display: flex; justify-content: space-between; margin: 10px 0;">
                         <span>Total Estimado:</span>
-                        <strong>S/ ${totalEstimado.toFixed(2)}</strong>
+                        <strong>$ ${totalEstimado.toFixed(2)}</strong>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin: 10px 0;">
                         <span>Monto Real:</span>
-                        <strong>S/ ${montoReal.toFixed(2)}</strong>
+                        <strong>$ ${montoReal.toFixed(2)}</strong>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin: 10px 0; padding-top: 10px; border-top: 2px solid #333;">
                         <span>Diferencia:</span>
                         <strong class="${diferencia >= 0 ? 'text-success' : 'text-danger'}">
-                            ${diferencia >= 0 ? '+' : ''}S/ ${Math.abs(diferencia).toFixed(2)}
+                            ${diferencia >= 0 ? '+' : ''}$ ${Math.abs(diferencia).toFixed(2)}
                         </strong>
                     </div>
                 </div>
@@ -2577,7 +2636,7 @@ async function cargarHistorial() {
             });
             
             const mediosTexto = Object.entries(medios)
-                .map(([medio, monto]) => `${medio}: S/ ${monto.toFixed(2)}`)
+                .map(([medio, monto]) => `${medio}: $ ${monto.toFixed(2)}`)
                 .join('<br>');
             
             const fecha = new Date(venta.fecha).toLocaleString('es-ES');
@@ -2588,7 +2647,7 @@ async function cargarHistorial() {
                 <td>${venta.ticket_id}</td>
                 <td>${fecha}</td>
                 <td>${usuarioNombre}</td>
-                <td>S/ ${parseFloat(venta.total).toFixed(2)}</td>
+                <td>$ ${parseFloat(venta.total).toFixed(2)}</td>
                 <td>${mediosTexto || 'Sin pagos registrados'}</td>
                 <td>
                     <span class="${venta.anulada ? 'text-danger' : 'text-success'}">
@@ -2687,9 +2746,9 @@ window.verDetalleVenta = async function(id) {
                 <p><strong>Fecha:</strong> ${new Date(venta.fecha).toLocaleString('es-ES')}</p>
                 <p><strong>Estado:</strong> ${venta.anulada ? 'ANULADA' : 'ACTIVA'}</p>
                 <p><strong>Atendido por:</strong> ${nombreUsuario}</p>
-                <p><strong>Subtotal:</strong> S/ ${parseFloat(venta.subtotal).toFixed(2)}</p>
-                <p><strong>Descuento:</strong> S/ ${parseFloat(venta.descuento).toFixed(2)}</p>
-                <p><strong>Total:</strong> S/ ${parseFloat(venta.total).toFixed(2)}</p>
+                <p><strong>Subtotal:</strong> $ ${parseFloat(venta.subtotal).toFixed(2)}</p>
+                <p><strong>Descuento:</strong> $ ${parseFloat(venta.descuento).toFixed(2)}</p>
+                <p><strong>Total:</strong> $ ${parseFloat(venta.total).toFixed(2)}</p>
             </div>
         `;
         
@@ -2715,8 +2774,8 @@ window.verDetalleVenta = async function(id) {
                         <td>${detalle.productos?.nombre || 'N/A'}</td>
                         <td>${detalle.productos?.codigo_barra || 'N/A'}</td>
                         <td>${detalle.cantidad}</td>
-                        <td>S/ ${parseFloat(detalle.precio_unitario).toFixed(2)}</td>
-                        <td>S/ ${parseFloat(detalle.subtotal).toFixed(2)}</td>
+                        <td>$ ${parseFloat(detalle.precio_unitario).toFixed(2)}</td>
+                        <td>$ ${parseFloat(detalle.subtotal).toFixed(2)}</td>
                     </tr>
                 `;
             });
@@ -2744,7 +2803,7 @@ window.verDetalleVenta = async function(id) {
                 detalleHTML += `
                     <tr>
                         <td>${pago.medio_pago}</td>
-                        <td>S/ ${parseFloat(pago.monto).toFixed(2)}</td>
+                        <td>$ ${parseFloat(pago.monto).toFixed(2)}</td>
                     </tr>
                 `;
             });
@@ -2846,8 +2905,8 @@ async function cargarProductos() {
             tr.innerHTML = `
                 <td>${producto.codigo_barra}</td>
                 <td>${producto.nombre}</td>
-                <td>S/ ${parseFloat(producto.precio_venta).toFixed(2)}</td>
-                <td>S/ ${parseFloat(producto.precio_costo).toFixed(2)}</td>
+                <td>$ ${parseFloat(producto.precio_venta).toFixed(2)}</td>
+                <td>$ ${parseFloat(producto.precio_costo).toFixed(2)}</td>
                 <td>${margen}</td>
                 <td>${producto.stock}</td>
                 <td>${producto.proveedor || '-'}</td>
@@ -3195,7 +3254,7 @@ async function buscarProductosManual() {
             tr.innerHTML = `
                 <td>${producto.codigo_barra}</td>
                 <td>${producto.nombre}</td>
-                <td>S/ ${parseFloat(producto.precio_venta).toFixed(2)}</td>
+                <td>$ ${parseFloat(producto.precio_venta).toFixed(2)}</td>
                 <td>${producto.stock}</td>
                 <td>
                     <button class="btn btn-sm btn-primary" onclick="agregarDesdeBuscador('${producto.id}')">
@@ -3254,18 +3313,22 @@ async function generarReporte() {
         const fechaFinAjustada = new Date(fechaFin.value);
         fechaFinAjustada.setHours(23, 59, 59, 999);
         
-        const { data: ventas, error } = await supabaseClient
+        // MODIFICACIÓN: Consulta mejorada para obtener reportes reales
+        const { data: ventas, error: ventasError } = await supabaseClient
             .from('ventas')
             .select(`
                 id,
                 total,
                 descuento,
                 anulada,
+                fecha,
                 detalle_ventas (
                     cantidad,
                     precio_unitario,
+                    subtotal,
                     productos (
-                        precio_costo
+                        precio_costo,
+                        nombre
                     )
                 ),
                 pagos_venta (
@@ -3273,16 +3336,37 @@ async function generarReporte() {
                     monto
                 )
             `)
-            .gte('fecha', fechaInicio.value)
+            .gte('fecha', fechaInicio.value + 'T00:00:00')
             .lte('fecha', fechaFinAjustada.toISOString())
-            .eq('anulada', false);
+            .eq('anulada', false)
+            .order('fecha', { ascending: false });
         
-        if (error) throw error;
+        if (ventasError) {
+            console.error('Error obteniendo ventas para reporte:', ventasError);
+            throw ventasError;
+        }
+        
+        console.log(`Ventas obtenidas para reporte: ${ventas?.length || 0}`);
+        
+        if (!ventas || ventas.length === 0) {
+            const resultados = document.getElementById('reportes-resultados');
+            if (resultados) {
+                resultados.innerHTML = `
+                    <div class="empty-reportes">
+                        <i class="fas fa-chart-bar fa-3x"></i>
+                        <p>No hay ventas en el período seleccionado</p>
+                        <p>Fecha: ${fechaInicio.value} al ${fechaFin.value}</p>
+                    </div>
+                `;
+            }
+            return;
+        }
         
         let totalVentas = 0;
         let totalDescuentos = 0;
         let totalGanancias = 0;
         let cantidadVentas = ventas.length;
+        let totalCosto = 0;
         
         const mediosPago = {
             'EFECTIVO': 0,
@@ -3290,28 +3374,68 @@ async function generarReporte() {
             'TRANSFERENCIA/QR': 0
         };
         
+        const productosVendidos = {};
+        const ventasPorDia = {};
+        
+        // Procesar todas las ventas
         ventas.forEach(venta => {
-            totalVentas += parseFloat(venta.total);
-            totalDescuentos += parseFloat(venta.descuento);
+            totalVentas += parseFloat(venta.total) || 0;
+            totalDescuentos += parseFloat(venta.descuento) || 0;
             
+            // Fecha para agrupación diaria
+            const fecha = venta.fecha.split('T')[0];
+            if (!ventasPorDia[fecha]) {
+                ventasPorDia[fecha] = {
+                    ventas: 0,
+                    cantidad: 0
+                };
+            }
+            ventasPorDia[fecha].ventas += parseFloat(venta.total) || 0;
+            ventasPorDia[fecha].cantidad += 1;
+            
+            // Procesar detalles de venta para ganancias
             if (venta.detalle_ventas && venta.detalle_ventas.length > 0) {
                 venta.detalle_ventas.forEach(detalle => {
-                    const costo = parseFloat(detalle.productos.precio_costo) || 0;
-                    const ganancia = (detalle.precio_unitario - costo) * detalle.cantidad;
-                    totalGanancias += ganancia;
+                    const costo = parseFloat(detalle.productos?.precio_costo) || 0;
+                    const ganancia = (parseFloat(detalle.precio_unitario) || 0) - costo;
+                    const gananciaTotal = ganancia * (detalle.cantidad || 1);
+                    totalGanancias += gananciaTotal;
+                    totalCosto += costo * (detalle.cantidad || 1);
+                    
+                    // Contabilizar productos vendidos
+                    const productoNombre = detalle.productos?.nombre || 'Desconocido';
+                    if (!productosVendidos[productoNombre]) {
+                        productosVendidos[productoNombre] = {
+                            cantidad: 0,
+                            total: 0
+                        };
+                    }
+                    productosVendidos[productoNombre].cantidad += detalle.cantidad || 0;
+                    productosVendidos[productoNombre].total += parseFloat(detalle.subtotal) || 0;
                 });
             }
             
+            // Procesar pagos
             if (venta.pagos_venta && venta.pagos_venta.length > 0) {
                 venta.pagos_venta.forEach(pago => {
                     if (mediosPago[pago.medio_pago] !== undefined) {
-                        mediosPago[pago.medio_pago] += parseFloat(pago.monto);
+                        mediosPago[pago.medio_pago] += parseFloat(pago.monto) || 0;
                     }
                 });
             }
         });
         
         const ticketPromedio = cantidadVentas > 0 ? totalVentas / cantidadVentas : 0;
+        const margenGanancia = totalCosto > 0 ? (totalGanancias / totalCosto) * 100 : 0;
+        
+        // Ordenar productos más vendidos
+        const productosTop = Object.entries(productosVendidos)
+            .sort((a, b) => b[1].cantidad - a[1].cantidad)
+            .slice(0, 10);
+        
+        // Ordenar días por fecha
+        const diasOrdenados = Object.entries(ventasPorDia)
+            .sort((a, b) => new Date(a[0]) - new Date(b[0]));
         
         const resultados = document.getElementById('reportes-resultados');
         if (!resultados) return;
@@ -3320,55 +3444,140 @@ async function generarReporte() {
             <div class="reporte-resumen">
                 <div class="reporte-item">
                     <h4>VENTAS TOTALES</h4>
-                    <div class="reporte-valor">S/ ${totalVentas.toFixed(2)}</div>
+                    <div class="reporte-valor">$ ${totalVentas.toFixed(2)}</div>
+                    <small>${cantidadVentas} transacciones</small>
                 </div>
                 <div class="reporte-item">
                     <h4>GANANCIAS</h4>
-                    <div class="reporte-valor">S/ ${totalGanancias.toFixed(2)}</div>
-                </div>
-                <div class="reporte-item">
-                    <h4>CANT. VENTAS</h4>
-                    <div class="reporte-valor">${cantidadVentas}</div>
+                    <div class="reporte-valor">$ ${totalGanancias.toFixed(2)}</div>
+                    <small>${margenGanancia.toFixed(1)}% de margen</small>
                 </div>
                 <div class="reporte-item">
                     <h4>TICKET PROMEDIO</h4>
-                    <div class="reporte-valor">S/ ${ticketPromedio.toFixed(2)}</div>
+                    <div class="reporte-valor">$ ${ticketPromedio.toFixed(2)}</div>
+                    <small>Por venta</small>
                 </div>
                 <div class="reporte-item">
                     <h4>DESCUENTOS</h4>
-                    <div class="reporte-valor">S/ ${totalDescuentos.toFixed(2)}</div>
+                    <div class="reporte-valor">$ ${totalDescuentos.toFixed(2)}</div>
+                    <small>${totalVentas > 0 ? ((totalDescuentos / totalVentas) * 100).toFixed(1) : '0'}% del total</small>
                 </div>
             </div>
             
             <div class="reporte-desglose">
-                <h3>Desglose por Medio de Pago</h3>
+                <h3><i class="fas fa-money-check-alt"></i> Desglose por Medio de Pago</h3>
                 <table class="data-table">
                     <thead>
                         <tr>
                             <th>Medio de Pago</th>
                             <th>Total</th>
                             <th>Porcentaje</th>
+                            <th>Cant. Transacciones</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${Object.entries(mediosPago).map(([medio, total]) => {
                             const porcentaje = totalVentas > 0 ? (total / totalVentas * 100) : 0;
+                            // Contar transacciones por medio de pago
+                            let transacciones = 0;
+                            ventas.forEach(venta => {
+                                if (venta.pagos_venta && venta.pagos_venta.some(p => p.medio_pago === medio)) {
+                                    transacciones++;
+                                }
+                            });
                             return `
                                 <tr>
                                     <td>${medio}</td>
-                                    <td>S/ ${total.toFixed(2)}</td>
+                                    <td>$ ${total.toFixed(2)}</td>
                                     <td>${porcentaje.toFixed(1)}%</td>
+                                    <td>${transacciones}</td>
                                 </tr>
                             `;
                         }).join('')}
                     </tbody>
                 </table>
             </div>
+            
+            <div class="row mt-4">
+                <div class="col-md-6">
+                    <div class="reporte-desglose">
+                        <h3><i class="fas fa-chart-line"></i> Ventas por Día</h3>
+                        <div style="height: 300px; overflow-y: auto;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>Cant. Ventas</th>
+                                        <th>Total</th>
+                                        <th>Promedio</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${diasOrdenados.map(([fecha, datos]) => `
+                                        <tr>
+                                            <td>${fecha}</td>
+                                            <td>${datos.cantidad}</td>
+                                            <td>$ ${datos.ventas.toFixed(2)}</td>
+                                            <td>$ ${(datos.ventas / datos.cantidad).toFixed(2)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="reporte-desglose">
+                        <h3><i class="fas fa-star"></i> Productos Más Vendidos</h3>
+                        <div style="height: 300px; overflow-y: auto;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Producto</th>
+                                        <th>Cantidad</th>
+                                        <th>Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${productosTop.map(([nombre, datos]) => `
+                                        <tr>
+                                            <td>${nombre}</td>
+                                            <td>${datos.cantidad}</td>
+                                            <td>$ ${datos.total.toFixed(2)}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-4 p-3 bg-light rounded">
+                <h4><i class="fas fa-info-circle"></i> Resumen del Período</h4>
+                <div class="row">
+                    <div class="col-md-4">
+                        <p><strong>Fecha Inicio:</strong> ${fechaInicio.value}</p>
+                        <p><strong>Fecha Fin:</strong> ${fechaFin.value}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <p><strong>Total Días con Ventas:</strong> ${diasOrdenados.length}</p>
+                        <p><strong>Productos Diferentes Vendidos:</strong> ${Object.keys(productosVendidos).length}</p>
+                    </div>
+                    <div class="col-md-4">
+                        <p><strong>Margen de Ganancia:</strong> ${margenGanancia.toFixed(2)}%</p>
+                        <p><strong>Eficiencia de Descuentos:</strong> ${totalVentas > 0 ? ((totalDescuentos / totalVentas) * 100).toFixed(2) : '0'}%</p>
+                    </div>
+                </div>
+            </div>
         `;
+        
+        showNotification(`Reporte generado para ${cantidadVentas} ventas`, 'success');
         
     } catch (error) {
         console.error('Error generando reporte:', error);
-        showNotification('Error generando reporte', 'error');
+        showNotification('Error generando reporte: ' + error.message, 'error');
     }
 }
 

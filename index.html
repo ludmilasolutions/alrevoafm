@@ -196,6 +196,10 @@
                                     <span>Descuento:</span>
                                     <span id="carrito-descuento">$ 0.00</span>
                                 </div>
+                                <div class="total-row">
+                                    <span>Total:</span>
+                                    <span id="carrito-total">$ 0.00</span>
+                                </div>
                             </div>
                         </div>
 
@@ -262,7 +266,7 @@
                         <div class="finalizacion-container">
                             <div class="total-final">
                                 <span class="total-label">TOTAL VENTA:</span>
-                                <span id="carrito-total" class="total-monto">$ 0.00</span>
+                                <span id="carrito-total-final" class="total-monto">$ 0.00</span>
                             </div>
                             <div class="acciones-finales">
                                 <button id="btn-cancelar-venta" class="btn btn-danger">
@@ -277,7 +281,7 @@
                 </div>
             </section>
 
-            <!-- Sección de Productos (sin cambios) -->
+            <!-- Sección de Productos -->
             <section id="seccion-productos" class="content-section">
                 <div class="section-header">
                     <h2><i class="fas fa-boxes"></i> Gestión de Productos</h2>
@@ -332,7 +336,7 @@
                 </div>
             </section>
 
-            <!-- Sección de Historial (sin cambios) -->
+            <!-- Sección de Historial -->
             <section id="seccion-historial" class="content-section">
                 <div class="section-header">
                     <h2><i class="fas fa-history"></i> Historial de Ventas</h2>
@@ -365,6 +369,7 @@
                             <tr>
                                 <th>Ticket</th>
                                 <th>Fecha</th>
+                                <th>Usuario</th>
                                 <th>Total</th>
                                 <th>Medios de Pago</th>
                                 <th>Estado</th>
@@ -378,7 +383,7 @@
                 </div>
             </section>
 
-            <!-- Sección de Caja (sin cambios) -->
+            <!-- Sección de Caja -->
             <section id="seccion-caja" class="content-section">
                 <div class="section-header">
                     <h2><i class="fas fa-cash-register"></i> Gestión de Caja</h2>
@@ -396,7 +401,7 @@
                             <!-- Cargado dinámicamente -->
                         </div>
                         
-                        <div class="caja-operaciones" id="caja-operaciones" style="display: none;">
+                        <div class="caja-operaciones" id="caja-operaciones">
                             <div class="caja-resumen">
                                 <h3><i class="fas fa-chart-pie"></i> Resumen de Caja</h3>
                                 <div class="resumen-grid">
@@ -422,7 +427,7 @@
                                     </div>
                                 </div>
                                 
-                                <div class="ventas-resumen mt-4">
+                                <div class="ventas-resumen">
                                     <h4><i class="fas fa-receipt"></i> Resumen de Ventas del Día</h4>
                                     <div class="stats-grid" id="caja-ventas-dia">
                                         <!-- Cargado dinámicamente -->
@@ -583,7 +588,7 @@
             </section>
         </main>
 
-        <!-- Modales (sin cambios) -->
+        <!-- Modales -->
         
         <!-- Modal Buscador de Productos (F6) -->
         <div id="modal-buscador" class="modal">

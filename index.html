@@ -2,24 +2,13 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AFMSOLUTIONS - Sistema POS</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛒</text></svg>">
     <link rel="icon" type="image/png" href="https://img.icons8.com/color/96/000000/checkout.png">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
-    <script>
-        (function() {
-            const savedTheme = localStorage.getItem('theme');
-            if (savedTheme) {
-                document.body.classList.add(savedTheme);
-            } else {
-                const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-                if (isDark) document.body.classList.add('dark');
-            }
-        })();
-    </script>
 </head>
 <body>
     <!-- Pantalla de Login -->
@@ -53,7 +42,7 @@
 
     <!-- Aplicación Principal (oculta inicialmente) -->
     <div id="app" class="app-container" style="display: none;">
-        <!-- Encabezado con menú hamburguesa -->
+        <!-- Encabezado con menú hamburguesa para móvil -->
         <header class="app-header">
             <button id="menu-toggle" class="menu-toggle" aria-label="Menú principal">
                 <i class="fas fa-bars"></i>
@@ -61,9 +50,6 @@
             <div class="header-title">
                 <h1><i class="fas fa-store"></i> <span id="current-section">VENTA</span></h1>
             </div>
-            <button id="theme-toggle" class="theme-toggle" aria-label="Cambiar tema">
-                <i class="fas fa-moon"></i>
-            </button>
             <div class="header-user">
                 <span id="user-name">Usuario</span>
                 <button id="logout-btn" class="btn btn-sm" title="Cerrar sesión">
@@ -124,158 +110,152 @@
 
         <!-- Contenido Principal -->
         <main class="main-content">
-            <!-- Sección de Venta (COMPLETAMENTE REDISEÑADA) -->
+            <!-- Sección de Venta -->
             <section id="seccion-venta" class="content-section active">
                 <div class="venta-container">
-                    <!-- Scanner Compacto -->
-                    <div class="scanner-compacto">
-                        <div class="scanner-input-group">
+                    <!-- Panel de Entrada de Productos -->
+                    <div class="scanner-panel">
+                        <div class="input-group">
                             <label for="scanner-input">
-                                <i class="fas fa-barcode"></i> ESCANER / CÓDIGO DE BARRAS
-                                <small>(Enter para agregar, F6 para búsqueda manual)</small>
+                                <i class="fas fa-barcode"></i> Scanner / Código de Barras
+                                <small>(F6 para búsqueda manual)</small>
                             </label>
-                            <div class="input-with-action">
-                                <input type="text" 
-                                       id="scanner-input" 
-                                       placeholder="Escanear producto o ingresar código..." 
-                                       autocomplete="off"
-                                       autofocus
-                                       spellcheck="false">
-                                <button id="btn-buscar-manual" class="btn btn-primary" title="Buscar producto (F6)">
-                                    <i class="fas fa-search"></i> BUSCAR (F6)
+                            <div class="input-with-button">
+                                <input type="text" id="scanner-input" placeholder="Escanear o ingresar código..." autofocus>
+                                <button id="btn-buscar-manual" class="btn" title="Buscar producto manualmente (F6)">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="producto-info" id="producto-info" style="display: none;">
+                            <h3 id="producto-nombre"></h3>
+                            <div class="producto-detalles">
+                                <span>Precio: <strong id="producto-precio"></strong></span>
+                                <span>Stock: <strong id="producto-stock"></strong></span>
+                            </div>
+                            <div class="cantidad-control">
+                                <button class="btn btn-sm" id="btn-cantidad-menos">
+                                    <i class="fas fa-minus"></i>
+                                </button>
+                                <input type="number" id="cantidad-producto" value="1" min="1" max="999">
+                                <button class="btn btn-sm" id="btn-cantidad-mas">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                                <button class="btn btn-primary" id="btn-agregar-carrito">
+                                    <i class="fas fa-cart-plus"></i> Agregar
                                 </button>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Contenedor Principal: Carrito + Pagos -->
-                    <div class="main-grid">
-                        <!-- Carrito Ampliado (70% del espacio) -->
-                        <div class="carrito-ampliado">
-                            <div class="carrito-header">
-                                <h3><i class="fas fa-shopping-cart"></i> CARRITO DE VENTA</h3>
-                                <div class="carrito-actions">
-                                    <button id="btn-limpiar-carrito" class="btn btn-warning">
-                                        <i class="fas fa-trash"></i> Vaciar Todo
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            <div class="carrito-items-container" id="carrito-items-container">
-                                <div class="carrito-items" id="carrito-items">
-                                    <!-- Items del carrito se cargan dinámicamente -->
-                                    <div class="empty-carrito">
-                                        <i class="fas fa-shopping-cart fa-3x"></i>
-                                        <p>El carrito está vacío</p>
-                                        <p>Escanee un producto o use F6 para buscar</p>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="carrito-totales">
-                                <div class="total-row">
-                                    <span>Subtotal:</span>
-                                    <span id="carrito-subtotal">$ 0.00</span>
-                                </div>
-                                <div class="descuento-row">
-                                    <div class="descuento-control">
-                                        <label for="descuento-input">Descuento:</label>
-                                        <div class="descuento-inputs">
-                                            <input type="number" id="descuento-input" placeholder="0" min="0" max="100" step="0.01">
-                                            <select id="descuento-tipo">
-                                                <option value="porcentaje">%</option>
-                                                <option value="monto">$</option>
-                                            </select>
-                                            <button id="btn-aplicar-descuento" class="btn btn-sm" title="Aplicar descuento (F2)">
-                                                <i class="fas fa-percentage"></i> Aplicar
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="total-row">
-                                    <span>Descuento:</span>
-                                    <span id="carrito-descuento">$ 0.00</span>
-                                </div>
-                                <div class="total-row">
-                                    <span>Total:</span>
-                                    <span id="carrito-total">$ 0.00</span>
-                                </div>
+                    <!-- Carrito de Compras -->
+                    <div class="carrito-panel">
+                        <div class="carrito-header">
+                            <h3><i class="fas fa-shopping-cart"></i> Carrito de Venta</h3>
+                            <div class="carrito-actions">
+                                <button id="btn-limpiar-carrito" class="btn btn-warning">
+                                    <i class="fas fa-trash"></i> Limpiar
+                                </button>
                             </div>
                         </div>
-
-                        <!-- Panel de Pagos (30% del espacio) -->
-                        <div class="pagos-panel">
-                            <div class="pagos-header">
-                                <h3><i class="fas fa-credit-card"></i> MEDIOS DE PAGO</h3>
+                        
+                        <div class="carrito-items" id="carrito-items">
+                            <!-- Items del carrito se cargan dinámicamente -->
+                            <div class="empty-carrito">
+                                <i class="fas fa-shopping-cart fa-2x"></i>
+                                <p>El carrito está vacío</p>
+                                <p>Escanee un producto o use F6 para buscar</p>
                             </div>
-                            
-                            <div class="pagos-opciones">
-                                <button class="btn-pago" data-medio="EFECTIVO" accesskey="1">
-                                    <i class="fas fa-money-bill-wave"></i>
-                                    <span>EFECTIVO (1)</span>
-                                </button>
-                                <button class="btn-pago" data-medio="TARJETA" accesskey="2">
-                                    <i class="fas fa-credit-card"></i>
-                                    <span>TARJETA (2)</span>
-                                </button>
-                                <button class="btn-pago" data-medio="TRANSFERENCIA/QR" accesskey="3">
-                                    <i class="fas fa-qrcode"></i>
-                                    <span>TRANSFERENCIA/QR (3)</span>
-                                </button>
+                        </div>
+                        
+                        <div class="carrito-resumen">
+                            <div class="resumen-row">
+                                <span>Subtotal:</span>
+                                <span id="carrito-subtotal">$ 0.00</span>
                             </div>
-                            
-                            <div class="pagos-ingreso">
-                                <div class="input-group">
-                                    <label for="pago-monto">Monto a Pagar:</label>
-                                    <input type="number" id="pago-monto" placeholder="0.00" min="0" step="0.01">
+                            <div class="descuento-control">
+                                <label for="descuento-input">Descuento:</label>
+                                <div class="input-group-small">
+                                    <input type="number" id="descuento-input" placeholder="0" min="0" max="100" step="0.01">
+                                    <select id="descuento-tipo">
+                                        <option value="porcentaje">%</option>
+                                        <option value="monto">$</option>
+                                    </select>
                                 </div>
-                                <button id="btn-agregar-pago" class="btn btn-primary">
-                                    <i class="fas fa-plus-circle"></i> Agregar Pago
+                                <button id="btn-aplicar-descuento" class="btn btn-sm" title="Aplicar descuento (F2)">
+                                    <i class="fas fa-percentage"></i> Aplicar
                                 </button>
                             </div>
-                            
-                            <div class="pagos-lista-container">
-                                <div class="pagos-lista" id="pagos-lista">
-                                    <!-- Lista de pagos se carga dinámicamente -->
-                                    <div class="empty-pagos">
-                                        <i class="fas fa-receipt fa-2x"></i>
-                                        <p>No hay pagos registrados</p>
-                                    </div>
-                                </div>
+                            <div class="resumen-row">
+                                <span>Descuento:</span>
+                                <span id="carrito-descuento">$ 0.00</span>
                             </div>
-                            
-                            <div class="pagos-resumen">
-                                <div class="resumen-row">
-                                    <span>Total a Pagar:</span>
-                                    <span id="total-a-pagar">$ 0.00</span>
-                                </div>
-                                <div class="resumen-row">
-                                    <span>Pagado:</span>
-                                    <span id="total-pagado">$ 0.00</span>
-                                </div>
-                                <div class="resumen-row">
-                                    <span>Cambio:</span>
-                                    <span id="total-cambio">$ 0.00</span>
-                                </div>
+                            <div class="resumen-row total">
+                                <span>TOTAL:</span>
+                                <span id="carrito-total">$ 0.00</span>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Total Final y Botón Finalizar (SIEMPRE VISIBLES) -->
-                    <div class="finalizacion-fija">
-                        <div class="finalizacion-container">
-                            <div class="total-final">
-                                <span class="total-label">TOTAL VENTA:</span>
-                                <span id="carrito-total-final" class="total-monto">$ 0.00</span>
+                    <!-- Panel de Pagos -->
+                    <div class="pagos-panel">
+                        <h3><i class="fas fa-credit-card"></i> Medios de Pago</h3>
+                        <div class="pagos-opciones">
+                            <button class="btn-pago" data-medio="EFECTIVO" accesskey="1">
+                                <i class="fas fa-money-bill-wave"></i>
+                                <span>EFECTIVO (1)</span>
+                            </button>
+                            <button class="btn-pago" data-medio="TARJETA" accesskey="2">
+                                <i class="fas fa-credit-card"></i>
+                                <span>TARJETA (2)</span>
+                            </button>
+                            <button class="btn-pago" data-medio="TRANSFERENCIA/QR" accesskey="3">
+                                <i class="fas fa-qrcode"></i>
+                                <span>TRANSFERENCIA/QR (3)</span>
+                            </button>
+                        </div>
+                        
+                        <div class="pagos-ingreso">
+                            <div class="input-group">
+                                <label for="pago-monto">Monto a Pagar:</label>
+                                <input type="number" id="pago-monto" placeholder="0.00" min="0" step="0.01">
                             </div>
-                            <div class="acciones-finales">
-                                <button id="btn-cancelar-venta" class="btn btn-danger">
-                                    <i class="fas fa-times-circle"></i> Cancelar
-                                </button>
-                                <button id="btn-finalizar-venta" class="btn-finalizar" disabled title="Finalizar venta (F1)">
-                                    <i class="fas fa-check-circle"></i> FINALIZAR VENTA (F1)
-                                </button>
+                            <button id="btn-agregar-pago" class="btn btn-primary">
+                                <i class="fas fa-plus-circle"></i> Agregar Pago
+                            </button>
+                        </div>
+                        
+                        <div class="pagos-lista" id="pagos-lista">
+                            <!-- Lista de pagos se carga dinámicamente -->
+                            <div class="empty-pagos">
+                                <i class="fas fa-receipt fa-2x"></i>
+                                <p>No hay pagos registrados</p>
                             </div>
+                        </div>
+                        
+                        <div class="pagos-totales">
+                            <div class="resumen-row">
+                                <span>Total a Pagar:</span>
+                                <span id="total-a-pagar">$ 0.00</span>
+                            </div>
+                            <div class="resumen-row">
+                                <span>Pagado:</span>
+                                <span id="total-pagado">$ 0.00</span>
+                            </div>
+                            <div class="resumen-row">
+                                <span>Cambio:</span>
+                                <span id="total-cambio">$ 0.00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="pagos-acciones">
+                            <button id="btn-finalizar-venta" class="btn btn-success btn-lg" disabled title="Finalizar venta (F1)">
+                                <i class="fas fa-check-circle"></i> FINALIZAR VENTA (F1)
+                            </button>
+                            <button id="btn-cancelar-venta" class="btn btn-danger">
+                                <i class="fas fa-times-circle"></i> Cancelar
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -369,7 +349,6 @@
                             <tr>
                                 <th>Ticket</th>
                                 <th>Fecha</th>
-                                <th>Usuario</th>
                                 <th>Total</th>
                                 <th>Medios de Pago</th>
                                 <th>Estado</th>
@@ -397,11 +376,12 @@
                     </div>
                     
                     <div class="tab-content active" id="caja-actual">
+                        <!-- Estado actual de caja -->
                         <div class="caja-status-panel" id="caja-detalle-status">
                             <!-- Cargado dinámicamente -->
                         </div>
                         
-                        <div class="caja-operaciones" id="caja-operaciones">
+                        <div class="caja-operaciones" id="caja-operaciones" style="display: none;">
                             <div class="caja-resumen">
                                 <h3><i class="fas fa-chart-pie"></i> Resumen de Caja</h3>
                                 <div class="resumen-grid">
@@ -427,7 +407,7 @@
                                     </div>
                                 </div>
                                 
-                                <div class="ventas-resumen">
+                                <div class="ventas-resumen mt-4">
                                     <h4><i class="fas fa-receipt"></i> Resumen de Ventas del Día</h4>
                                     <div class="stats-grid" id="caja-ventas-dia">
                                         <!-- Cargado dinámicamente -->
@@ -504,53 +484,53 @@
             </section>
 
             <!-- Sección de Reportes -->
-            <section id="seccion-reportes" class="content-section">
-                <div class="section-header">
-                    <h2><i class="fas fa-chart-bar"></i> Reportes y Ganancias</h2>
-                    <div class="section-actions">
-                        <button id="btn-refrescar-reportes" class="btn">
-                            <i class="fas fa-sync"></i> Refrescar
-                        </button>
-                        <button id="btn-imprimir-reporte" class="btn btn-secondary">
-                            <i class="fas fa-print"></i> Imprimir
-                        </button>
-                    </div>
-                </div>
-                
-                <div class="reportes-panel">
-                    <div class="reportes-filtros">
-                        <div class="input-group">
-                            <label for="reporte-fecha-inicio">Fecha Inicio:</label>
-                            <input type="date" id="reporte-fecha-inicio">
-                        </div>
-                        <div class="input-group">
-                            <label for="reporte-fecha-fin">Fecha Fin:</label>
-                            <input type="date" id="reporte-fecha-fin">
-                        </div>
-                        <div class="input-group">
-                            <label for="reporte-tipo">Tipo de Reporte:</label>
-                            <select id="reporte-tipo">
-                                <option value="general">General</option>
-                                <option value="ventas">Ventas</option>
-                                <option value="productos">Productos</option>
-                                <option value="ganancias">Ganancias</option>
-                            </select>
-                        </div>
-                        <button id="btn-generar-reporte" class="btn btn-primary">
-                            <i class="fas fa-chart-line"></i> Generar Reporte
-                        </button>
-                    </div>
-                    
-                    <div class="reportes-resultados" id="reportes-resultados">
-                        <div class="empty-reportes">
-                            <i class="fas fa-chart-bar fa-3x"></i>
-                            <p>Seleccione un rango de fechas y genere un reporte</p>
-                            <p>Fecha actual: <span id="fecha-actual"></span></p>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
+<section id="seccion-reportes" class="content-section">
+    <div class="section-header">
+        <h2><i class="fas fa-chart-bar"></i> Reportes y Ganancias</h2>
+        <div class="section-actions">
+            <button id="btn-refrescar-reportes" class="btn">
+                <i class="fas fa-sync"></i> Refrescar
+            </button>
+            <button id="btn-imprimir-reporte" class="btn btn-secondary">
+                <i class="fas fa-print"></i> Imprimir
+            </button>
+        </div>
+    </div>
+    
+    <div class="reportes-panel">
+        <div class="reportes-filtros">
+            <div class="input-group">
+                <label for="reporte-fecha-inicio">Fecha Inicio:</label>
+                <input type="date" id="reporte-fecha-inicio">
+            </div>
+            <div class="input-group">
+                <label for="reporte-fecha-fin">Fecha Fin:</label>
+                <input type="date" id="reporte-fecha-fin">
+            </div>
+            <div class="input-group">
+                <label for="reporte-tipo">Tipo de Reporte:</label>
+                <select id="reporte-tipo">
+                    <option value="general">General</option>
+                    <option value="ventas">Ventas</option>
+                    <option value="productos">Productos</option>
+                    <option value="ganancias">Ganancias</option>
+                </select>
+            </div>
+            <button id="btn-generar-reporte" class="btn btn-primary">
+                <i class="fas fa-chart-line"></i> Generar Reporte
+            </button>
+        </div>
+        
+        <div class="reportes-resultados" id="reportes-resultados">
+            <!-- Reportes se cargan dinámicamente -->
+            <div class="empty-reportes">
+                <i class="fas fa-chart-bar fa-3x"></i>
+                <p>Seleccione un rango de fechas y genere un reporte</p>
+                <p>Fecha actual: <span id="fecha-actual"></span></p>
+            </div>
+        </div>
+    </div>
+</section>
             <!-- Sección de Configuración -->
             <section id="seccion-configuracion" class="content-section">
                 <div class="section-header">
@@ -745,66 +725,5 @@
 
     <!-- Scripts -->
     <script src="app.js"></script>
-    <script>
-        // Toggle tema claro/oscuro
-        document.getElementById('theme-toggle').addEventListener('click', function() {
-            const body = document.body;
-            const isDark = body.classList.contains('dark');
-            const icon = this.querySelector('i');
-            
-            if (isDark) {
-                body.classList.remove('dark');
-                localStorage.setItem('theme', 'light');
-                icon.classList.remove('fa-sun');
-                icon.classList.add('fa-moon');
-            } else {
-                body.classList.add('dark');
-                localStorage.setItem('theme', 'dark');
-                icon.classList.remove('fa-moon');
-                icon.classList.add('fa-sun');
-            }
-        });
-
-        // Inicializar icono de tema
-        (function() {
-            const isDark = document.body.classList.contains('dark');
-            const icon = document.getElementById('theme-toggle').querySelector('i');
-            if (isDark) {
-                icon.classList.remove('fa-moon');
-                icon.classList.add('fa-sun');
-            }
-        })();
-
-        // Feedback auditivo opcional para scanner (solo si el usuario acepta)
-        let audioContext;
-        try {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        } catch (e) {
-            console.log('Audio no disponible');
-        }
-
-        function playScanSound() {
-            if (!audioContext) return;
-            
-            try {
-                const oscillator = audioContext.createOscillator();
-                const gainNode = audioContext.createGain();
-                
-                oscillator.connect(gainNode);
-                gainNode.connect(audioContext.destination);
-                
-                oscillator.frequency.value = 800;
-                oscillator.type = 'sine';
-                
-                gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
-                
-                oscillator.start(audioContext.currentTime);
-                oscillator.stop(audioContext.currentTime + 0.1);
-            } catch (e) {
-                // Silenciar error de audio
-            }
-        }
-    </script>
 </body>
 </html>

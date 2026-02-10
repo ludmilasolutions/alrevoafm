@@ -303,7 +303,7 @@ function setupEventListeners() {
         }
     });
     
-    // MODIFICACIÓN 1: Escáner automático - agregar producto automáticamente al escanear
+    // Escáner automático - agregar producto automáticamente al escanear
     const scannerInput = document.getElementById('scanner-input');
     if (scannerInput) {
         scannerInput.addEventListener('keypress', async function(e) {
@@ -835,6 +835,16 @@ function actualizarCarritoUI() {
             </div>
         `;
         
+        subtotalEl.textContent = '$ 0.00';
+        const descuentoEl = document.getElementById('carrito-descuento');
+        if (descuentoEl) descuentoEl.textContent = '$ 0.00';
+        totalEl.textContent = '$ 0.00';
+        
+        const totalAPagarEl = document.getElementById('total-a-pagar');
+        if (totalAPagarEl) totalAPagarEl.textContent = '$ 0.00';
+        
+        actualizarPagosUI();
+        
         btnFinalizar.disabled = true;
         return;
     }
@@ -893,6 +903,8 @@ function actualizarCarritoUI() {
     const totalAPagarEl = document.getElementById('total-a-pagar');
     if (totalAPagarEl) totalAPagarEl.textContent = `$ ${total.toFixed(2)}`;
     
+    actualizarPagosUI();
+    
     btnFinalizar.disabled = appState.carrito.length === 0 || appState.pagos.length === 0;
 }
 
@@ -915,9 +927,20 @@ window.actualizarCantidadCarrito = function(index, delta) {
 };
 
 window.eliminarDelCarrito = function(index) {
-    appState.carrito.splice(index, 1);
-    actualizarCarritoUI();
-    showNotification('Producto eliminado del carrito', 'info');
+    if (index >= 0 && index < appState.carrito.length) {
+        appState.carrito.splice(index, 1);
+        
+        if (appState.carrito.length === 0) {
+            appState.descuento = { tipo: 'porcentaje', valor: 0 };
+            const descuentoInput = document.getElementById('descuento-input');
+            const descuentoTipo = document.getElementById('descuento-tipo');
+            if (descuentoInput) descuentoInput.value = '';
+            if (descuentoTipo) descuentoTipo.value = 'porcentaje';
+        }
+        
+        actualizarCarritoUI();
+        showNotification('Producto eliminado del carrito', 'info');
+    }
 };
 
 function limpiarCarrito() {
@@ -1307,6 +1330,8 @@ async function finalizarVenta() {
             btnFinalizar.disabled = false;
             btnFinalizar.classList.remove('loading');
         }
+        
+        await cargarVentasDelDiaEnCaja();
     }
 }
 
@@ -1323,103 +1348,194 @@ async function generarTicket(venta) {
             configMap[item.clave] = item.valor;
         });
         
-        const ticketContent = document.getElementById('ticket-content');
-        if (!ticketContent) return;
-        
-        const fecha = new Date(venta.fecha).toLocaleString('es-ES');
+        const fecha = new Date(venta.fecha);
+        const fechaFormateada = `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2, '0')}:${fecha.getMinutes().toString().padStart(2, '0')}:${fecha.getSeconds().toString().padStart(2, '0')}`;
         
         let itemsHTML = '';
+        let itemsTotal = 0;
         appState.carrito.forEach(item => {
             const totalItem = item.cantidad * item.precioUnitario;
+            itemsTotal += totalItem;
+            
+            const nombre = item.producto.nombre.length > 20 ? 
+                item.producto.nombre.substring(0, 20) + '...' : 
+                item.producto.nombre;
+            
             itemsHTML += `
-                <div class="ticket-item">
-                    <div>${item.producto.nombre} x${item.cantidad}</div>
-                    <div>$ ${totalItem.toFixed(2)}</div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                    <div style="flex: 1; font-size: 9px;">
+                        ${nombre}
+                    </div>
+                    <div style="text-align: right; font-size: 9px;">
+                        ${item.cantidad} x $${item.precioUnitario.toFixed(2)} = $${totalItem.toFixed(2)}
+                    </div>
                 </div>
             `;
         });
         
         const cambio = appState.pagos.reduce((s, p) => s + p.monto, 0) - venta.total;
         
-        ticketContent.innerHTML = `
-            <div class="ticket-header">
-                <h1>${configMap.ticket_encabezado || 'AFMSOLUTIONS'}</h1>
-                <div>${configMap.ticket_encabezado_extra || ''}</div>
-                <div>${configMap.empresa_direccion || ''}</div>
-                <div>${fecha}</div>
-                <div><strong>Ticket: ${venta.ticket_id}</strong></div>
-                <div>Atendido por: ${appState.usuario?.username || ''}</div>
-            </div>
-            
-            <div class="ticket-items">
-                ${itemsHTML}
-            </div>
-            
-            <div class="ticket-totals">
-                <div class="ticket-item">
-                    <div>Subtotal:</div>
-                    <div>$ ${venta.subtotal.toFixed(2)}</div>
-                </div>
-                <div class="ticket-item">
-                    <div>Descuento:</div>
-                    <div>$ ${venta.descuento.toFixed(2)}</div>
-                </div>
-                <div class="ticket-item">
-                    <div><strong>TOTAL:</strong></div>
-                    <div><strong>$ ${venta.total.toFixed(2)}</strong></div>
-                </div>
-                
-                <div style="margin-top: 10px; border-top: 1px dashed #000; padding-top: 10px;">
-                    <strong>PAGOS:</strong>
-                    ${appState.pagos.map(pago => `
-                        <div class="ticket-item">
-                            <div>${pago.medio}:</div>
-                            <div>$ ${pago.monto.toFixed(2)}</div>
-                        </div>
-                    `).join('')}
-                    
-                    ${cambio > 0 ? `
-                        <div class="ticket-item">
-                            <div>Cambio:</div>
-                            <div>$ ${cambio.toFixed(2)}</div>
-                        </div>
-                    ` : ''}
-                </div>
-            </div>
-            
-            <div class="ticket-footer">
-                <div>${configMap.ticket_pie || '¡Gracias por su compra!'}</div>
-                <div>${configMap.ticket_legal || ''}</div>
-            </div>
-        `;
-        
-        const printWindow = window.open('', '_blank');
-        printWindow.document.write(`
+        const ticketHTML = `
             <!DOCTYPE html>
             <html>
             <head>
                 <title>Ticket ${venta.ticket_id}</title>
+                <meta charset="UTF-8">
                 <style>
-                    body { font-family: 'Courier New', monospace; font-size: 12px; width: 80mm; margin: 0; padding: 10px; }
-                    .ticket-header { text-align: center; margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
-                    .ticket-header h1 { font-size: 18px; font-weight: bold; margin-bottom: 5px; }
-                    .ticket-item { display: flex; justify-content: space-between; margin-bottom: 5px; }
-                    .ticket-totals { border-top: 1px dashed #000; padding-top: 10px; margin-top: 10px; }
-                    .ticket-footer { text-align: center; margin-top: 15px; font-size: 10px; border-top: 1px dashed #000; padding-top: 10px; }
-                    @media print { body { width: 80mm; } }
+                    @media print {
+                        body {
+                            font-family: 'Courier New', Courier, monospace;
+                            font-size: 8px;
+                            width: 58mm;
+                            max-width: 58mm;
+                            margin: 0;
+                            padding: 2px;
+                            line-height: 1.1;
+                        }
+                        
+                        * {
+                            box-sizing: border-box;
+                        }
+                        
+                        .ticket-header {
+                            text-align: center;
+                            margin-bottom: 4px;
+                            padding-bottom: 4px;
+                            border-bottom: 1px dashed #000;
+                        }
+                        
+                        .ticket-header h1 {
+                            font-size: 10px;
+                            font-weight: bold;
+                            margin: 2px 0;
+                            text-transform: uppercase;
+                        }
+                        
+                        .ticket-info {
+                            font-size: 7px;
+                            margin-bottom: 4px;
+                        }
+                        
+                        .ticket-items {
+                            margin: 4px 0;
+                        }
+                        
+                        .ticket-totals {
+                            margin-top: 6px;
+                            padding-top: 4px;
+                            border-top: 1px dashed #000;
+                        }
+                        
+                        .ticket-total-row {
+                            display: flex;
+                            justify-content: space-between;
+                            margin: 1px 0;
+                        }
+                        
+                        .ticket-footer {
+                            text-align: center;
+                            margin-top: 6px;
+                            padding-top: 4px;
+                            border-top: 1px dashed #000;
+                            font-size: 7px;
+                        }
+                        
+                        .bold {
+                            font-weight: bold;
+                        }
+                        
+                        .center {
+                            text-align: center;
+                        }
+                        
+                        .right {
+                            text-align: right;
+                        }
+                        
+                        .left {
+                            text-align: left;
+                        }
+                    }
+                    
+                    @page {
+                        size: 58mm auto;
+                        margin: 0;
+                    }
                 </style>
             </head>
-            <body>
-                ${ticketContent.innerHTML}
+            <body onload="window.print(); setTimeout(() => window.close(), 100);">
+                <div class="ticket-header">
+                    <h1>${configMap.ticket_encabezado || 'AFMSOLUTIONS'}</h1>
+                    <div>${configMap.ticket_encabezado_extra || 'SISTEMA POS'}</div>
+                    <div>${configMap.empresa_direccion || 'LOCAL COMERCIAL'}</div>
+                </div>
+                
+                <div class="ticket-info">
+                    <div>Fecha: ${fechaFormateada}</div>
+                    <div>Ticket: <strong>${venta.ticket_id}</strong></div>
+                    <div>Vendedor: ${appState.usuario?.username || ''}</div>
+                </div>
+                
+                <div class="ticket-items">
+                    ${itemsHTML}
+                </div>
+                
+                <div class="ticket-totals">
+                    <div class="ticket-total-row">
+                        <span>Subtotal:</span>
+                        <span>$${venta.subtotal.toFixed(2)}</span>
+                    </div>
+                    <div class="ticket-total-row">
+                        <span>Descuento:</span>
+                        <span>$${venta.descuento.toFixed(2)}</span>
+                    </div>
+                    <div class="ticket-total-row bold">
+                        <span>TOTAL:</span>
+                        <span>$${venta.total.toFixed(2)}</span>
+                    </div>
+                    
+                    <div style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed #000;">
+                        <div class="bold">PAGOS:</div>
+                        ${appState.pagos.map(pago => `
+                            <div class="ticket-total-row">
+                                <span>${pago.medio}:</span>
+                                <span>$${pago.monto.toFixed(2)}</span>
+                            </div>
+                        `).join('')}
+                        
+                        ${cambio > 0 ? `
+                            <div class="ticket-total-row">
+                                <span>Cambio:</span>
+                                <span>$${cambio.toFixed(2)}</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+                
+                <div class="ticket-footer">
+                    <div>${configMap.ticket_pie || '¡Gracias por su compra!'}</div>
+                    <div>${configMap.ticket_legal || 'Conserve su ticket'}</div>
+                    <div style="margin-top: 4px; font-size: 6px;">
+                        ${configMap.empresa_contacto || ''}
+                    </div>
+                </div>
+                
                 <script>
                     window.onload = function() {
-                        window.print();
-                        setTimeout(function() { window.close(); }, 1000);
+                        setTimeout(function() {
+                            window.print();
+                            setTimeout(function() {
+                                window.close();
+                            }, 100);
+                        }, 100);
                     };
                 </script>
             </body>
             </html>
-        `);
+        `;
+        
+        const printWindow = window.open('', '_blank', 'width=200,height=400');
+        printWindow.document.write(ticketHTML);
         printWindow.document.close();
         
     } catch (error) {
@@ -1454,6 +1570,10 @@ async function verificarCajaActiva() {
         appState.cajaActiva = caja || null;
         actualizarUIEstadoCaja();
         
+        if (caja) {
+            await cargarVentasDelDiaEnCaja();
+        }
+        
         return caja;
     } catch (error) {
         console.error('Error en verificarCajaActiva:', error);
@@ -1465,7 +1585,10 @@ async function verificarCajaActiva() {
 
 async function cargarEstadoCaja() {
     await verificarCajaActiva();
-    await cargarVentasDelDiaEnCaja();
+    
+    if (appState.cajaActiva) {
+        await cargarVentasDelDiaEnCaja();
+    }
 }
 
 function actualizarUIEstadoCaja() {
@@ -1492,12 +1615,12 @@ function actualizarUIEstadoCaja() {
         operaciones.style.display = 'block';
         
         cargarResumenCaja();
+        cargarVentasDelDiaEnCaja();
         
     } else {
         statusElement.innerHTML = `<i class="fas fa-circle"></i> Caja: Cerrada`;
         statusElement.classList.remove('abierta');
         
-        // MODIFICACIÓN 2: Permitir a cajeros abrir cajas
         const puedeAbrirCaja = appState.usuario?.rol === 'Administrador' || 
                                appState.usuario?.rol === 'Cajero' ||
                                appState.permisos.includes('acceder_caja');
@@ -1526,7 +1649,6 @@ function actualizarUIEstadoCaja() {
 }
 
 function mostrarModalAperturaCaja() {
-    // MODIFICACIÓN 2: Permitir a cajeros abrir cajas
     const puedeAbrirCaja = appState.usuario?.rol === 'Administrador' || 
                            appState.usuario?.rol === 'Cajero' ||
                            appState.permisos.includes('acceder_caja');
@@ -1547,7 +1669,6 @@ function mostrarModalAperturaCaja() {
 async function abrirCaja(e) {
     e.preventDefault();
     
-    // MODIFICACIÓN 2: Permitir a cajeros abrir cajas
     const puedeAbrirCaja = appState.usuario?.rol === 'Administrador' || 
                            appState.usuario?.rol === 'Cajero' ||
                            appState.permisos.includes('acceder_caja');
@@ -1683,7 +1804,6 @@ async function cargarResumenCaja() {
 }
 
 async function cerrarCaja() {
-    // MODIFICACIÓN 2: Validar permisos para cerrar caja
     if (appState.usuario?.rol !== 'Administrador') {
         if (appState.cajaActiva.usuario_id !== appState.usuario.id) {
             showNotification('Solo puede cerrar cajas que usted haya abierto', 'error');
@@ -2175,8 +2295,19 @@ async function cargarVentasDelDiaEnCaja() {
     if (!appState.cajaActiva) return;
     
     try {
-        const hoy = new Date();
-        hoy.setHours(0, 0, 0, 0);
+        const fechaCaja = new Date(appState.cajaActiva.fecha_apertura);
+        
+        const inicioDia = new Date(fechaCaja);
+        inicioDia.setHours(0, 0, 0, 0);
+        
+        const finDia = new Date(fechaCaja);
+        finDia.setHours(23, 59, 59, 999);
+        
+        console.log('Consultando ventas para caja:', {
+            cajaId: appState.cajaActiva.id,
+            fechaInicio: inicioDia.toISOString(),
+            fechaFin: finDia.toISOString()
+        });
         
         const { data: ventas, error } = await supabaseClient
             .from('ventas')
@@ -2184,25 +2315,44 @@ async function cargarVentasDelDiaEnCaja() {
                 id,
                 total,
                 fecha,
+                ticket_id,
                 pagos_venta (medio_pago, monto)
             `)
             .eq('caja_id', appState.cajaActiva.id)
-            .gte('fecha', hoy.toISOString())
-            .eq('anulada', false);
+            .gte('fecha', inicioDia.toISOString())
+            .lte('fecha', finDia.toISOString())
+            .eq('anulada', false)
+            .order('fecha', { ascending: false });
         
-        if (error) throw error;
+        if (error) {
+            console.error('Error en consulta de ventas del día:', error);
+            throw error;
+        }
+        
+        console.log('Ventas obtenidas para el día:', ventas?.length || 0, 'ventas');
         
         const contenedor = document.getElementById('caja-ventas-dia');
-        if (!contenedor) return;
+        if (!contenedor) {
+            console.error('Contenedor caja-ventas-dia no encontrado');
+            return;
+        }
         
         let totalVentas = 0;
-        let cantidadVentas = ventas.length;
+        let cantidadVentas = ventas?.length || 0;
         
-        ventas.forEach(venta => {
-            totalVentas += parseFloat(venta.total) || 0;
-        });
+        if (ventas && ventas.length > 0) {
+            ventas.forEach(venta => {
+                totalVentas += parseFloat(venta.total) || 0;
+            });
+        }
         
         const ticketPromedio = cantidadVentas > 0 ? totalVentas / cantidadVentas : 0;
+        
+        console.log('Resumen del día:', {
+            cantidadVentas,
+            totalVentas,
+            ticketPromedio
+        });
         
         contenedor.innerHTML = `
             <div class="stats-item">
@@ -2236,6 +2386,38 @@ async function cargarVentasDelDiaEnCaja() {
         
     } catch (error) {
         console.error('Error cargando ventas del día:', error);
+        const contenedor = document.getElementById('caja-ventas-dia');
+        if (contenedor) {
+            contenedor.innerHTML = `
+                <div class="stats-item">
+                    <div class="stats-icon bg-primary">
+                        <i class="fas fa-shopping-cart"></i>
+                    </div>
+                    <div class="stats-info">
+                        <h4>0</h4>
+                        <span>Ventas Realizadas</span>
+                    </div>
+                </div>
+                <div class="stats-item">
+                    <div class="stats-icon bg-success">
+                        <i class="fas fa-money-bill-wave"></i>
+                    </div>
+                    <div class="stats-info">
+                        <h4>$ 0.00</h4>
+                        <span>Total del Día</span>
+                    </div>
+                </div>
+                <div class="stats-item">
+                    <div class="stats-icon bg-info">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div class="stats-info">
+                        <h4>$ 0.00</h4>
+                        <span>Ticket Promedio</span>
+                    </div>
+                </div>
+            `;
+        }
     }
 }
 

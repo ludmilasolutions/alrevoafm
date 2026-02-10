@@ -12,7 +12,6 @@ let appState = {
     carrito: [],
     pagos: [],
     descuento: { tipo: 'porcentaje', valor: 0 },
-    productoActual: null,
     cajaActiva: null,
     modoOscuro: window.matchMedia('(prefers-color-scheme: dark)').matches
 };
@@ -34,6 +33,7 @@ async function initApp() {
         
         console.log('Sistema POS inicializado correctamente');
         
+        // Verificar elementos críticos después de un delay
         setTimeout(() => {
             verifyCriticalElements();
         }, 1000);
@@ -47,8 +47,6 @@ function verifyCriticalElements() {
     const criticalElements = [
         'scanner-input',
         'carrito-items',
-        'producto-info',
-        'form-producto',
         'btn-finalizar-venta'
     ];
     
@@ -169,7 +167,6 @@ document.getElementById('login-form').addEventListener('submit', async function(
                 carrito: [],
                 pagos: [],
                 descuento: { tipo: 'porcentaje', valor: 0 },
-                productoActual: null,
                 cajaActiva: null
             };
             
@@ -198,13 +195,12 @@ document.getElementById('logout-btn').addEventListener('click', async function()
             carrito: [],
             pagos: [],
             descuento: { tipo: 'porcentaje', valor: 0 },
-            productoActual: null,
             cajaActiva: null
         };
         
         document.getElementById('carrito-items').innerHTML = `
             <div class="empty-carrito">
-                <i class="fas fa-shopping-cart fa-2x"></i>
+                <i class="fas fa-shopping-cart fa-3x"></i>
                 <p>El carrito está vacío</p>
                 <p>Escanee un producto o use F6 para buscar</p>
             </div>
@@ -271,6 +267,7 @@ function updateNavigationPermissions() {
 
 // ==================== NAVEGACIÓN RESPONSIVA ====================
 function setupEventListeners() {
+    // Navegación principal
     document.querySelectorAll('.nav-link').forEach(link => {
         link.addEventListener('click', function(e) {
             e.preventDefault();
@@ -283,6 +280,7 @@ function setupEventListeners() {
         });
     });
     
+    // Menú hamburguesa
     const menuToggle = document.getElementById('menu-toggle');
     if (menuToggle) {
         menuToggle.addEventListener('click', function() {
@@ -291,6 +289,7 @@ function setupEventListeners() {
         });
     }
     
+    // Cerrar menú al hacer clic fuera en móviles
     document.addEventListener('click', function(e) {
         const nav = document.getElementById('main-nav');
         const toggle = document.getElementById('menu-toggle');
@@ -303,7 +302,7 @@ function setupEventListeners() {
         }
     });
     
-    // Escáner automático - agregar producto automáticamente al escanear
+    // Scanner automático - agregar producto automáticamente al escanear
     const scannerInput = document.getElementById('scanner-input');
     if (scannerInput) {
         scannerInput.addEventListener('keypress', async function(e) {
@@ -329,44 +328,29 @@ function setupEventListeners() {
         });
     }
     
+    // Botón buscar manual (F6)
     const btnBuscarManual = document.getElementById('btn-buscar-manual');
     if (btnBuscarManual) {
         btnBuscarManual.addEventListener('click', showBuscadorManual);
     }
     
-    const btnAgregarCarrito = document.getElementById('btn-agregar-carrito');
-    if (btnAgregarCarrito) {
-        btnAgregarCarrito.addEventListener('click', agregarAlCarrito);
-    }
-    
+    // Botón limpiar carrito
     const btnLimpiarCarrito = document.getElementById('btn-limpiar-carrito');
     if (btnLimpiarCarrito) {
         btnLimpiarCarrito.addEventListener('click', limpiarCarrito);
     }
     
-    const btnCantidadMenos = document.getElementById('btn-cantidad-menos');
-    if (btnCantidadMenos) {
-        btnCantidadMenos.addEventListener('click', () => cambiarCantidad(-1));
-    }
-    
-    const btnCantidadMas = document.getElementById('btn-cantidad-mas');
-    if (btnCantidadMas) {
-        btnCantidadMas.addEventListener('click', () => cambiarCantidad(1));
-    }
-    
-    const cantidadProducto = document.getElementById('cantidad-producto');
-    if (cantidadProducto) {
-        cantidadProducto.addEventListener('change', actualizarCantidad);
-    }
-    
+    // Botón aplicar descuento
     const btnAplicarDescuento = document.getElementById('btn-aplicar-descuento');
     if (btnAplicarDescuento) {
         btnAplicarDescuento.addEventListener('click', aplicarDescuento);
     }
     
+    // Seleccionar medio de pago
     document.querySelectorAll('.btn-pago').forEach(btn => {
         btn.addEventListener('click', function() {
             seleccionarMedioPago(this.dataset.medio);
+            // Sugerir monto a pagar
             setTimeout(() => {
                 const totalAPagarEl = document.getElementById('carrito-total');
                 const pagoMonto = document.getElementById('pago-monto');
@@ -384,27 +368,32 @@ function setupEventListeners() {
         });
     });
     
+    // Botón agregar pago
     const btnAgregarPago = document.getElementById('btn-agregar-pago');
     if (btnAgregarPago) {
         btnAgregarPago.addEventListener('click', agregarPago);
     }
     
+    // Enter en input de monto de pago
     document.getElementById('pago-monto')?.addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
             agregarPago();
         }
     });
     
+    // Botón finalizar venta
     const btnFinalizarVenta = document.getElementById('btn-finalizar-venta');
     if (btnFinalizarVenta) {
         btnFinalizarVenta.addEventListener('click', finalizarVenta);
     }
     
+    // Botón cancelar venta
     const btnCancelarVenta = document.getElementById('btn-cancelar-venta');
     if (btnCancelarVenta) {
         btnCancelarVenta.addEventListener('click', cancelarVenta);
     }
     
+    // Botones de gestión de productos
     const btnNuevoProducto = document.getElementById('btn-nuevo-producto');
     if (btnNuevoProducto) {
         btnNuevoProducto.addEventListener('click', () => mostrarModalProducto());
@@ -427,6 +416,7 @@ function setupEventListeners() {
         });
     }
     
+    // Botones de historial
     const btnVentasHoy = document.getElementById('btn-ventas-hoy');
     if (btnVentasHoy) {
         btnVentasHoy.addEventListener('click', cargarVentasHoy);
@@ -437,6 +427,7 @@ function setupEventListeners() {
         btnFiltrarHistorial.addEventListener('click', cargarHistorial);
     }
     
+    // Botones de caja
     const btnCerrarCaja = document.getElementById('btn-cerrar-caja');
     if (btnCerrarCaja) {
         btnCerrarCaja.addEventListener('click', cerrarCaja);
@@ -446,11 +437,23 @@ function setupEventListeners() {
     document.getElementById('btn-cargar-detalles')?.addEventListener('click', cargarDetallesCajaDia);
     document.getElementById('btn-imprimir-resumen')?.addEventListener('click', imprimirResumenCaja);
     
+    // Botones de reportes
     const btnGenerarReporte = document.getElementById('btn-generar-reporte');
     if (btnGenerarReporte) {
         btnGenerarReporte.addEventListener('click', generarReporte);
     }
     
+    const btnRefrescarReportes = document.getElementById('btn-refrescar-reportes');
+    if (btnRefrescarReportes) {
+        btnRefrescarReportes.addEventListener('click', generarReporte);
+    }
+    
+    const btnImprimirReporte = document.getElementById('btn-imprimir-reporte');
+    if (btnImprimirReporte) {
+        btnImprimirReporte.addEventListener('click', imprimirReporte);
+    }
+    
+    // Pestañas de configuración
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             const tabId = this.dataset.tab;
@@ -458,6 +461,7 @@ function setupEventListeners() {
         });
     });
     
+    // Cerrar modales
     document.querySelectorAll('.modal-close').forEach(btn => {
         btn.addEventListener('click', function() {
             const modal = this.closest('.modal');
@@ -465,6 +469,7 @@ function setupEventListeners() {
         });
     });
     
+    // Cerrar modales al hacer clic fuera
     document.querySelectorAll('.modal').forEach(modal => {
         modal.addEventListener('click', function(e) {
             if (e.target === this) {
@@ -473,16 +478,19 @@ function setupEventListeners() {
         });
     });
     
+    // Buscador de productos (modal)
     const btnBuscarProductos = document.getElementById('btn-buscar-productos');
     if (btnBuscarProductos) {
         btnBuscarProductos.addEventListener('click', buscarProductosManual);
     }
     
+    // Formulario de producto
     const formProducto = document.getElementById('form-producto');
     if (formProducto) {
         formProducto.addEventListener('submit', guardarProducto);
     }
     
+    // Cálculos automáticos en formulario de producto
     const precioCostoInput = document.getElementById('producto-precio-costo');
     if (precioCostoInput) {
         precioCostoInput.addEventListener('input', calcularPrecioVenta);
@@ -498,46 +506,43 @@ function setupEventListeners() {
         precioVentaInput.addEventListener('input', calcularMargen);
     }
     
+    // Apertura de caja
     const formAperturaCaja = document.getElementById('form-apertura-caja');
     if (formAperturaCaja) {
         formAperturaCaja.addEventListener('submit', abrirCaja);
     }
-    
-    const btnRefrescarReportes = document.getElementById('btn-refrescar-reportes');
-    if (btnRefrescarReportes) {
-        btnRefrescarReportes.addEventListener('click', generarReporte);
-    }
-    
-    const btnImprimirReporte = document.getElementById('btn-imprimir-reporte');
-    if (btnImprimirReporte) {
-        btnImprimirReporte.addEventListener('click', imprimirReporte);
-    }
 }
 
 function showSection(sectionId) {
+    // Ocultar todas las secciones
     document.querySelectorAll('.content-section').forEach(section => {
         section.classList.remove('active');
     });
     
+    // Desactivar todos los enlaces del menú
     document.querySelectorAll('.nav-link').forEach(link => {
         link.classList.remove('active');
     });
     
+    // Mostrar sección seleccionada
     const section = document.getElementById(`seccion-${sectionId}`);
     if (section) {
         section.classList.add('active');
     }
     
+    // Activar enlace del menú seleccionado
     const link = document.querySelector(`.nav-link[data-section="${sectionId}"]`);
     if (link) {
         link.classList.add('active');
     }
     
+    // Actualizar título en header
     const currentSection = document.getElementById('current-section');
     if (currentSection) {
         currentSection.textContent = sectionId.toUpperCase();
     }
     
+    // Acciones específicas por sección
     if (sectionId === 'venta') {
         setTimeout(() => {
             const scanner = document.getElementById('scanner-input');
@@ -572,6 +577,7 @@ function showSection(sectionId) {
 // ==================== ATAJOS DE TECLADO ====================
 function setupKeyboardShortcuts() {
     document.addEventListener('keydown', function(e) {
+        // No procesar atajos si el usuario está escribiendo en un input
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || window.innerWidth < 768) {
             return;
         }
@@ -685,163 +691,42 @@ async function buscarYAgregarProducto(codigo) {
                 scannerInput.value = '';
                 scannerInput.focus();
             }
-        }
-    } catch (error) {
-        console.error('Error buscando producto:', error);
-        showNotification('Error buscando producto', 'error');
-    }
-}
-
-async function buscarProductoPorCodigo(codigo) {
-    if (!codigo || codigo.trim() === '') return;
-    
-    try {
-        const { data: producto, error } = await supabaseClient
-            .from('productos')
-            .select('*')
-            .eq('codigo_barra', codigo.trim())
-            .eq('activo', true)
-            .single();
-        
-        if (error) {
-            if (error.code === 'PGRST116') {
-                showNotification('Producto no encontrado', 'warning');
-            } else {
-                throw error;
+            
+            // Reproducir sonido de scanner si está disponible
+            if (typeof playScanSound === 'function') {
+                playScanSound();
             }
-            return;
-        }
-        
-        if (producto) {
-            mostrarProductoEncontrado(producto);
         }
     } catch (error) {
         console.error('Error buscando producto:', error);
         showNotification('Error buscando producto', 'error');
     }
-}
-
-function mostrarProductoEncontrado(producto) {
-    appState.productoActual = producto;
-    
-    const productoInfo = document.getElementById('producto-info');
-    const productoNombre = document.getElementById('producto-nombre');
-    const productoPrecio = document.getElementById('producto-precio');
-    const productoStock = document.getElementById('producto-stock');
-    const cantidadProducto = document.getElementById('cantidad-producto');
-    
-    if (!productoInfo || !productoNombre || !productoPrecio || !productoStock || !cantidadProducto) {
-        console.error('Elementos de producto no encontrados');
-        return;
-    }
-    
-    productoNombre.textContent = producto.nombre;
-    productoPrecio.textContent = `$ ${parseFloat(producto.precio_venta).toFixed(2)}`;
-    productoStock.textContent = producto.stock;
-    cantidadProducto.value = 1;
-    cantidadProducto.max = producto.stock;
-    
-    productoInfo.style.display = 'block';
-    
-    productoInfo.style.animation = 'none';
-    setTimeout(() => {
-        productoInfo.style.animation = 'fadeIn 0.5s ease';
-    }, 10);
-}
-
-function cambiarCantidad(delta) {
-    const input = document.getElementById('cantidad-producto');
-    if (!input) return;
-    
-    let nuevaCantidad = parseInt(input.value) + delta;
-    
-    if (isNaN(nuevaCantidad)) nuevaCantidad = 1;
-    if (nuevaCantidad < 1) nuevaCantidad = 1;
-    if (nuevaCantidad > parseInt(input.max)) nuevaCantidad = parseInt(input.max);
-    
-    input.value = nuevaCantidad;
-}
-
-function actualizarCantidad() {
-    const input = document.getElementById('cantidad-producto');
-    if (!input) return;
-    
-    let cantidad = parseInt(input.value);
-    
-    if (isNaN(cantidad) || cantidad < 1) cantidad = 1;
-    if (cantidad > parseInt(input.max)) cantidad = parseInt(input.max);
-    
-    input.value = cantidad;
-}
-
-function agregarAlCarrito() {
-    if (!appState.productoActual) {
-        showNotification('No hay producto seleccionado', 'warning');
-        return;
-    }
-    
-    const cantidadInput = document.getElementById('cantidad-producto');
-    if (!cantidadInput) return;
-    
-    const cantidad = parseInt(cantidadInput.value);
-    
-    if (cantidad > appState.productoActual.stock) {
-        showNotification('Stock insuficiente', 'error');
-        return;
-    }
-    
-    const index = appState.carrito.findIndex(item => 
-        item.producto.id === appState.productoActual.id);
-    
-    if (index !== -1) {
-        appState.carrito[index].cantidad += cantidad;
-    } else {
-        appState.carrito.push({
-            producto: appState.productoActual,
-            cantidad: cantidad,
-            precioUnitario: appState.productoActual.precio_venta
-        });
-    }
-    
-    actualizarCarritoUI();
-    
-    appState.productoActual = null;
-    const productoInfo = document.getElementById('producto-info');
-    if (productoInfo) productoInfo.style.display = 'none';
-    
-    const scannerInput = document.getElementById('scanner-input');
-    if (scannerInput) {
-        scannerInput.value = '';
-        scannerInput.focus();
-    }
-    
-    showNotification('Producto agregado al carrito', 'success');
 }
 
 function actualizarCarritoUI() {
     const container = document.getElementById('carrito-items');
     const subtotalEl = document.getElementById('carrito-subtotal');
+    const descuentoEl = document.getElementById('carrito-descuento');
     const totalEl = document.getElementById('carrito-total');
+    const totalAPagarEl = document.getElementById('total-a-pagar');
     const btnFinalizar = document.getElementById('btn-finalizar-venta');
     
-    if (!container || !subtotalEl || !totalEl || !btnFinalizar) return;
+    if (!container || !subtotalEl || !descuentoEl || !totalEl || !totalAPagarEl || !btnFinalizar) return;
     
+    // Si el carrito está vacío
     if (appState.carrito.length === 0) {
         container.innerHTML = `
             <div class="empty-carrito">
-                <i class="fas fa-shopping-cart fa-2x"></i>
+                <i class="fas fa-shopping-cart fa-3x"></i>
                 <p>El carrito está vacío</p>
                 <p>Escanee un producto o use F6 para buscar</p>
             </div>
         `;
         
         subtotalEl.textContent = '$ 0.00';
-        const descuentoEl = document.getElementById('carrito-descuento');
-        if (descuentoEl) descuentoEl.textContent = '$ 0.00';
+        descuentoEl.textContent = '$ 0.00';
         totalEl.textContent = '$ 0.00';
-        
-        const totalAPagarEl = document.getElementById('total-a-pagar');
-        if (totalAPagarEl) totalAPagarEl.textContent = '$ 0.00';
+        totalAPagarEl.textContent = '$ 0.00';
         
         actualizarPagosUI();
         
@@ -849,9 +734,13 @@ function actualizarCarritoUI() {
         return;
     }
     
+    // Calcular subtotal
     let subtotal = 0;
     
+    // Limpiar contenedor
     container.innerHTML = '';
+    
+    // Agregar cada item del carrito
     appState.carrito.forEach((item, index) => {
         const itemTotal = item.cantidad * item.precioUnitario;
         subtotal += itemTotal;
@@ -882,6 +771,7 @@ function actualizarCarritoUI() {
         container.appendChild(div);
     });
     
+    // Calcular descuento
     let descuento = 0;
     if (appState.descuento.valor > 0) {
         if (appState.descuento.tipo === 'porcentaje') {
@@ -890,46 +780,59 @@ function actualizarCarritoUI() {
             descuento = appState.descuento.valor;
         }
         
+        // Asegurar que el descuento no sea mayor que el subtotal
         if (descuento > subtotal) descuento = subtotal;
     }
     
+    // Calcular total
     const total = subtotal - descuento;
     
+    // Actualizar UI
     subtotalEl.textContent = `$ ${subtotal.toFixed(2)}`;
-    const descuentoEl = document.getElementById('carrito-descuento');
-    if (descuentoEl) descuentoEl.textContent = `$ ${descuento.toFixed(2)}`;
+    descuentoEl.textContent = `$ ${descuento.toFixed(2)}`;
     totalEl.textContent = `$ ${total.toFixed(2)}`;
+    totalAPagarEl.textContent = `$ ${total.toFixed(2)}`;
     
-    const totalAPagarEl = document.getElementById('total-a-pagar');
-    if (totalAPagarEl) totalAPagarEl.textContent = `$ ${total.toFixed(2)}`;
-    
+    // Actualizar pagos
     actualizarPagosUI();
     
-    btnFinalizar.disabled = appState.carrito.length === 0 || appState.pagos.length === 0;
+    // Habilitar/deshabilitar botón finalizar
+    const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
+    btnFinalizar.disabled = appState.carrito.length === 0 || totalPagado < total;
 }
 
+// Función global para actualizar cantidad en el carrito
 window.actualizarCantidadCarrito = function(index, delta) {
     const item = appState.carrito[index];
     const nuevaCantidad = item.cantidad + delta;
     
+    // Validar cantidad mínima
     if (nuevaCantidad < 1) {
         eliminarDelCarrito(index);
         return;
     }
     
+    // Validar stock disponible
     if (nuevaCantidad > item.producto.stock) {
-        showNotification('Stock insuficiente', 'error');
+        showNotification(`Stock insuficiente. Disponible: ${item.producto.stock}`, 'error');
         return;
     }
     
+    // Actualizar cantidad
     item.cantidad = nuevaCantidad;
     actualizarCarritoUI();
+    
+    // Mostrar notificación
+    showNotification(`${item.producto.nombre} - Cantidad: ${nuevaCantidad}`, 'info');
 };
 
+// Función global para eliminar item del carrito
 window.eliminarDelCarrito = function(index) {
     if (index >= 0 && index < appState.carrito.length) {
+        const productoNombre = appState.carrito[index].producto.nombre;
         appState.carrito.splice(index, 1);
         
+        // Si el carrito queda vacío, resetear descuento
         if (appState.carrito.length === 0) {
             appState.descuento = { tipo: 'porcentaje', valor: 0 };
             const descuentoInput = document.getElementById('descuento-input');
@@ -939,7 +842,7 @@ window.eliminarDelCarrito = function(index) {
         }
         
         actualizarCarritoUI();
-        showNotification('Producto eliminado del carrito', 'info');
+        showNotification(`${productoNombre} eliminado del carrito`, 'info');
     }
 };
 
@@ -984,6 +887,11 @@ function aplicarDescuento() {
         return;
     }
     
+    if (appState.carrito.length === 0) {
+        showNotification('El carrito está vacío', 'warning');
+        return;
+    }
+    
     appState.descuento = { tipo, valor };
     actualizarCarritoUI();
     showNotification('Descuento aplicado correctamente', 'success');
@@ -991,13 +899,18 @@ function aplicarDescuento() {
 
 // ==================== MEDIOS DE PAGO ====================
 function seleccionarMedioPago(medio) {
+    // Quitar clase active de todos los botones
     document.querySelectorAll('.btn-pago').forEach(btn => {
         btn.classList.remove('active');
-        if (btn.dataset.medio === medio) {
-            btn.classList.add('active');
-        }
     });
     
+    // Agregar clase active al botón seleccionado
+    const botonSeleccionado = document.querySelector(`.btn-pago[data-medio="${medio}"]`);
+    if (botonSeleccionado) {
+        botonSeleccionado.classList.add('active');
+    }
+    
+    // Actualizar placeholder del input de monto
     const pagoMonto = document.getElementById('pago-monto');
     if (pagoMonto) {
         pagoMonto.placeholder = `Monto en ${medio}`;
@@ -1014,6 +927,7 @@ function getMedioPagoIcon(medio) {
     }
 }
 
+// Función global para eliminar todos los pagos de un medio específico
 window.eliminarPagosPorMedio = function(medio) {
     if (!confirm(`¿Eliminar todos los pagos de ${medio}?`)) {
         return;
@@ -1025,6 +939,7 @@ window.eliminarPagosPorMedio = function(medio) {
 };
 
 function agregarPago() {
+    // Verificar que haya un medio de pago seleccionado
     const medioElement = document.querySelector('.btn-pago.active');
     if (!medioElement) {
         showNotification('Seleccione un medio de pago primero', 'warning');
@@ -1037,6 +952,7 @@ function agregarPago() {
     
     let monto = parseFloat(pagoMonto.value);
     
+    // Si no se ingresó monto, usar el faltante
     if (!monto || monto <= 0) {
         const totalAPagarEl = document.getElementById('carrito-total');
         if (!totalAPagarEl) return;
@@ -1058,10 +974,13 @@ function agregarPago() {
         return;
     }
     
+    // Agregar pago al estado
     appState.pagos.push({ medio, monto });
     
+    // Actualizar UI
     actualizarPagosUI();
     
+    // Limpiar input y mantener foco
     pagoMonto.value = '';
     pagoMonto.focus();
     
@@ -1076,6 +995,7 @@ function actualizarPagosUI() {
     
     if (!container || !totalPagadoEl || !cambioEl || !btnFinalizar) return;
     
+    // Si no hay pagos
     if (appState.pagos.length === 0) {
         container.innerHTML = `
             <div class="empty-pagos">
@@ -1090,6 +1010,7 @@ function actualizarPagosUI() {
         return;
     }
     
+    // Agrupar pagos por medio
     const pagosAgrupados = {};
     let totalPagado = 0;
     
@@ -1101,13 +1022,17 @@ function actualizarPagosUI() {
         totalPagado += pago.monto;
     });
     
+    // Calcular total a pagar y cambio
     const totalAPagarEl = document.getElementById('carrito-total');
     if (!totalAPagarEl) return;
     
     const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('$ ', ''));
     const cambio = totalPagado - totalAPagar;
     
+    // Limpiar contenedor
     container.innerHTML = '';
+    
+    // Agregar cada pago agrupado
     Object.entries(pagosAgrupados).forEach(([medio, monto], index) => {
         const div = document.createElement('div');
         div.className = 'pago-item';
@@ -1127,6 +1052,7 @@ function actualizarPagosUI() {
         container.appendChild(div);
     });
     
+    // Actualizar totales
     totalPagadoEl.textContent = `$ ${totalPagado.toFixed(2)}`;
     
     if (cambio >= 0) {
@@ -1137,9 +1063,11 @@ function actualizarPagosUI() {
         cambioEl.className = 'cambio-negativo';
     }
     
+    // Habilitar/deshabilitar botón finalizar
     const puedeFinalizar = appState.carrito.length > 0 && totalPagado >= totalAPagar;
     btnFinalizar.disabled = !puedeFinalizar;
     
+    // Actualizar placeholder del input de monto
     const pagoMontoInput = document.getElementById('pago-monto');
     if (pagoMontoInput) {
         if (cambio < 0) {
@@ -1152,25 +1080,22 @@ function actualizarPagosUI() {
         }
     }
     
+    // Enfocar botón finalizar si se puede finalizar
     if (puedeFinalizar) {
         setTimeout(() => btnFinalizar.focus(), 100);
     }
 }
 
-window.eliminarPago = function(index) {
-    appState.pagos.splice(index, 1);
-    actualizarPagosUI();
-    showNotification('Pago eliminado', 'info');
-};
-
 // ==================== FINALIZACIÓN DE VENTA ====================
 async function finalizarVenta() {
+    // Verificar que haya caja activa
     if (!appState.cajaActiva) {
         showNotification('No hay caja activa. Abra una caja primero.', 'error');
         showSection('caja');
         return;
     }
     
+    // Verificar que el carrito no esté vacío
     if (appState.carrito.length === 0) {
         showNotification('El carrito está vacío', 'warning');
         return;
@@ -1182,6 +1107,7 @@ async function finalizarVenta() {
     const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('$ ', ''));
     const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
     
+    // Verificar que el pago cubra el total
     if (totalPagado < totalAPagar) {
         showNotification('El pago no cubre el total de la venta', 'error');
         return;
@@ -1190,10 +1116,12 @@ async function finalizarVenta() {
     const btnFinalizar = document.getElementById('btn-finalizar-venta');
     if (!btnFinalizar) return;
     
+    // Mostrar estado de carga
     btnFinalizar.disabled = true;
     btnFinalizar.classList.add('loading');
     
     try {
+        // Verificar stock de todos los productos
         for (const item of appState.carrito) {
             const { data: producto, error } = await supabaseClient
                 .from('productos')
@@ -1208,6 +1136,7 @@ async function finalizarVenta() {
             }
         }
         
+        // Calcular totales
         const subtotal = appState.carrito.reduce((sum, item) => 
             sum + (item.cantidad * item.precioUnitario), 0);
         
@@ -1218,6 +1147,7 @@ async function finalizarVenta() {
         
         const total = subtotal - descuento;
         
+        // Generar número de ticket
         const hoy = new Date();
         const fechaStr = hoy.toISOString().split('T')[0].replace(/-/g, '');
         
@@ -1246,6 +1176,7 @@ async function finalizarVenta() {
         
         const ticketId = `T-${fechaStr}-${numero.toString().padStart(4, '0')}`;
         
+        // Crear registro de venta
         const ventaData = {
             ticket_id: ticketId,
             caja_id: appState.cajaActiva.id,
@@ -1263,6 +1194,7 @@ async function finalizarVenta() {
         
         if (ventaError) throw ventaError;
         
+        // Crear detalles de venta y actualizar stock
         for (const item of appState.carrito) {
             const detalleData = {
                 venta_id: venta.id,
@@ -1278,6 +1210,7 @@ async function finalizarVenta() {
             
             if (detalleError) throw detalleError;
             
+            // Actualizar stock del producto
             const { error: stockError } = await supabaseClient
                 .from('productos')
                 .update({ stock: item.producto.stock - item.cantidad })
@@ -1286,6 +1219,7 @@ async function finalizarVenta() {
             if (stockError) throw stockError;
         }
         
+        // Registrar pagos
         for (const pago of appState.pagos) {
             const pagoData = {
                 venta_id: venta.id,
@@ -1300,8 +1234,10 @@ async function finalizarVenta() {
             if (pagoError) throw pagoError;
         }
         
+        // Generar e imprimir ticket
         await generarTicket(venta);
         
+        // Limpiar estado
         appState.carrito = [];
         appState.pagos = [];
         appState.descuento = { tipo: 'porcentaje', valor: 0 };
@@ -1312,13 +1248,17 @@ async function finalizarVenta() {
         if (descuentoInput) descuentoInput.value = '';
         if (descuentoTipo) descuentoTipo.value = 'porcentaje';
         
+        // Actualizar UI
         actualizarCarritoUI();
         actualizarPagosUI();
         
+        // Actualizar estado de caja
         await verificarCajaActiva();
         
+        // Mostrar notificación de éxito
         showNotification(`Venta finalizada: ${ticketId}`, 'success');
         
+        // Volver a enfocar el scanner
         const scannerInput = document.getElementById('scanner-input');
         if (scannerInput) scannerInput.focus();
         
@@ -1331,26 +1271,31 @@ async function finalizarVenta() {
             btnFinalizar.classList.remove('loading');
         }
         
+        // Actualizar ventas del día en caja
         await cargarVentasDelDiaEnCaja();
     }
 }
 
 async function generarTicket(venta) {
     try {
+        // Obtener configuración del ticket
         const { data: config, error } = await supabaseClient
             .from('configuracion')
             .select('*');
         
         if (error) throw error;
         
+        // Convertir configuración a objeto
         const configMap = {};
         config.forEach(item => {
             configMap[item.clave] = item.valor;
         });
         
+        // Formatear fecha
         const fecha = new Date(venta.fecha);
         const fechaFormateada = `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2, '0')}:${fecha.getMinutes().toString().padStart(2, '0')}:${fecha.getSeconds().toString().padStart(2, '0')}`;
         
+        // Generar HTML del ticket
         let itemsHTML = '';
         let itemsTotal = 0;
         appState.carrito.forEach(item => {
@@ -1534,6 +1479,7 @@ async function generarTicket(venta) {
             </html>
         `;
         
+        // Abrir ventana de impresión
         const printWindow = window.open('', '_blank', 'width=200,height=400');
         printWindow.document.write(ticketHTML);
         printWindow.document.close();
@@ -1599,6 +1545,7 @@ function actualizarUIEstadoCaja() {
     if (!statusElement || !statusDetalle || !operaciones) return;
     
     if (appState.cajaActiva) {
+        // Caja abierta
         statusElement.innerHTML = `<i class="fas fa-circle"></i> Caja: Abierta`;
         statusElement.classList.add('abierta');
         
@@ -1618,6 +1565,7 @@ function actualizarUIEstadoCaja() {
         cargarVentasDelDiaEnCaja();
         
     } else {
+        // Caja cerrada
         statusElement.innerHTML = `<i class="fas fa-circle"></i> Caja: Cerrada`;
         statusElement.classList.remove('abierta');
         
@@ -1890,8 +1838,6 @@ async function cerrarCaja() {
 // ==================== HISTORIAL DE CAJAS ====================
 async function cargarHistorialCajas() {
     try {
-        console.log('Cargando historial de cajas...');
-        
         const fechaInicio = document.getElementById('caja-fecha-inicio');
         const fechaFin = document.getElementById('caja-fecha-fin');
         
@@ -1906,8 +1852,6 @@ async function cargarHistorialCajas() {
         const fechaInicioVal = fechaInicio?.value || hace30DiasStr;
         const fechaFinVal = fechaFin?.value || hoy;
         
-        console.log('Consultando desde:', fechaInicioVal, 'hasta:', fechaFinVal);
-        
         const { data: cajas, error } = await supabaseClient
             .from('caja')
             .select('*')
@@ -1919,8 +1863,6 @@ async function cargarHistorialCajas() {
             console.error('Error en consulta de cajas:', error);
             throw error;
         }
-        
-        console.log('Cajas obtenidas:', cajas);
         
         const contenedor = document.getElementById('historial-cajas');
         if (!contenedor) {
@@ -2053,8 +1995,6 @@ async function cargarDetallesCajaDia() {
             if (fechaInput) fechaInput.value = fecha;
         }
         
-        console.log('Cargando detalles para fecha:', fecha);
-        
         const fechaInicio = fecha + 'T00:00:00';
         const fechaFin = fecha + 'T23:59:59';
         
@@ -2080,8 +2020,6 @@ async function cargarDetallesCajaDia() {
             console.error('Error obteniendo ventas:', ventasError);
             throw ventasError;
         }
-        
-        console.log(`Cajas: ${cajas?.length || 0}, Ventas: ${ventas?.length || 0}`);
         
         const contenedor = document.getElementById('detalles-caja-dia');
         if (!contenedor) {
@@ -2303,12 +2241,6 @@ async function cargarVentasDelDiaEnCaja() {
         const finDia = new Date(fechaCaja);
         finDia.setHours(23, 59, 59, 999);
         
-        console.log('Consultando ventas para caja:', {
-            cajaId: appState.cajaActiva.id,
-            fechaInicio: inicioDia.toISOString(),
-            fechaFin: finDia.toISOString()
-        });
-        
         const { data: ventas, error } = await supabaseClient
             .from('ventas')
             .select(`
@@ -2329,8 +2261,6 @@ async function cargarVentasDelDiaEnCaja() {
             throw error;
         }
         
-        console.log('Ventas obtenidas para el día:', ventas?.length || 0, 'ventas');
-        
         const contenedor = document.getElementById('caja-ventas-dia');
         if (!contenedor) {
             console.error('Contenedor caja-ventas-dia no encontrado');
@@ -2347,12 +2277,6 @@ async function cargarVentasDelDiaEnCaja() {
         }
         
         const ticketPromedio = cantidadVentas > 0 ? totalVentas / cantidadVentas : 0;
-        
-        console.log('Resumen del día:', {
-            cantidadVentas,
-            totalVentas,
-            ticketPromedio
-        });
         
         contenedor.innerHTML = `
             <div class="stats-item">
@@ -2770,8 +2694,6 @@ async function cargarHistorial() {
         if (!fechaInicio.value) fechaInicio.value = hoy;
         if (!fechaFin.value) fechaFin.value = hoy;
         
-        console.log('Consultando ventas desde:', fechaInicio.value, 'hasta:', fechaFin.value);
-        
         const { data: ventas, error: ventasError } = await supabaseClient
             .from('ventas')
             .select('*')
@@ -2783,8 +2705,6 @@ async function cargarHistorial() {
             console.error('Error en consulta de ventas:', ventasError);
             throw ventasError;
         }
-        
-        console.log('Ventas obtenidas:', ventas?.length || 0);
         
         const tbody = document.getElementById('historial-body');
         if (!tbody) {
@@ -2889,8 +2809,6 @@ async function cargarHistorial() {
 
 window.verDetalleVenta = async function(id) {
     try {
-        console.log('Obteniendo detalle de venta:', id);
-        
         const { data: venta, error: ventaError } = await supabaseClient
             .from('ventas')
             .select('*')
@@ -3220,11 +3138,6 @@ function calcularMargen() {
 async function guardarProducto(e) {
     e.preventDefault();
     
-    console.log('Formulario enviado - Depuración:', {
-        form: e.target,
-        hasProductId: e.target.dataset.productoId
-    });
-    
     const permiso = e.target.dataset.productoId ? 'modificar_productos' : 'cargar_productos';
     const tienePermiso = await hasPermission(permiso);
     
@@ -3245,23 +3158,12 @@ async function guardarProducto(e) {
     
     if (!codigoInput || !nombreInput || !precioCostoInput || !precioVentaInput || 
         !stockInput || !activoSelect || !margenInput || !proveedorInput) {
-        console.error('Elementos del formulario no encontrados:', {
-            codigoInput, nombreInput, precioCostoInput, precioVentaInput,
-            stockInput, activoSelect, margenInput, proveedorInput
-        });
         showNotification('Error: formulario incompleto', 'error');
         return;
     }
     
     const codigoValor = codigoInput.value ? codigoInput.value.trim() : '';
     const nombreValor = nombreInput.value ? nombreInput.value.trim() : '';
-    
-    console.log('Valores depurados:', {
-        codigo: codigoValor,
-        nombre: nombreValor,
-        codigoLength: codigoValor.length,
-        nombreLength: nombreValor.length
-    });
     
     if (!codigoValor || codigoValor.length === 0) {
         showNotification('El código de barras es obligatorio', 'warning');
@@ -3291,8 +3193,6 @@ async function guardarProducto(e) {
         activo: activoSelect.value === 'true',
         margen_ganancia: margenInput.value ? parseFloat(margenInput.value) : null
     };
-    
-    console.log('Producto a guardar:', producto);
     
     if (producto.precio_costo < 0 || producto.precio_venta < 0) {
         showNotification('Los precios deben ser positivos', 'warning');
@@ -3490,16 +3390,29 @@ window.agregarDesdeBuscador = async function(id) {
         
         if (error) throw error;
         
-        mostrarProductoEncontrado(producto);
+        // Agregar producto directamente al carrito
+        const index = appState.carrito.findIndex(item => 
+            item.producto.id === producto.id);
+        
+        if (index !== -1) {
+            appState.carrito[index].cantidad += 1;
+            showNotification(`${producto.nombre} - Cantidad aumentada a ${appState.carrito[index].cantidad}`, 'success');
+        } else {
+            appState.carrito.push({
+                producto: producto,
+                cantidad: 1,
+                precioUnitario: producto.precio_venta
+            });
+            showNotification(`${producto.nombre} agregado al carrito`, 'success');
+        }
+        
+        actualizarCarritoUI();
         
         const modal = document.getElementById('modal-buscador');
         if (modal) modal.classList.remove('active');
         
-        const cantidadProducto = document.getElementById('cantidad-producto');
-        if (cantidadProducto) {
-            cantidadProducto.focus();
-            cantidadProducto.select();
-        }
+        const scannerInput = document.getElementById('scanner-input');
+        if (scannerInput) scannerInput.focus();
         
     } catch (error) {
         console.error('Error cargando producto:', error);
@@ -3525,8 +3438,6 @@ function inicializarFechasReportes() {
 
 async function generarReporte() {
     try {
-        console.log('Generando reporte...');
-        
         const fechaInicioInput = document.getElementById('reporte-fecha-inicio');
         const fechaFinInput = document.getElementById('reporte-fecha-fin');
         const tipoReporte = document.getElementById('reporte-tipo')?.value || 'general';
@@ -3541,8 +3452,6 @@ async function generarReporte() {
         
         const fechaInicio = fechaInicioInput.value;
         const fechaFin = fechaFinInput.value;
-        
-        console.log('Consultando reporte desde:', fechaInicio, 'hasta:', fechaFin, 'tipo:', tipoReporte);
         
         if (new Date(fechaInicio) > new Date(fechaFin)) {
             showNotification('La fecha de inicio no puede ser mayor a la fecha fin', 'error');
@@ -3582,8 +3491,6 @@ async function generarReporte() {
             console.error('Error obteniendo ventas:', ventasError);
             throw ventasError;
         }
-        
-        console.log('Ventas obtenidas para reporte:', ventas?.length || 0);
         
         const { data: productos, error: productosError } = await supabaseClient
             .from('productos')

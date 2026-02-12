@@ -2198,6 +2198,158 @@ body {
   }
 }
 
+/* ===== ESTILOS ADICIONALES PARA DETALLES DE CAJA / HISTORIAL ===== */
+
+/* Utilidades de layout y espaciado */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0 calc(var(--spacing-lg) * -1);
+}
+
+.col-md-6 {
+  flex: 0 0 50%;
+  max-width: 50%;
+  padding: 0 var(--spacing-lg);
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .col-md-6 {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+}
+
+/* Tarjetas (Cards) */
+.card {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--spacing-2xl);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-base);
+  overflow: hidden;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.card-header {
+  padding: var(--spacing-lg);
+  border-bottom: 1px solid var(--border-light);
+  background: linear-gradient(135deg, var(--primary-50), transparent);
+  font-weight: var(--font-weight-semibold);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.card-header h4, .card-header h5, .card-header h6 {
+  margin: 0;
+  font-size: var(--font-size-base);
+}
+
+.card-body {
+  padding: var(--spacing-lg);
+}
+
+/* Lista agrupada (para detalles) */
+.list-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.list-item {
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--border-light);
+  transition: background-color var(--transition-fast);
+  background-color: var(--bg-secondary);
+}
+
+.list-item:last-child {
+  border-bottom: none;
+}
+
+.list-item:hover {
+  background-color: var(--bg-hover);
+}
+
+/* Utilidades de espaciado */
+.mt-4 { margin-top: var(--spacing-2xl); }
+.mb-4 { margin-bottom: var(--spacing-2xl); }
+.mt-3 { margin-top: var(--spacing-xl); }
+.mb-3 { margin-bottom: var(--spacing-xl); }
+.mt-2 { margin-top: var(--spacing-lg); }
+.mb-2 { margin-bottom: var(--spacing-lg); }
+.p-3 { padding: var(--spacing-lg); }
+
+/* Utilidades de fondo y color */
+.bg-light { background-color: var(--bg-tertiary); }
+.bg-primary { background-color: var(--primary-500); }
+.bg-success { background-color: var(--success-500); }
+.bg-info { background-color: var(--primary-400); }
+.bg-warning { background-color: var(--warning-500); }
+.bg-danger { background-color: var(--danger-500); }
+
+.rounded { border-radius: var(--radius-md); }
+.rounded-lg { border-radius: var(--radius-lg); }
+
+/* Utilidades de texto */
+.text-success { color: var(--success-600); }
+.text-warning { color: var(--warning-600); }
+.text-danger { color: var(--danger-600); }
+.text-muted { color: var(--text-tertiary); }
+.small { font-size: var(--font-size-xs); }
+
+/* Utilidades de flexbox */
+.d-flex { display: flex; }
+.flex-wrap { flex-wrap: wrap; }
+.justify-content-between { justify-content: space-between; }
+.justify-content-center { justify-content: center; }
+.align-items-center { align-items: center; }
+
+/* Tablas responsivas */
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: var(--spacing-lg);
+}
+
+/* Resumen grid para detalles diarios */
+.detalles-caja-dia .resumen-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-md);
+}
+
+/* Estilos para el resumen de ventas en caja */
+.stats-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-md);
+  color: var(--white);
+  font-size: 1.25rem;
+}
+
+/* Input error (para validación) */
+.input-error {
+  border-color: var(--danger-500) !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2) !important;
+}
+
+.input-error:focus {
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.3) !important;
+}
+
 /* ===== RESPONSIVE ===== */
 
 /* Tablet (768px - 1024px) */

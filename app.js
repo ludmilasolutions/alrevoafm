@@ -18,110 +18,6 @@ let appState = {
     escposBuffer: []             // Buffer temporal para ESC/POS
 };
 
-// ==================== FUNCIONES DE PERSISTENCIA ====================
-// Modo oscuro
-function aplicarModoOscuro(activo) {
-    document.body.classList.toggle('dark-mode', activo);
-    appState.modoOscuro = activo;
-    localStorage.setItem('posDarkMode', activo);
-    // Actualizar icono del botón si existe
-    const toggleBtn = document.getElementById('dark-mode-toggle');
-    if (toggleBtn) {
-        toggleBtn.innerHTML = activo 
-            ? '<i class="fas fa-sun"></i>' 
-            : '<i class="fas fa-moon"></i>';
-    }
-}
-
-function inicializarModoOscuro() {
-    const modoGuardado = localStorage.getItem('posDarkMode');
-    if (modoGuardado !== null) {
-        const activo = modoGuardado === 'true';
-        aplicarModoOscuro(activo);
-    } else {
-        // Usar preferencia del sistema y guardarla
-        aplicarModoOscuro(appState.modoOscuro);
-    }
-    
-    // Escuchar cambios del sistema solo si NO hay preferencia manual guardada
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    mediaQuery.addEventListener('change', (e) => {
-        if (localStorage.getItem('posDarkMode') === null) {
-            aplicarModoOscuro(e.matches);
-        }
-    });
-}
-
-function toggleDarkMode() {
-    const nuevoEstado = !appState.modoOscuro;
-    aplicarModoOscuro(nuevoEstado);
-    showNotification(`Modo ${nuevoEstado ? 'oscuro' : 'claro'} activado`, 'info');
-}
-
-function crearBotonModoOscuro() {
-    if (document.getElementById('dark-mode-toggle')) return;
-    const userInfo = document.querySelector('.user-info') || document.getElementById('user-name')?.parentElement;
-    if (userInfo) {
-        const btn = document.createElement('button');
-        btn.id = 'dark-mode-toggle';
-        btn.className = 'btn-icon';
-        btn.setAttribute('title', 'Cambiar modo oscuro/claro');
-        btn.onclick = toggleDarkMode;
-        // Establecer icono inicial
-        btn.innerHTML = appState.modoOscuro 
-            ? '<i class="fas fa-sun"></i>' 
-            : '<i class="fas fa-moon"></i>';
-        userInfo.appendChild(btn);
-    }
-}
-
-// Carrito persistente
-function getStorageKey() {
-    return appState.usuario?.id ? `posCarrito_${appState.usuario.id}` : null;
-}
-
-function guardarCarritoEnStorage() {
-    const key = getStorageKey();
-    if (!key) return;
-    const data = {
-        carrito: appState.carrito,
-        descuento: appState.descuento
-    };
-    localStorage.setItem(key, JSON.stringify(data));
-}
-
-function cargarCarritoDeStorage() {
-    const key = getStorageKey();
-    if (!key) return;
-    const stored = localStorage.getItem(key);
-    if (stored) {
-        try {
-            const data = JSON.parse(stored);
-            if (data.carrito && Array.isArray(data.carrito)) {
-                appState.carrito = data.carrito;
-            }
-            if (data.descuento) {
-                appState.descuento = data.descuento;
-            }
-            actualizarCarritoUI();
-            // Restaurar valores en inputs de descuento
-            const descuentoInput = document.getElementById('descuento-input');
-            const descuentoTipo = document.getElementById('descuento-tipo');
-            if (descuentoInput) descuentoInput.value = appState.descuento.valor || '';
-            if (descuentoTipo) descuentoTipo.value = appState.descuento.tipo || 'porcentaje';
-        } catch (e) {
-            console.warn('Error cargando carrito persistente', e);
-        }
-    }
-}
-
-function eliminarCarritoStorage() {
-    const key = getStorageKey();
-    if (key) {
-        localStorage.removeItem(key);
-    }
-}
-
 // ==================== INICIALIZACIÓN ====================
 document.addEventListener('DOMContentLoaded', function() {
     initApp();
@@ -130,7 +26,6 @@ document.addEventListener('DOMContentLoaded', function() {
 async function initApp() {
     try {
         await checkSession();
-        inicializarModoOscuro();
         setupEventListeners();
         setupKeyboardShortcuts();
         await verificarCajaActiva();
@@ -226,10 +121,6 @@ async function checkSession() {
             document.getElementById('app').style.display = 'flex';
             document.getElementById('user-name').textContent = appState.usuario.username;
             
-            // Crear botón de modo oscuro y restaurar carrito persistente
-            crearBotonModoOscuro();
-            cargarCarritoDeStorage();
-            
             setTimeout(() => {
                 updateNavigationPermissions();
             }, 100);
@@ -272,7 +163,6 @@ document.getElementById('login-form').addEventListener('submit', async function(
         if (error) throw error;
         
         if (data.user) {
-            // Limpiar estado antes de asignar el nuevo usuario
             appState = {
                 usuario: null,
                 permisos: [],
@@ -303,9 +193,6 @@ document.getElementById('logout-btn').addEventListener('click', async function()
     try {
         const { error } = await supabaseClient.auth.signOut();
         if (error) throw error;
-        
-        // Limpiar carrito persistente
-        eliminarCarritoStorage();
         
         appState = {
             usuario: null,
@@ -720,7 +607,6 @@ function setupKeyboardShortcuts() {
                 e.preventDefault();
                 if (appState.carrito.length > 0) {
                     appState.carrito.pop();
-                    guardarCarritoEnStorage();
                     actualizarCarritoUI();
                 }
                 break;
@@ -805,7 +691,6 @@ async function buscarYAgregarProducto(codigo) {
                 showNotification(`${producto.nombre} agregado al carrito`, 'success');
             }
             
-            guardarCarritoEnStorage();
             actualizarCarritoUI();
             
             // Limpiar el input del scanner y mantener el foco
@@ -838,14 +723,6 @@ function actualizarCarritoUI() {
     
     // Si el carrito está vacío
     if (appState.carrito.length === 0) {
-        // Limpiar pagos y descuento al vaciar el carrito
-        appState.pagos = [];
-        appState.descuento = { tipo: 'porcentaje', valor: 0 };
-        const descuentoInput = document.getElementById('descuento-input');
-        const descuentoTipo = document.getElementById('descuento-tipo');
-        if (descuentoInput) descuentoInput.value = '';
-        if (descuentoTipo) descuentoTipo.value = 'porcentaje';
-        
         container.innerHTML = `
             <div class="empty-carrito">
                 <i class="fas fa-shopping-cart fa-3x"></i>
@@ -951,7 +828,6 @@ window.actualizarCantidadCarrito = function(index, delta) {
     
     // Actualizar cantidad
     item.cantidad = nuevaCantidad;
-    guardarCarritoEnStorage();
     actualizarCarritoUI();
     
     // Mostrar notificación
@@ -964,17 +840,15 @@ window.eliminarDelCarrito = function(index) {
         const productoNombre = appState.carrito[index].producto.nombre;
         appState.carrito.splice(index, 1);
         
-        // Si el carrito queda vacío, resetear descuento y pagos
+        // Si el carrito queda vacío, resetear descuento
         if (appState.carrito.length === 0) {
             appState.descuento = { tipo: 'porcentaje', valor: 0 };
-            appState.pagos = [];
             const descuentoInput = document.getElementById('descuento-input');
             const descuentoTipo = document.getElementById('descuento-tipo');
             if (descuentoInput) descuentoInput.value = '';
             if (descuentoTipo) descuentoTipo.value = 'porcentaje';
         }
         
-        guardarCarritoEnStorage();
         actualizarCarritoUI();
         showNotification(`${productoNombre} eliminado del carrito`, 'info');
     }
@@ -997,7 +871,6 @@ function limpiarCarrito() {
     if (descuentoInput) descuentoInput.value = '';
     if (descuentoTipo) descuentoTipo.value = 'porcentaje';
     
-    guardarCarritoEnStorage();
     actualizarCarritoUI();
     actualizarPagosUI();
     showNotification('Carrito vaciado', 'info');
@@ -1028,7 +901,6 @@ function aplicarDescuento() {
     }
     
     appState.descuento = { tipo, valor };
-    guardarCarritoEnStorage();
     actualizarCarritoUI();
     showNotification('Descuento aplicado correctamente', 'success');
 }
@@ -1206,7 +1078,6 @@ function actualizarPagosUI() {
     // Actualizar placeholder del input de monto
     const pagoMontoInput = document.getElementById('pago-monto');
     if (pagoMontoInput) {
-        pagoMontoInput.value = ''; // Limpiar cualquier monto escrito
         if (cambio < 0) {
             pagoMontoInput.placeholder = `Falta: $ ${Math.abs(cambio).toFixed(2)}`;
         } else if (cambio > 0) {
@@ -1374,8 +1245,7 @@ async function finalizarVenta() {
         // Generar e imprimir ticket (versión mejorada con ESC/POS)
         await generarTicket(venta);
         
-        // Limpiar estado y eliminar carrito persistente
-        eliminarCarritoStorage();
+        // Limpiar estado
         appState.carrito = [];
         appState.pagos = [];
         appState.descuento = { tipo: 'porcentaje', valor: 0 };
@@ -3642,7 +3512,6 @@ window.agregarDesdeBuscador = async function(id) {
             showNotification(`${producto.nombre} agregado al carrito`, 'success');
         }
         
-        guardarCarritoEnStorage();
         actualizarCarritoUI();
         
         const modal = document.getElementById('modal-buscador');
@@ -4698,11 +4567,7 @@ function showNotification(mensaje, tipo = 'info') {
 
 // ==================== INICIALIZACIÓN ADICIONAL ====================
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
-    // Solo se aplica si no hay preferencia guardada en localStorage
-    if (localStorage.getItem('posDarkMode') === null) {
-        appState.modoOscuro = e.matches;
-        aplicarModoOscuro(e.matches);
-    }
+    appState.modoOscuro = e.matches;
 });
 
 window.addEventListener('resize', function() {

@@ -13,9 +13,7 @@ let appState = {
     pagos: [],
     descuento: { tipo: 'porcentaje', valor: 0 },
     cajaActiva: null,
-    modoOscuro: window.matchMedia('(prefers-color-scheme: dark)').matches,
-    usbPrinterDevice: null,       // Dispositivo de impresora USB conectado
-    escposBuffer: []             // Buffer temporal para ESC/POS
+    modoOscuro: window.matchMedia('(prefers-color-scheme: dark)').matches
 };
 
 // ==================== INICIALIZACIÓN ====================
@@ -169,10 +167,7 @@ document.getElementById('login-form').addEventListener('submit', async function(
                 carrito: [],
                 pagos: [],
                 descuento: { tipo: 'porcentaje', valor: 0 },
-                cajaActiva: null,
-                modoOscuro: appState.modoOscuro,
-                usbPrinterDevice: null,
-                escposBuffer: []
+                cajaActiva: null
             };
             
             await checkSession();
@@ -200,10 +195,7 @@ document.getElementById('logout-btn').addEventListener('click', async function()
             carrito: [],
             pagos: [],
             descuento: { tipo: 'porcentaje', valor: 0 },
-            cajaActiva: null,
-            modoOscuro: appState.modoOscuro,
-            usbPrinterDevice: null,
-            escposBuffer: []
+            cajaActiva: null
         };
         
         document.getElementById('carrito-items').innerHTML = `
@@ -1242,7 +1234,7 @@ async function finalizarVenta() {
             if (pagoError) throw pagoError;
         }
         
-        // Generar e imprimir ticket (versión mejorada con ESC/POS)
+        // Generar e imprimir ticket
         await generarTicket(venta);
         
         // Limpiar estado
@@ -1284,315 +1276,217 @@ async function finalizarVenta() {
     }
 }
 
-// ==================== IMPRESIÓN ESC/POS ====================
-/**
- * Solicita acceso a la impresora térmica USB (Xprinter XP-58II)
- */
-async function requestPrinter() {
-    // Si ya tenemos un dispositivo conectado, lo devolvemos
-    if (appState.usbPrinterDevice) {
-        return appState.usbPrinterDevice;
-    }
-    
-    // Verificar si WebUSB está disponible
-    if (!navigator.usb) {
-        console.warn('WebUSB no está soportado en este navegador. Se usará impresión HTML.');
-        return null;
-    }
-    
-    try {
-        // Solicitar dispositivo con filtros opcionales (más específicos para XP-58II)
-        const device = await navigator.usb.requestDevice({
-            filters: [
-                { vendorId: 0x0416 },  // Xprinter / Wincor Nixdorf
-                { vendorId: 0x0525 }    // Dispositivos genéricos
-            ]
-        });
-        
-        // Abrir sesión y reclamar interfaz
-        await device.open();
-        if (device.configuration === null) {
-            await device.selectConfiguration(1);
-        }
-        await device.claimInterface(0);
-        
-        appState.usbPrinterDevice = device;
-        showNotification('Impresora conectada correctamente', 'success');
-        return device;
-    } catch (error) {
-        console.error('Error al conectar impresora USB:', error);
-        showNotification('No se pudo conectar a la impresora. Se usará impresión HTML.', 'warning');
-        return null;
-    }
-}
-
-/**
- * Envía un buffer de bytes a la impresora USB
- */
-async function sendESC/POSBuffer(device, buffer) {
-    if (!device) return false;
-    try {
-        const data = new Uint8Array(buffer);
-        const result = await device.transferOut(1, data); // Endpoint OUT 1
-        return result.bytesWritten === data.length;
-    } catch (error) {
-        console.error('Error enviando datos a la impresora:', error);
-        return false;
-    }
-}
-
-/**
- * Construye y envía el ticket mediante comandos ESC/POS.
- * Retorna true si se imprimió correctamente, false en caso contrario.
- */
-async function printESC/POSTicket(venta, configMap, carrito, pagos, usuario, cambio) {
-    const device = await requestPrinter();
-    if (!device) return false;
-    
-    // Reiniciar buffer
-    appState.escposBuffer = [];
-    
-    // ---------- FUNCIONES AUXILIARES ----------
-    const addBytes = (...bytes) => {
-        appState.escposBuffer.push(...bytes);
-    };
-    
-    const addText = (text) => {
-        if (!text) return;
-        // Codificar a UTF-8
-        const encoder = new TextEncoder();
-        const encoded = encoder.encode(text + '\n');
-        appState.escposBuffer.push(...encoded);
-    };
-    
-    const addLine = (text = '') => {
-        addText(text);
-    };
-    
-    // Separador de línea (40 guiones)
-    const separator = () => {
-        addText('----------------------------------------');
-    };
-    
-    // ---------- INICIO ----------
-    addBytes(0x1B, 0x40); // ESC @ (Inicializar)
-    
-    // ---------- ENCABEZADO (centrado, doble tamaño) ----------
-    addBytes(0x1B, 0x61, 0x01); // ESC a 1 (centrado)
-    addBytes(0x1D, 0x21, 0x11); // GS ! 17 (doble alto + doble ancho)
-    addText(configMap.ticket_encabezado || 'AFMSOLUTIONS');
-    addBytes(0x1D, 0x21, 0x00); // GS ! 0 (tamaño normal)
-    addText(configMap.ticket_encabezado_extra || 'SISTEMA POS');
-    addText(configMap.empresa_direccion || 'LOCAL COMERCIAL');
-    separator();
-    
-    // ---------- INFORMACIÓN DE LA VENTA (izquierda) ----------
-    addBytes(0x1B, 0x61, 0x00); // ESC a 0 (izquierda)
-    
-    const fecha = new Date(venta.fecha);
-    const fechaFormateada = `${fecha.getDate().toString().padStart(2,'0')}/${(fecha.getMonth()+1).toString().padStart(2,'0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2,'0')}:${fecha.getMinutes().toString().padStart(2,'0')}:${fecha.getSeconds().toString().padStart(2,'0')}`;
-    
-    addText(`Fecha: ${fechaFormateada}`);
-    addText(`Ticket: ${venta.ticket_id}`);
-    addText(`Vendedor: ${usuario?.username || ''}`);
-    separator();
-    
-    // ---------- DETALLE DE PRODUCTOS (negrita para cabecera) ----------
-    addBytes(0x1B, 0x45, 0x01); // ESC E 1 (negrita ON)
-    addText('ARTÍCULO             CANT  IMPORTE');
-    addBytes(0x1B, 0x45, 0x00); // ESC E 0 (negrita OFF)
-    
-    carrito.forEach(item => {
-        const nombre = item.producto.nombre.length > 20 ? 
-            item.producto.nombre.substring(0, 20) + '.' : 
-            item.producto.nombre.padEnd(20);
-        const cantidad = item.cantidad.toString().padStart(3);
-        const precio = `$${item.precioUnitario.toFixed(2)}`.padStart(8);
-        const totalItem = `$${(item.cantidad * item.precioUnitario).toFixed(2)}`.padStart(8);
-        addText(`${nombre}  ${cantidad} x ${precio} = ${totalItem}`);
-    });
-    separator();
-    
-    // ---------- TOTALES ----------
-    addText(`Subtotal: $${venta.subtotal.toFixed(2)}`);
-    addText(`Descuento: $${venta.descuento.toFixed(2)}`);
-    addBytes(0x1B, 0x45, 0x01); // Negrita ON
-    addText(`TOTAL: $${venta.total.toFixed(2)}`);
-    addBytes(0x1B, 0x45, 0x00); // Negrita OFF
-    
-    // ---------- PAGOS ----------
-    addText('');
-    addText('PAGOS:');
-    pagos.forEach(pago => {
-        addText(`${pago.medio}: $${pago.monto.toFixed(2)}`);
-    });
-    
-    if (cambio > 0) {
-        addText(`Cambio: $${cambio.toFixed(2)}`);
-    }
-    separator();
-    
-    // ---------- PIE DE PÁGINA (centrado) ----------
-    addBytes(0x1B, 0x61, 0x01); // Centrado
-    addText(configMap.ticket_pie || '¡Gracias por su compra!');
-    addText(configMap.ticket_legal || 'Conserve su ticket');
-    addText(configMap.empresa_contacto || '');
-    addText('');
-    addText(' ');
-    
-    // ---------- CORTE DE PAPEL ----------
-    addBytes(0x1D, 0x56, 0x00); // GS V 0 (corte total)
-    
-    // ---------- ENVÍO ----------
-    const success = await sendESC/POSBuffer(device, appState.escposBuffer);
-    if (success) {
-        showNotification('Ticket impreso correctamente', 'success');
-    }
-    return success;
-}
-
-/**
- * Método de respaldo: impresión mediante ventana HTML + window.print()
- */
-function printViaHTML(venta, configMap, carrito, pagos, usuario, cambio) {
-    // Formatear fecha
-    const fecha = new Date(venta.fecha);
-    const fechaFormateada = `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2, '0')}:${fecha.getMinutes().toString().padStart(2, '0')}:${fecha.getSeconds().toString().padStart(2, '0')}`;
-    
-    // Generar HTML del ticket
-    let itemsHTML = '';
-    carrito.forEach(item => {
-        const totalItem = item.cantidad * item.precioUnitario;
-        const nombre = item.producto.nombre.length > 20 ? 
-            item.producto.nombre.substring(0, 20) + '...' : 
-            item.producto.nombre;
-        itemsHTML += `
-            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-                <div style="flex: 1; font-size: 9px;">${nombre}</div>
-                <div style="text-align: right; font-size: 9px;">${item.cantidad} x $${item.precioUnitario.toFixed(2)} = $${totalItem.toFixed(2)}</div>
-            </div>
-        `;
-    });
-    
-    const ticketHTML = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Ticket ${venta.ticket_id}</title>
-            <meta charset="UTF-8">
-            <style>
-                @media print {
-                    body { font-family: 'Courier New', Courier, monospace; font-size: 8px; width: 58mm; max-width: 58mm; margin: 0; padding: 2px; line-height: 1.1; }
-                    * { box-sizing: border-box; }
-                    .ticket-header { text-align: center; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px dashed #000; }
-                    .ticket-header h1 { font-size: 10px; font-weight: bold; margin: 2px 0; text-transform: uppercase; }
-                    .ticket-info { font-size: 7px; margin-bottom: 4px; }
-                    .ticket-items { margin: 4px 0; }
-                    .ticket-totals { margin-top: 6px; padding-top: 4px; border-top: 1px dashed #000; }
-                    .ticket-total-row { display: flex; justify-content: space-between; margin: 1px 0; }
-                    .ticket-footer { text-align: center; margin-top: 6px; padding-top: 4px; border-top: 1px dashed #000; font-size: 7px; }
-                    .bold { font-weight: bold; }
-                    .center { text-align: center; }
-                    .right { text-align: right; }
-                    .left { text-align: left; }
-                }
-                @page { size: 58mm auto; margin: 0; }
-            </style>
-        </head>
-        <body onload="window.print(); setTimeout(() => window.close(), 100);">
-            <div class="ticket-header">
-                <h1>${configMap.ticket_encabezado || 'AFMSOLUTIONS'}</h1>
-                <div>${configMap.ticket_encabezado_extra || 'SISTEMA POS'}</div>
-                <div>${configMap.empresa_direccion || 'LOCAL COMERCIAL'}</div>
-            </div>
-            <div class="ticket-info">
-                <div>Fecha: ${fechaFormateada}</div>
-                <div>Ticket: <strong>${venta.ticket_id}</strong></div>
-                <div>Vendedor: ${usuario?.username || ''}</div>
-            </div>
-            <div class="ticket-items">${itemsHTML}</div>
-            <div class="ticket-totals">
-                <div class="ticket-total-row"><span>Subtotal:</span><span>$${venta.subtotal.toFixed(2)}</span></div>
-                <div class="ticket-total-row"><span>Descuento:</span><span>$${venta.descuento.toFixed(2)}</span></div>
-                <div class="ticket-total-row bold"><span>TOTAL:</span><span>$${venta.total.toFixed(2)}</span></div>
-                <div style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed #000;">
-                    <div class="bold">PAGOS:</div>
-                    ${pagos.map(pago => `<div class="ticket-total-row"><span>${pago.medio}:</span><span>$${pago.monto.toFixed(2)}</span></div>`).join('')}
-                    ${cambio > 0 ? `<div class="ticket-total-row"><span>Cambio:</span><span>$${cambio.toFixed(2)}</span></div>` : ''}
-                </div>
-            </div>
-            <div class="ticket-footer">
-                <div>${configMap.ticket_pie || '¡Gracias por su compra!'}</div>
-                <div>${configMap.ticket_legal || 'Conserve su ticket'}</div>
-                <div style="margin-top: 4px; font-size: 6px;">${configMap.empresa_contacto || ''}</div>
-            </div>
-            <script>window.onload = function() { setTimeout(() => { window.print(); setTimeout(() => window.close(), 100); }, 100); };</script>
-        </body>
-        </html>
-    `;
-    
-    const printWindow = window.open('', '_blank', 'width=200,height=400');
-    printWindow.document.write(ticketHTML);
-    printWindow.document.close();
-    return true;
-}
-
-/**
- * Genera el ticket e intenta imprimirlo primero con ESC/POS.
- * Si falla o no hay WebUSB, usa el método HTML.
- */
 async function generarTicket(venta) {
     try {
-        // Obtener configuración
+        // Obtener configuración del ticket
         const { data: config, error } = await supabaseClient
             .from('configuracion')
             .select('*');
         
         if (error) throw error;
         
+        // Convertir configuración a objeto
         const configMap = {};
         config.forEach(item => {
             configMap[item.clave] = item.valor;
         });
         
+        // Formatear fecha
+        const fecha = new Date(venta.fecha);
+        const fechaFormateada = `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2, '0')}:${fecha.getMinutes().toString().padStart(2, '0')}:${fecha.getSeconds().toString().padStart(2, '0')}`;
+        
+        // Generar HTML del ticket
+        let itemsHTML = '';
+        let itemsTotal = 0;
+        appState.carrito.forEach(item => {
+            const totalItem = item.cantidad * item.precioUnitario;
+            itemsTotal += totalItem;
+            
+            const nombre = item.producto.nombre.length > 20 ? 
+                item.producto.nombre.substring(0, 20) + '...' : 
+                item.producto.nombre;
+            
+            itemsHTML += `
+                <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                    <div style="flex: 1; font-size: 9px;">
+                        ${nombre}
+                    </div>
+                    <div style="text-align: right; font-size: 9px;">
+                        ${item.cantidad} x $${item.precioUnitario.toFixed(2)} = $${totalItem.toFixed(2)}
+                    </div>
+                </div>
+            `;
+        });
+        
         const cambio = appState.pagos.reduce((s, p) => s + p.monto, 0) - venta.total;
         
-        // Intentar impresión ESC/POS
-        const escposSuccess = await printESC/POSTicket(
-            venta,
-            configMap,
-            appState.carrito,
-            appState.pagos,
-            appState.usuario,
-            cambio
-        );
+        const ticketHTML = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Ticket ${venta.ticket_id}</title>
+                <meta charset="UTF-8">
+                <style>
+                    @media print {
+                        body {
+                            font-family: 'Courier New', Courier, monospace;
+                            font-size: 8px;
+                            width: 58mm;
+                            max-width: 58mm;
+                            margin: 0;
+                            padding: 2px;
+                            line-height: 1.1;
+                        }
+                        
+                        * {
+                            box-sizing: border-box;
+                        }
+                        
+                        .ticket-header {
+                            text-align: center;
+                            margin-bottom: 4px;
+                            padding-bottom: 4px;
+                            border-bottom: 1px dashed #000;
+                        }
+                        
+                        .ticket-header h1 {
+                            font-size: 10px;
+                            font-weight: bold;
+                            margin: 2px 0;
+                            text-transform: uppercase;
+                        }
+                        
+                        .ticket-info {
+                            font-size: 7px;
+                            margin-bottom: 4px;
+                        }
+                        
+                        .ticket-items {
+                            margin: 4px 0;
+                        }
+                        
+                        .ticket-totals {
+                            margin-top: 6px;
+                            padding-top: 4px;
+                            border-top: 1px dashed #000;
+                        }
+                        
+                        .ticket-total-row {
+                            display: flex;
+                            justify-content: space-between;
+                            margin: 1px 0;
+                        }
+                        
+                        .ticket-footer {
+                            text-align: center;
+                            margin-top: 6px;
+                            padding-top: 4px;
+                            border-top: 1px dashed #000;
+                            font-size: 7px;
+                        }
+                        
+                        .bold {
+                            font-weight: bold;
+                        }
+                        
+                        .center {
+                            text-align: center;
+                        }
+                        
+                        .right {
+                            text-align: right;
+                        }
+                        
+                        .left {
+                            text-align: left;
+                        }
+                    }
+                    
+                    @page {
+                        size: 58mm auto;
+                        margin: 0;
+                    }
+                </style>
+            </head>
+            <body onload="window.print(); setTimeout(() => window.close(), 100);">
+                <div class="ticket-header">
+                    <h1>${configMap.ticket_encabezado || 'AFMSOLUTIONS'}</h1>
+                    <div>${configMap.ticket_encabezado_extra || 'SISTEMA POS'}</div>
+                    <div>${configMap.empresa_direccion || 'LOCAL COMERCIAL'}</div>
+                </div>
+                
+                <div class="ticket-info">
+                    <div>Fecha: ${fechaFormateada}</div>
+                    <div>Ticket: <strong>${venta.ticket_id}</strong></div>
+                    <div>Vendedor: ${appState.usuario?.username || ''}</div>
+                </div>
+                
+                <div class="ticket-items">
+                    ${itemsHTML}
+                </div>
+                
+                <div class="ticket-totals">
+                    <div class="ticket-total-row">
+                        <span>Subtotal:</span>
+                        <span>$${venta.subtotal.toFixed(2)}</span>
+                    </div>
+                    <div class="ticket-total-row">
+                        <span>Descuento:</span>
+                        <span>$${venta.descuento.toFixed(2)}</span>
+                    </div>
+                    <div class="ticket-total-row bold">
+                        <span>TOTAL:</span>
+                        <span>$${venta.total.toFixed(2)}</span>
+                    </div>
+                    
+                    <div style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed #000;">
+                        <div class="bold">PAGOS:</div>
+                        ${appState.pagos.map(pago => `
+                            <div class="ticket-total-row">
+                                <span>${pago.medio}:</span>
+                                <span>$${pago.monto.toFixed(2)}</span>
+                            </div>
+                        `).join('')}
+                        
+                        ${cambio > 0 ? `
+                            <div class="ticket-total-row">
+                                <span>Cambio:</span>
+                                <span>$${cambio.toFixed(2)}</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+                
+                <div class="ticket-footer">
+                    <div>${configMap.ticket_pie || '¡Gracias por su compra!'}</div>
+                    <div>${configMap.ticket_legal || 'Conserve su ticket'}</div>
+                    <div style="margin-top: 4px; font-size: 6px;">
+                        ${configMap.empresa_contacto || ''}
+                    </div>
+                </div>
+                
+                <script>
+                    window.onload = function() {
+                        setTimeout(function() {
+                            window.print();
+                            setTimeout(function() {
+                                window.close();
+                            }, 100);
+                        }, 100);
+                    };
+                </script>
+            </body>
+            </html>
+        `;
         
-        if (!escposSuccess) {
-            // Fallback a impresión HTML
-            printViaHTML(
-                venta,
-                configMap,
-                appState.carrito,
-                appState.pagos,
-                appState.usuario,
-                cambio
-            );
-        }
+        // Abrir ventana de impresión
+        const printWindow = window.open('', '_blank', 'width=200,height=400');
+        printWindow.document.write(ticketHTML);
+        printWindow.document.close();
         
     } catch (error) {
         console.error('Error generando ticket:', error);
-        showNotification('Error al generar el ticket', 'error');
-        // Intentar HTML como último recurso
-        try {
-            const { data: config } = await supabaseClient.from('configuracion').select('*');
-            const configMap = {};
-            config?.forEach(item => { configMap[item.clave] = item.valor; });
-            const cambio = appState.pagos.reduce((s, p) => s + p.monto, 0) - venta.total;
-            printViaHTML(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
-        } catch (htmlError) {
-            console.error('Error en fallback HTML:', htmlError);
-            showNotification('No se pudo imprimir el ticket', 'error');
-        }
+        showNotification('Venta registrada pero error generando ticket', 'warning');
     }
 }
 

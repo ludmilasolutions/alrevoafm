@@ -14,13 +14,93 @@ let appState = {
     descuento: { tipo: 'porcentaje', valor: 0 },
     cajaActiva: null,
     modoOscuro: window.matchMedia('(prefers-color-scheme: dark)').matches,
-    usbPrinterDevice: null,       // Dispositivo de impresora USB conectado
-    escposBuffer: []             // Buffer temporal para ESC/POS
+    usbPrinterDevice: null,
+    escposBuffer: []
 };
+
+// ==================== PERSISTENCIA DEL CARRITO ====================
+const CARRITO_STORAGE_KEY = 'afm_pos_carrito';
+
+function guardarEstadoCarrito() {
+    const estado = {
+        carrito: appState.carrito,
+        pagos: appState.pagos,
+        descuento: appState.descuento
+    };
+    localStorage.setItem(CARRITO_STORAGE_KEY, JSON.stringify(estado));
+}
+
+function restaurarEstadoCarrito() {
+    const saved = localStorage.getItem(CARRITO_STORAGE_KEY);
+    if (saved) {
+        try {
+            const estado = JSON.parse(saved);
+            appState.carrito = estado.carrito || [];
+            appState.pagos = estado.pagos || [];
+            appState.descuento = estado.descuento || { tipo: 'porcentaje', valor: 0 };
+            actualizarCarritoUI();
+            actualizarPagosUI();
+        } catch (e) {
+            console.warn('Error restaurando carrito:', e);
+            limpiarEstadoCarrito();
+        }
+    }
+}
+
+function limpiarEstadoCarrito() {
+    localStorage.removeItem(CARRITO_STORAGE_KEY);
+}
+
+// ==================== TEMA (MODO OSCURO/CLARO) ====================
+function initTheme() {
+    // Leer tema guardado
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) {
+        document.body.classList.add(savedTheme);
+        appState.modoOscuro = savedTheme === 'dark';
+    } else {
+        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (isDark) {
+            document.body.classList.add('dark');
+            appState.modoOscuro = true;
+        }
+    }
+    // Actualizar icono del botón
+    updateThemeIcon();
+}
+
+function toggleTheme() {
+    const isDark = document.body.classList.contains('dark');
+    if (isDark) {
+        document.body.classList.remove('dark');
+        localStorage.setItem('theme', '');
+        appState.modoOscuro = false;
+    } else {
+        document.body.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+        appState.modoOscuro = true;
+    }
+    updateThemeIcon();
+}
+
+function updateThemeIcon() {
+    const themeToggle = document.getElementById('theme-toggle');
+    if (!themeToggle) return;
+    const icon = themeToggle.querySelector('i');
+    if (!icon) return;
+    const isDark = document.body.classList.contains('dark');
+    icon.className = isDark ? 'fas fa-sun' : 'fas fa-moon';
+}
 
 // ==================== INICIALIZACIÓN ====================
 document.addEventListener('DOMContentLoaded', function() {
     initApp();
+    initTheme(); // Aplicar tema al cargar
+    // Evento del botón de tema
+    const themeBtn = document.getElementById('theme-toggle');
+    if (themeBtn) {
+        themeBtn.addEventListener('click', toggleTheme);
+    }
 });
 
 async function initApp() {
@@ -29,13 +109,11 @@ async function initApp() {
         setupEventListeners();
         setupKeyboardShortcuts();
         await verificarCajaActiva();
-        
-        // Inicializar fechas de reportes
         inicializarFechasReportes();
+        restaurarEstadoCarrito(); // Restaurar carrito si existe
         
         console.log('Sistema POS inicializado correctamente');
         
-        // Verificar elementos críticos después de un delay
         setTimeout(() => {
             verifyCriticalElements();
         }, 1000);
@@ -194,6 +272,8 @@ document.getElementById('logout-btn').addEventListener('click', async function()
         const { error } = await supabaseClient.auth.signOut();
         if (error) throw error;
         
+        limpiarEstadoCarrito(); // Limpiar carrito persistente
+        
         appState = {
             usuario: null,
             permisos: [],
@@ -275,7 +355,6 @@ function updateNavigationPermissions() {
 
 // ==================== NAVEGACIÓN RESPONSIVA ====================
 function setupEventListeners() {
-    // Navegación principal
     document.querySelectorAll('.nav-link').forEach(link => {
         link.addEventListener('click', function(e) {
             e.preventDefault();
@@ -288,7 +367,6 @@ function setupEventListeners() {
         });
     });
     
-    // Menú hamburguesa
     const menuToggle = document.getElementById('menu-toggle');
     if (menuToggle) {
         menuToggle.addEventListener('click', function() {
@@ -297,7 +375,6 @@ function setupEventListeners() {
         });
     }
     
-    // Cerrar menú al hacer clic fuera en móviles
     document.addEventListener('click', function(e) {
         const nav = document.getElementById('main-nav');
         const toggle = document.getElementById('menu-toggle');
@@ -310,7 +387,6 @@ function setupEventListeners() {
         }
     });
     
-    // Scanner automático - agregar producto automáticamente al escanear
     const scannerInput = document.getElementById('scanner-input');
     if (scannerInput) {
         scannerInput.addEventListener('keypress', async function(e) {
@@ -324,7 +400,6 @@ function setupEventListeners() {
             }
         });
         
-        // También agregar evento para cuando el usuario pega un código
         scannerInput.addEventListener('paste', async function(e) {
             setTimeout(async () => {
                 const codigo = this.value.trim();
@@ -336,29 +411,24 @@ function setupEventListeners() {
         });
     }
     
-    // Botón buscar manual (F6)
     const btnBuscarManual = document.getElementById('btn-buscar-manual');
     if (btnBuscarManual) {
         btnBuscarManual.addEventListener('click', showBuscadorManual);
     }
     
-    // Botón limpiar carrito
     const btnLimpiarCarrito = document.getElementById('btn-limpiar-carrito');
     if (btnLimpiarCarrito) {
         btnLimpiarCarrito.addEventListener('click', limpiarCarrito);
     }
     
-    // Botón aplicar descuento
     const btnAplicarDescuento = document.getElementById('btn-aplicar-descuento');
     if (btnAplicarDescuento) {
         btnAplicarDescuento.addEventListener('click', aplicarDescuento);
     }
     
-    // Seleccionar medio de pago
     document.querySelectorAll('.btn-pago').forEach(btn => {
         btn.addEventListener('click', function() {
             seleccionarMedioPago(this.dataset.medio);
-            // Sugerir monto a pagar
             setTimeout(() => {
                 const totalAPagarEl = document.getElementById('carrito-total');
                 const pagoMonto = document.getElementById('pago-monto');
@@ -376,32 +446,27 @@ function setupEventListeners() {
         });
     });
     
-    // Botón agregar pago
     const btnAgregarPago = document.getElementById('btn-agregar-pago');
     if (btnAgregarPago) {
         btnAgregarPago.addEventListener('click', agregarPago);
     }
     
-    // Enter en input de monto de pago
     document.getElementById('pago-monto')?.addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
             agregarPago();
         }
     });
     
-    // Botón finalizar venta
     const btnFinalizarVenta = document.getElementById('btn-finalizar-venta');
     if (btnFinalizarVenta) {
         btnFinalizarVenta.addEventListener('click', finalizarVenta);
     }
     
-    // Botón cancelar venta
     const btnCancelarVenta = document.getElementById('btn-cancelar-venta');
     if (btnCancelarVenta) {
         btnCancelarVenta.addEventListener('click', cancelarVenta);
     }
     
-    // Botones de gestión de productos
     const btnNuevoProducto = document.getElementById('btn-nuevo-producto');
     if (btnNuevoProducto) {
         btnNuevoProducto.addEventListener('click', () => mostrarModalProducto());
@@ -424,7 +489,6 @@ function setupEventListeners() {
         });
     }
     
-    // Botones de historial
     const btnVentasHoy = document.getElementById('btn-ventas-hoy');
     if (btnVentasHoy) {
         btnVentasHoy.addEventListener('click', cargarVentasHoy);
@@ -435,7 +499,6 @@ function setupEventListeners() {
         btnFiltrarHistorial.addEventListener('click', cargarHistorial);
     }
     
-    // Botones de caja
     const btnCerrarCaja = document.getElementById('btn-cerrar-caja');
     if (btnCerrarCaja) {
         btnCerrarCaja.addEventListener('click', cerrarCaja);
@@ -445,7 +508,6 @@ function setupEventListeners() {
     document.getElementById('btn-cargar-detalles')?.addEventListener('click', cargarDetallesCajaDia);
     document.getElementById('btn-imprimir-resumen')?.addEventListener('click', imprimirResumenCaja);
     
-    // Botones de reportes
     const btnGenerarReporte = document.getElementById('btn-generar-reporte');
     if (btnGenerarReporte) {
         btnGenerarReporte.addEventListener('click', generarReporte);
@@ -461,7 +523,6 @@ function setupEventListeners() {
         btnImprimirReporte.addEventListener('click', imprimirReporte);
     }
     
-    // Pestañas de configuración
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             const tabId = this.dataset.tab;
@@ -469,7 +530,6 @@ function setupEventListeners() {
         });
     });
     
-    // Cerrar modales
     document.querySelectorAll('.modal-close').forEach(btn => {
         btn.addEventListener('click', function() {
             const modal = this.closest('.modal');
@@ -477,7 +537,6 @@ function setupEventListeners() {
         });
     });
     
-    // Cerrar modales al hacer clic fuera
     document.querySelectorAll('.modal').forEach(modal => {
         modal.addEventListener('click', function(e) {
             if (e.target === this) {
@@ -486,19 +545,16 @@ function setupEventListeners() {
         });
     });
     
-    // Buscador de productos (modal)
     const btnBuscarProductos = document.getElementById('btn-buscar-productos');
     if (btnBuscarProductos) {
         btnBuscarProductos.addEventListener('click', buscarProductosManual);
     }
     
-    // Formulario de producto
     const formProducto = document.getElementById('form-producto');
     if (formProducto) {
         formProducto.addEventListener('submit', guardarProducto);
     }
     
-    // Cálculos automáticos en formulario de producto
     const precioCostoInput = document.getElementById('producto-precio-costo');
     if (precioCostoInput) {
         precioCostoInput.addEventListener('input', calcularPrecioVenta);
@@ -514,7 +570,6 @@ function setupEventListeners() {
         precioVentaInput.addEventListener('input', calcularMargen);
     }
     
-    // Apertura de caja
     const formAperturaCaja = document.getElementById('form-apertura-caja');
     if (formAperturaCaja) {
         formAperturaCaja.addEventListener('submit', abrirCaja);
@@ -522,35 +577,29 @@ function setupEventListeners() {
 }
 
 function showSection(sectionId) {
-    // Ocultar todas las secciones
     document.querySelectorAll('.content-section').forEach(section => {
         section.classList.remove('active');
     });
     
-    // Desactivar todos los enlaces del menú
     document.querySelectorAll('.nav-link').forEach(link => {
         link.classList.remove('active');
     });
     
-    // Mostrar sección seleccionada
     const section = document.getElementById(`seccion-${sectionId}`);
     if (section) {
         section.classList.add('active');
     }
     
-    // Activar enlace del menú seleccionado
     const link = document.querySelector(`.nav-link[data-section="${sectionId}"]`);
     if (link) {
         link.classList.add('active');
     }
     
-    // Actualizar título en header
     const currentSection = document.getElementById('current-section');
     if (currentSection) {
         currentSection.textContent = sectionId.toUpperCase();
     }
     
-    // Acciones específicas por sección
     if (sectionId === 'venta') {
         setTimeout(() => {
             const scanner = document.getElementById('scanner-input');
@@ -570,7 +619,6 @@ function showSection(sectionId) {
             break;
         case 'reportes':
             inicializarFechasReportes();
-            // Cargar reportes automáticamente
             setTimeout(() => {
                 const btnGenerar = document.getElementById('btn-generar-reporte');
                 if (btnGenerar) btnGenerar.click();
@@ -585,7 +633,6 @@ function showSection(sectionId) {
 // ==================== ATAJOS DE TECLADO ====================
 function setupKeyboardShortcuts() {
     document.addEventListener('keydown', function(e) {
-        // No procesar atajos si el usuario está escribiendo en un input
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || window.innerWidth < 768) {
             return;
         }
@@ -608,6 +655,7 @@ function setupKeyboardShortcuts() {
                 if (appState.carrito.length > 0) {
                     appState.carrito.pop();
                     actualizarCarritoUI();
+                    guardarEstadoCarrito();
                 }
                 break;
             case 'F4':
@@ -673,16 +721,13 @@ async function buscarYAgregarProducto(codigo) {
         }
         
         if (producto) {
-            // Verificar si el producto ya está en el carrito
             const index = appState.carrito.findIndex(item => 
                 item.producto.id === producto.id);
             
             if (index !== -1) {
-                // Si ya está en el carrito, incrementar cantidad
                 appState.carrito[index].cantidad += 1;
                 showNotification(`${producto.nombre} - Cantidad aumentada a ${appState.carrito[index].cantidad}`, 'success');
             } else {
-                // Si no está, agregarlo al carrito
                 appState.carrito.push({
                     producto: producto,
                     cantidad: 1,
@@ -692,15 +737,14 @@ async function buscarYAgregarProducto(codigo) {
             }
             
             actualizarCarritoUI();
+            guardarEstadoCarrito();
             
-            // Limpiar el input del scanner y mantener el foco
             const scannerInput = document.getElementById('scanner-input');
             if (scannerInput) {
                 scannerInput.value = '';
                 scannerInput.focus();
             }
             
-            // Reproducir sonido de scanner si está disponible
             if (typeof playScanSound === 'function') {
                 playScanSound();
             }
@@ -721,7 +765,6 @@ function actualizarCarritoUI() {
     
     if (!container || !subtotalEl || !descuentoEl || !totalEl || !totalAPagarEl || !btnFinalizar) return;
     
-    // Si el carrito está vacío
     if (appState.carrito.length === 0) {
         container.innerHTML = `
             <div class="empty-carrito">
@@ -742,13 +785,10 @@ function actualizarCarritoUI() {
         return;
     }
     
-    // Calcular subtotal
     let subtotal = 0;
     
-    // Limpiar contenedor
     container.innerHTML = '';
     
-    // Agregar cada item del carrito
     appState.carrito.forEach((item, index) => {
         const itemTotal = item.cantidad * item.precioUnitario;
         subtotal += itemTotal;
@@ -779,7 +819,6 @@ function actualizarCarritoUI() {
         container.appendChild(div);
     });
     
-    // Calcular descuento
     let descuento = 0;
     if (appState.descuento.valor > 0) {
         if (appState.descuento.tipo === 'porcentaje') {
@@ -787,60 +826,47 @@ function actualizarCarritoUI() {
         } else {
             descuento = appState.descuento.valor;
         }
-        
-        // Asegurar que el descuento no sea mayor que el subtotal
         if (descuento > subtotal) descuento = subtotal;
     }
     
-    // Calcular total
     const total = subtotal - descuento;
     
-    // Actualizar UI
     subtotalEl.textContent = `$ ${subtotal.toFixed(2)}`;
     descuentoEl.textContent = `$ ${descuento.toFixed(2)}`;
     totalEl.textContent = `$ ${total.toFixed(2)}`;
     totalAPagarEl.textContent = `$ ${total.toFixed(2)}`;
     
-    // Actualizar pagos
     actualizarPagosUI();
     
-    // Habilitar/deshabilitar botón finalizar
     const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
     btnFinalizar.disabled = appState.carrito.length === 0 || totalPagado < total;
 }
 
-// Función global para actualizar cantidad en el carrito
 window.actualizarCantidadCarrito = function(index, delta) {
     const item = appState.carrito[index];
     const nuevaCantidad = item.cantidad + delta;
     
-    // Validar cantidad mínima
     if (nuevaCantidad < 1) {
         eliminarDelCarrito(index);
         return;
     }
     
-    // Validar stock disponible
     if (nuevaCantidad > item.producto.stock) {
         showNotification(`Stock insuficiente. Disponible: ${item.producto.stock}`, 'error');
         return;
     }
     
-    // Actualizar cantidad
     item.cantidad = nuevaCantidad;
     actualizarCarritoUI();
-    
-    // Mostrar notificación
+    guardarEstadoCarrito();
     showNotification(`${item.producto.nombre} - Cantidad: ${nuevaCantidad}`, 'info');
 };
 
-// Función global para eliminar item del carrito
 window.eliminarDelCarrito = function(index) {
     if (index >= 0 && index < appState.carrito.length) {
         const productoNombre = appState.carrito[index].producto.nombre;
         appState.carrito.splice(index, 1);
         
-        // Si el carrito queda vacío, resetear descuento
         if (appState.carrito.length === 0) {
             appState.descuento = { tipo: 'porcentaje', valor: 0 };
             const descuentoInput = document.getElementById('descuento-input');
@@ -850,6 +876,7 @@ window.eliminarDelCarrito = function(index) {
         }
         
         actualizarCarritoUI();
+        guardarEstadoCarrito();
         showNotification(`${productoNombre} eliminado del carrito`, 'info');
     }
 };
@@ -871,8 +898,12 @@ function limpiarCarrito() {
     if (descuentoInput) descuentoInput.value = '';
     if (descuentoTipo) descuentoTipo.value = 'porcentaje';
     
+    const pagoMonto = document.getElementById('pago-monto');
+    if (pagoMonto) pagoMonto.value = '';
+    
     actualizarCarritoUI();
     actualizarPagosUI();
+    guardarEstadoCarrito();
     showNotification('Carrito vaciado', 'info');
 }
 
@@ -902,23 +933,21 @@ function aplicarDescuento() {
     
     appState.descuento = { tipo, valor };
     actualizarCarritoUI();
+    guardarEstadoCarrito();
     showNotification('Descuento aplicado correctamente', 'success');
 }
 
 // ==================== MEDIOS DE PAGO ====================
 function seleccionarMedioPago(medio) {
-    // Quitar clase active de todos los botones
     document.querySelectorAll('.btn-pago').forEach(btn => {
         btn.classList.remove('active');
     });
     
-    // Agregar clase active al botón seleccionado
     const botonSeleccionado = document.querySelector(`.btn-pago[data-medio="${medio}"]`);
     if (botonSeleccionado) {
         botonSeleccionado.classList.add('active');
     }
     
-    // Actualizar placeholder del input de monto
     const pagoMonto = document.getElementById('pago-monto');
     if (pagoMonto) {
         pagoMonto.placeholder = `Monto en ${medio}`;
@@ -935,7 +964,6 @@ function getMedioPagoIcon(medio) {
     }
 }
 
-// Función global para eliminar todos los pagos de un medio específico
 window.eliminarPagosPorMedio = function(medio) {
     if (!confirm(`¿Eliminar todos los pagos de ${medio}?`)) {
         return;
@@ -943,11 +971,11 @@ window.eliminarPagosPorMedio = function(medio) {
     
     appState.pagos = appState.pagos.filter(pago => pago.medio !== medio);
     actualizarPagosUI();
+    guardarEstadoCarrito();
     showNotification(`Pagos de ${medio} eliminados`, 'info');
 };
 
 function agregarPago() {
-    // Verificar que haya un medio de pago seleccionado
     const medioElement = document.querySelector('.btn-pago.active');
     if (!medioElement) {
         showNotification('Seleccione un medio de pago primero', 'warning');
@@ -960,7 +988,6 @@ function agregarPago() {
     
     let monto = parseFloat(pagoMonto.value);
     
-    // Si no se ingresó monto, usar el faltante
     if (!monto || monto <= 0) {
         const totalAPagarEl = document.getElementById('carrito-total');
         if (!totalAPagarEl) return;
@@ -982,13 +1009,11 @@ function agregarPago() {
         return;
     }
     
-    // Agregar pago al estado
     appState.pagos.push({ medio, monto });
     
-    // Actualizar UI
     actualizarPagosUI();
+    guardarEstadoCarrito();
     
-    // Limpiar input y mantener foco
     pagoMonto.value = '';
     pagoMonto.focus();
     
@@ -1003,7 +1028,6 @@ function actualizarPagosUI() {
     
     if (!container || !totalPagadoEl || !cambioEl || !btnFinalizar) return;
     
-    // Si no hay pagos
     if (appState.pagos.length === 0) {
         container.innerHTML = `
             <div class="empty-pagos">
@@ -1018,7 +1042,6 @@ function actualizarPagosUI() {
         return;
     }
     
-    // Agrupar pagos por medio
     const pagosAgrupados = {};
     let totalPagado = 0;
     
@@ -1030,17 +1053,14 @@ function actualizarPagosUI() {
         totalPagado += pago.monto;
     });
     
-    // Calcular total a pagar y cambio
     const totalAPagarEl = document.getElementById('carrito-total');
     if (!totalAPagarEl) return;
     
     const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('$ ', ''));
     const cambio = totalPagado - totalAPagar;
     
-    // Limpiar contenedor
     container.innerHTML = '';
     
-    // Agregar cada pago agrupado
     Object.entries(pagosAgrupados).forEach(([medio, monto], index) => {
         const div = document.createElement('div');
         div.className = 'pago-item';
@@ -1060,7 +1080,6 @@ function actualizarPagosUI() {
         container.appendChild(div);
     });
     
-    // Actualizar totales
     totalPagadoEl.textContent = `$ ${totalPagado.toFixed(2)}`;
     
     if (cambio >= 0) {
@@ -1071,11 +1090,9 @@ function actualizarPagosUI() {
         cambioEl.className = 'cambio-negativo';
     }
     
-    // Habilitar/deshabilitar botón finalizar
     const puedeFinalizar = appState.carrito.length > 0 && totalPagado >= totalAPagar;
     btnFinalizar.disabled = !puedeFinalizar;
     
-    // Actualizar placeholder del input de monto
     const pagoMontoInput = document.getElementById('pago-monto');
     if (pagoMontoInput) {
         if (cambio < 0) {
@@ -1088,22 +1105,24 @@ function actualizarPagosUI() {
         }
     }
     
-    // Enfocar botón finalizar si se puede finalizar
     if (puedeFinalizar) {
         setTimeout(() => btnFinalizar.focus(), 100);
+    }
+    
+    // Limpiar campo de monto después de actualizar
+    if (pagoMontoInput) {
+        pagoMontoInput.value = '';
     }
 }
 
 // ==================== FINALIZACIÓN DE VENTA ====================
 async function finalizarVenta() {
-    // Verificar que haya caja activa
     if (!appState.cajaActiva) {
         showNotification('No hay caja activa. Abra una caja primero.', 'error');
         showSection('caja');
         return;
     }
     
-    // Verificar que el carrito no esté vacío
     if (appState.carrito.length === 0) {
         showNotification('El carrito está vacío', 'warning');
         return;
@@ -1115,7 +1134,6 @@ async function finalizarVenta() {
     const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('$ ', ''));
     const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
     
-    // Verificar que el pago cubra el total
     if (totalPagado < totalAPagar) {
         showNotification('El pago no cubre el total de la venta', 'error');
         return;
@@ -1124,12 +1142,10 @@ async function finalizarVenta() {
     const btnFinalizar = document.getElementById('btn-finalizar-venta');
     if (!btnFinalizar) return;
     
-    // Mostrar estado de carga
     btnFinalizar.disabled = true;
     btnFinalizar.classList.add('loading');
     
     try {
-        // Verificar stock de todos los productos
         for (const item of appState.carrito) {
             const { data: producto, error } = await supabaseClient
                 .from('productos')
@@ -1144,7 +1160,6 @@ async function finalizarVenta() {
             }
         }
         
-        // Calcular totales
         const subtotal = appState.carrito.reduce((sum, item) => 
             sum + (item.cantidad * item.precioUnitario), 0);
         
@@ -1155,7 +1170,6 @@ async function finalizarVenta() {
         
         const total = subtotal - descuento;
         
-        // Generar número de ticket
         const hoy = new Date();
         const fechaStr = hoy.toISOString().split('T')[0].replace(/-/g, '');
         
@@ -1184,7 +1198,6 @@ async function finalizarVenta() {
         
         const ticketId = `T-${fechaStr}-${numero.toString().padStart(4, '0')}`;
         
-        // Crear registro de venta
         const ventaData = {
             ticket_id: ticketId,
             caja_id: appState.cajaActiva.id,
@@ -1202,7 +1215,6 @@ async function finalizarVenta() {
         
         if (ventaError) throw ventaError;
         
-        // Crear detalles de venta y actualizar stock
         for (const item of appState.carrito) {
             const detalleData = {
                 venta_id: venta.id,
@@ -1218,7 +1230,6 @@ async function finalizarVenta() {
             
             if (detalleError) throw detalleError;
             
-            // Actualizar stock del producto
             const { error: stockError } = await supabaseClient
                 .from('productos')
                 .update({ stock: item.producto.stock - item.cantidad })
@@ -1227,7 +1238,6 @@ async function finalizarVenta() {
             if (stockError) throw stockError;
         }
         
-        // Registrar pagos
         for (const pago of appState.pagos) {
             const pagoData = {
                 venta_id: venta.id,
@@ -1242,10 +1252,8 @@ async function finalizarVenta() {
             if (pagoError) throw pagoError;
         }
         
-        // Generar e imprimir ticket (versión mejorada con ESC/POS)
         await generarTicket(venta);
         
-        // Limpiar estado
         appState.carrito = [];
         appState.pagos = [];
         appState.descuento = { tipo: 'porcentaje', valor: 0 };
@@ -1256,17 +1264,14 @@ async function finalizarVenta() {
         if (descuentoInput) descuentoInput.value = '';
         if (descuentoTipo) descuentoTipo.value = 'porcentaje';
         
-        // Actualizar UI
         actualizarCarritoUI();
         actualizarPagosUI();
+        limpiarEstadoCarrito(); // Limpiar localStorage después de venta exitosa
         
-        // Actualizar estado de caja
         await verificarCajaActiva();
         
-        // Mostrar notificación de éxito
         showNotification(`Venta finalizada: ${ticketId}`, 'success');
         
-        // Volver a enfocar el scanner
         const scannerInput = document.getElementById('scanner-input');
         if (scannerInput) scannerInput.focus();
         
@@ -1279,37 +1284,29 @@ async function finalizarVenta() {
             btnFinalizar.classList.remove('loading');
         }
         
-        // Actualizar ventas del día en caja
         await cargarVentasDelDiaEnCaja();
     }
 }
 
 // ==================== IMPRESIÓN ESC/POS ====================
-/**
- * Solicita acceso a la impresora térmica USB (Xprinter XP-58II)
- */
 async function requestPrinter() {
-    // Si ya tenemos un dispositivo conectado, lo devolvemos
     if (appState.usbPrinterDevice) {
         return appState.usbPrinterDevice;
     }
     
-    // Verificar si WebUSB está disponible
     if (!navigator.usb) {
         console.warn('WebUSB no está soportado en este navegador. Se usará impresión HTML.');
         return null;
     }
     
     try {
-        // Solicitar dispositivo con filtros opcionales (más específicos para XP-58II)
         const device = await navigator.usb.requestDevice({
             filters: [
-                { vendorId: 0x0416 },  // Xprinter / Wincor Nixdorf
-                { vendorId: 0x0525 }    // Dispositivos genéricos
+                { vendorId: 0x0416 },
+                { vendorId: 0x0525 }
             ]
         });
         
-        // Abrir sesión y reclamar interfaz
         await device.open();
         if (device.configuration === null) {
             await device.selectConfiguration(1);
@@ -1326,14 +1323,11 @@ async function requestPrinter() {
     }
 }
 
-/**
- * Envía un buffer de bytes a la impresora USB
- */
-async function sendESC/POSBuffer(device, buffer) {
+async function sendESCPOSBuffer(device, buffer) {
     if (!device) return false;
     try {
         const data = new Uint8Array(buffer);
-        const result = await device.transferOut(1, data); // Endpoint OUT 1
+        const result = await device.transferOut(1, data);
         return result.bytesWritten === data.length;
     } catch (error) {
         console.error('Error enviando datos a la impresora:', error);
@@ -1341,25 +1335,18 @@ async function sendESC/POSBuffer(device, buffer) {
     }
 }
 
-/**
- * Construye y envía el ticket mediante comandos ESC/POS.
- * Retorna true si se imprimió correctamente, false en caso contrario.
- */
-async function printESC/POSTicket(venta, configMap, carrito, pagos, usuario, cambio) {
+async function printESCPOSTicket(venta, configMap, carrito, pagos, usuario, cambio) {
     const device = await requestPrinter();
     if (!device) return false;
     
-    // Reiniciar buffer
     appState.escposBuffer = [];
     
-    // ---------- FUNCIONES AUXILIARES ----------
     const addBytes = (...bytes) => {
         appState.escposBuffer.push(...bytes);
     };
     
     const addText = (text) => {
         if (!text) return;
-        // Codificar a UTF-8
         const encoder = new TextEncoder();
         const encoded = encoder.encode(text + '\n');
         appState.escposBuffer.push(...encoded);
@@ -1369,25 +1356,21 @@ async function printESC/POSTicket(venta, configMap, carrito, pagos, usuario, cam
         addText(text);
     };
     
-    // Separador de línea (40 guiones)
     const separator = () => {
         addText('----------------------------------------');
     };
     
-    // ---------- INICIO ----------
-    addBytes(0x1B, 0x40); // ESC @ (Inicializar)
+    addBytes(0x1B, 0x40);
     
-    // ---------- ENCABEZADO (centrado, doble tamaño) ----------
-    addBytes(0x1B, 0x61, 0x01); // ESC a 1 (centrado)
-    addBytes(0x1D, 0x21, 0x11); // GS ! 17 (doble alto + doble ancho)
+    addBytes(0x1B, 0x61, 0x01);
+    addBytes(0x1D, 0x21, 0x11);
     addText(configMap.ticket_encabezado || 'AFMSOLUTIONS');
-    addBytes(0x1D, 0x21, 0x00); // GS ! 0 (tamaño normal)
+    addBytes(0x1D, 0x21, 0x00);
     addText(configMap.ticket_encabezado_extra || 'SISTEMA POS');
     addText(configMap.empresa_direccion || 'LOCAL COMERCIAL');
     separator();
     
-    // ---------- INFORMACIÓN DE LA VENTA (izquierda) ----------
-    addBytes(0x1B, 0x61, 0x00); // ESC a 0 (izquierda)
+    addBytes(0x1B, 0x61, 0x00);
     
     const fecha = new Date(venta.fecha);
     const fechaFormateada = `${fecha.getDate().toString().padStart(2,'0')}/${(fecha.getMonth()+1).toString().padStart(2,'0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2,'0')}:${fecha.getMinutes().toString().padStart(2,'0')}:${fecha.getSeconds().toString().padStart(2,'0')}`;
@@ -1397,10 +1380,9 @@ async function printESC/POSTicket(venta, configMap, carrito, pagos, usuario, cam
     addText(`Vendedor: ${usuario?.username || ''}`);
     separator();
     
-    // ---------- DETALLE DE PRODUCTOS (negrita para cabecera) ----------
-    addBytes(0x1B, 0x45, 0x01); // ESC E 1 (negrita ON)
+    addBytes(0x1B, 0x45, 0x01);
     addText('ARTÍCULO             CANT  IMPORTE');
-    addBytes(0x1B, 0x45, 0x00); // ESC E 0 (negrita OFF)
+    addBytes(0x1B, 0x45, 0x00);
     
     carrito.forEach(item => {
         const nombre = item.producto.nombre.length > 20 ? 
@@ -1413,14 +1395,12 @@ async function printESC/POSTicket(venta, configMap, carrito, pagos, usuario, cam
     });
     separator();
     
-    // ---------- TOTALES ----------
     addText(`Subtotal: $${venta.subtotal.toFixed(2)}`);
     addText(`Descuento: $${venta.descuento.toFixed(2)}`);
-    addBytes(0x1B, 0x45, 0x01); // Negrita ON
+    addBytes(0x1B, 0x45, 0x01);
     addText(`TOTAL: $${venta.total.toFixed(2)}`);
-    addBytes(0x1B, 0x45, 0x00); // Negrita OFF
+    addBytes(0x1B, 0x45, 0x00);
     
-    // ---------- PAGOS ----------
     addText('');
     addText('PAGOS:');
     pagos.forEach(pago => {
@@ -1432,34 +1412,26 @@ async function printESC/POSTicket(venta, configMap, carrito, pagos, usuario, cam
     }
     separator();
     
-    // ---------- PIE DE PÁGINA (centrado) ----------
-    addBytes(0x1B, 0x61, 0x01); // Centrado
+    addBytes(0x1B, 0x61, 0x01);
     addText(configMap.ticket_pie || '¡Gracias por su compra!');
     addText(configMap.ticket_legal || 'Conserve su ticket');
     addText(configMap.empresa_contacto || '');
     addText('');
     addText(' ');
     
-    // ---------- CORTE DE PAPEL ----------
-    addBytes(0x1D, 0x56, 0x00); // GS V 0 (corte total)
+    addBytes(0x1D, 0x56, 0x00);
     
-    // ---------- ENVÍO ----------
-    const success = await sendESC/POSBuffer(device, appState.escposBuffer);
+    const success = await sendESCPOSBuffer(device, appState.escposBuffer);
     if (success) {
         showNotification('Ticket impreso correctamente', 'success');
     }
     return success;
 }
 
-/**
- * Método de respaldo: impresión mediante ventana HTML + window.print()
- */
 function printViaHTML(venta, configMap, carrito, pagos, usuario, cambio) {
-    // Formatear fecha
     const fecha = new Date(venta.fecha);
     const fechaFormateada = `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2, '0')}:${fecha.getMinutes().toString().padStart(2, '0')}:${fecha.getSeconds().toString().padStart(2, '0')}`;
     
-    // Generar HTML del ticket
     let itemsHTML = '';
     carrito.forEach(item => {
         const totalItem = item.cantidad * item.precioUnitario;
@@ -1537,13 +1509,8 @@ function printViaHTML(venta, configMap, carrito, pagos, usuario, cambio) {
     return true;
 }
 
-/**
- * Genera el ticket e intenta imprimirlo primero con ESC/POS.
- * Si falla o no hay WebUSB, usa el método HTML.
- */
 async function generarTicket(venta) {
     try {
-        // Obtener configuración
         const { data: config, error } = await supabaseClient
             .from('configuracion')
             .select('*');
@@ -1557,8 +1524,7 @@ async function generarTicket(venta) {
         
         const cambio = appState.pagos.reduce((s, p) => s + p.monto, 0) - venta.total;
         
-        // Intentar impresión ESC/POS
-        const escposSuccess = await printESC/POSTicket(
+        const escposSuccess = await printESCPOSTicket(
             venta,
             configMap,
             appState.carrito,
@@ -1568,7 +1534,6 @@ async function generarTicket(venta) {
         );
         
         if (!escposSuccess) {
-            // Fallback a impresión HTML
             printViaHTML(
                 venta,
                 configMap,
@@ -1582,7 +1547,6 @@ async function generarTicket(venta) {
     } catch (error) {
         console.error('Error generando ticket:', error);
         showNotification('Error al generar el ticket', 'error');
-        // Intentar HTML como último recurso
         try {
             const { data: config } = await supabaseClient.from('configuracion').select('*');
             const configMap = {};
@@ -1651,7 +1615,6 @@ function actualizarUIEstadoCaja() {
     if (!statusElement || !statusDetalle || !operaciones) return;
     
     if (appState.cajaActiva) {
-        // Caja abierta
         statusElement.innerHTML = `<i class="fas fa-circle"></i> Caja: Abierta`;
         statusElement.classList.add('abierta');
         
@@ -1671,7 +1634,6 @@ function actualizarUIEstadoCaja() {
         cargarVentasDelDiaEnCaja();
         
     } else {
-        // Caja cerrada
         statusElement.innerHTML = `<i class="fas fa-circle"></i> Caja: Cerrada`;
         statusElement.classList.remove('abierta');
         
@@ -3496,7 +3458,6 @@ window.agregarDesdeBuscador = async function(id) {
         
         if (error) throw error;
         
-        // Agregar producto directamente al carrito
         const index = appState.carrito.findIndex(item => 
             item.producto.id === producto.id);
         
@@ -3513,6 +3474,7 @@ window.agregarDesdeBuscador = async function(id) {
         }
         
         actualizarCarritoUI();
+        guardarEstadoCarrito();
         
         const modal = document.getElementById('modal-buscador');
         if (modal) modal.classList.remove('active');

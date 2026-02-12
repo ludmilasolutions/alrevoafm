@@ -746,17 +746,8 @@
 
     <!-- Scripts -->
     <script src="app.js"></script>
-    <!-- NOTA: El manejador del botón de tema se ha movido a app.js para centralizar la lógica -->
+    <!-- El manejo del tema y el icono se realiza completamente en app.js -->
     <script>
-        // Inicializar icono de tema según la clase del body
-        (function() {
-            const isDark = document.body.classList.contains('dark');
-            const icon = document.getElementById('theme-toggle')?.querySelector('i');
-            if (icon) {
-                icon.className = isDark ? 'fas fa-sun' : 'fas fa-moon';
-            }
-        })();
-
         // Feedback auditivo opcional para scanner (solo si el usuario acepta)
         let audioContext;
         try {

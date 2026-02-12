@@ -9,6 +9,7 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛒</text></svg>">
     <link rel="icon" type="image/png" href="https://img.icons8.com/color/96/000000/checkout.png">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
+    <!-- Script para aplicar el tema guardado antes de que se pinte la página (evita parpadeo) -->
     <script>
         (function() {
             const savedTheme = localStorage.getItem('theme');
@@ -745,33 +746,14 @@
 
     <!-- Scripts -->
     <script src="app.js"></script>
+    <!-- NOTA: El manejador del botón de tema se ha movido a app.js para centralizar la lógica -->
     <script>
-        // Toggle tema claro/oscuro
-        document.getElementById('theme-toggle').addEventListener('click', function() {
-            const body = document.body;
-            const isDark = body.classList.contains('dark');
-            const icon = this.querySelector('i');
-            
-            if (isDark) {
-                body.classList.remove('dark');
-                localStorage.setItem('theme', 'light');
-                icon.classList.remove('fa-sun');
-                icon.classList.add('fa-moon');
-            } else {
-                body.classList.add('dark');
-                localStorage.setItem('theme', 'dark');
-                icon.classList.remove('fa-moon');
-                icon.classList.add('fa-sun');
-            }
-        });
-
-        // Inicializar icono de tema
+        // Inicializar icono de tema según la clase del body
         (function() {
             const isDark = document.body.classList.contains('dark');
-            const icon = document.getElementById('theme-toggle').querySelector('i');
-            if (isDark) {
-                icon.classList.remove('fa-moon');
-                icon.classList.add('fa-sun');
+            const icon = document.getElementById('theme-toggle')?.querySelector('i');
+            if (icon) {
+                icon.className = isDark ? 'fas fa-sun' : 'fas fa-moon';
             }
         })();
 

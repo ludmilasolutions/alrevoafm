@@ -1,6 +1,7 @@
 // ==================== CONFIGURACIÓN SUPABASE ====================
 const SUPABASE_URL = 'https://nptthngcshkbuavkjujf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wdHRobmdjc2hrYnVhdmtqdWpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyNTAyMTcsImV4cCI6MjA4NTgyNjIxN30.0P2Yf-wHtNzgoIFLEN-DYME85NFEjKtmz2cyIkyuZfg';
+
 // ==================== CERTIFICADO QZ TRAY ====================
 const QZ_CERTIFICATE = `-----BEGIN CERTIFICATE-----
 MIIECzCCAvOgAwIBAgIGAZxaycxeMA0GCSqGSIb3DQEBCwUAMIGiMQswCQYDVQQG
@@ -26,6 +27,7 @@ SJxMqoqoEMdCFwRqW0rbEfdiWo8MsTKlaZ/joA6KW4exKRMV+ZYg87t/F9teNqKt
 IHmTKTpZGhQw9PEjD27f7dI+uhTmkil2I8iTsS4ryyeoLExLOHVsr0sLBO7Vkv3o
 cvOatGI5O2FxIKtCitM1ydMHAtTG91K0G02zy66Pdg==
 -----END CERTIFICATE-----`;
+
 // Inicialización única de Supabase
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -38,7 +40,6 @@ let appState = {
     descuento: { tipo: 'porcentaje', valor: 0 },
     cajaActiva: null,
     modoOscuro: window.matchMedia('(prefers-color-scheme: dark)').matches,
-    // Eliminadas variables obsoletas de impresión USB
 };
 
 // ==================== VARIABLES QZ TRAY ====================
@@ -80,7 +81,6 @@ function limpiarEstadoCarrito() {
 
 // ==================== TEMA (MODO OSCURO/CLARO) ====================
 function initTheme() {
-    // Leer tema guardado
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme) {
         document.body.classList.add(savedTheme);
@@ -92,7 +92,6 @@ function initTheme() {
             appState.modoOscuro = true;
         }
     }
-    // Actualizar icono del botón
     updateThemeIcon();
 }
 
@@ -122,8 +121,7 @@ function updateThemeIcon() {
 // ==================== INICIALIZACIÓN ====================
 document.addEventListener('DOMContentLoaded', function() {
     initApp();
-    initTheme(); // Aplicar tema al cargar
-    // Evento del botón de tema
+    initTheme();
     const themeBtn = document.getElementById('theme-toggle');
     if (themeBtn) {
         themeBtn.addEventListener('click', toggleTheme);
@@ -137,10 +135,10 @@ async function initApp() {
         setupKeyboardShortcuts();
         await verificarCajaActiva();
         inicializarFechasReportes();
-        restaurarEstadoCarrito(); // Restaurar carrito si existe
-        
+        restaurarEstadoCarrito();
+
         console.log('Sistema POS inicializado correctamente');
-        
+
         setTimeout(() => {
             verifyCriticalElements();
         }, 1000);
@@ -156,7 +154,7 @@ function verifyCriticalElements() {
         'carrito-items',
         'btn-finalizar-venta'
     ];
-    
+
     criticalElements.forEach(id => {
         const element = document.getElementById(id);
         if (!element) {
@@ -169,12 +167,12 @@ function verifyCriticalElements() {
 async function checkSession() {
     try {
         const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
-        
+
         if (sessionError) {
             console.error('Error de sesión:', sessionError);
             return;
         }
-        
+
         if (session && session.user) {
             appState.usuario = {
                 id: session.user.id,
@@ -183,17 +181,17 @@ async function checkSession() {
                 activo: true
             };
             appState.permisos = ['cargar_productos', 'acceder_caja'];
-            
+
             try {
                 const { data: usuarioReal, error: usuarioError } = await supabaseClient
                     .from('usuarios')
                     .select('*')
                     .eq('id', session.user.id)
                     .single();
-                
+
                 if (!usuarioError && usuarioReal) {
                     appState.usuario = usuarioReal;
-                    
+
                     if (usuarioReal.rol === 'Cajero') {
                         try {
                             const { data: permisosData } = await supabaseClient
@@ -201,7 +199,7 @@ async function checkSession() {
                                 .select('permiso')
                                 .eq('usuario_id', session.user.id)
                                 .eq('activo', true);
-                            
+
                             if (permisosData) {
                                 appState.permisos = permisosData.map(p => p.permiso);
                             }
@@ -221,22 +219,22 @@ async function checkSession() {
             } catch (bdError) {
                 console.warn('Error cargando datos de BD, usando datos básicos:', bdError);
             }
-            
+
             document.getElementById('login-screen').style.display = 'none';
             document.getElementById('app').style.display = 'flex';
             document.getElementById('user-name').textContent = appState.usuario.username;
-            
+
             setTimeout(() => {
                 updateNavigationPermissions();
             }, 100);
-            
+
             if (document.getElementById('seccion-venta').classList.contains('active')) {
                 setTimeout(() => {
                     const scanner = document.getElementById('scanner-input');
                     if (scanner) scanner.focus();
                 }, 200);
             }
-            
+
             setTimeout(() => verificarCajaActiva(), 500);
         }
     } catch (error) {
@@ -246,27 +244,27 @@ async function checkSession() {
 
 document.getElementById('login-form').addEventListener('submit', async function(e) {
     e.preventDefault();
-    
+
     const email = document.getElementById('login-email').value;
     const password = document.getElementById('login-password').value;
     const loginBtn = document.getElementById('login-btn');
-    
+
     if (!email || !password) {
         showNotification('Por favor ingrese email y contraseña', 'warning');
         return;
     }
-    
+
     loginBtn.classList.add('loading');
     loginBtn.disabled = true;
-    
+
     try {
         const { data, error } = await supabaseClient.auth.signInWithPassword({
             email,
             password
         });
-        
+
         if (error) throw error;
-        
+
         if (data.user) {
             appState = {
                 usuario: null,
@@ -277,7 +275,7 @@ document.getElementById('login-form').addEventListener('submit', async function(
                 cajaActiva: null,
                 modoOscuro: appState.modoOscuro
             };
-            
+
             await checkSession();
             showNotification('Sesión iniciada correctamente', 'success');
         }
@@ -296,9 +294,9 @@ document.getElementById('logout-btn').addEventListener('click', async function()
     try {
         const { error } = await supabaseClient.auth.signOut();
         if (error) throw error;
-        
-        limpiarEstadoCarrito(); // Limpiar carrito persistente
-        
+
+        limpiarEstadoCarrito();
+
         appState = {
             usuario: null,
             permisos: [],
@@ -308,7 +306,7 @@ document.getElementById('logout-btn').addEventListener('click', async function()
             cajaActiva: null,
             modoOscuro: appState.modoOscuro
         };
-        
+
         document.getElementById('carrito-items').innerHTML = `
             <div class="empty-carrito">
                 <i class="fas fa-shopping-cart fa-3x"></i>
@@ -316,14 +314,14 @@ document.getElementById('logout-btn').addEventListener('click', async function()
                 <p>Escanee un producto o use F6 para buscar</p>
             </div>
         `;
-        
+
         document.getElementById('pagos-lista').innerHTML = `
             <div class="empty-pagos">
                 <i class="fas fa-receipt fa-2x"></i>
                 <p>No hay pagos registrados</p>
             </div>
         `;
-        
+
         document.getElementById('carrito-subtotal').textContent = '$ 0.00';
         document.getElementById('carrito-descuento').textContent = '$ 0.00';
         document.getElementById('carrito-total').textContent = '$ 0.00';
@@ -331,12 +329,12 @@ document.getElementById('logout-btn').addEventListener('click', async function()
         document.getElementById('total-pagado').textContent = '$ 0.00';
         document.getElementById('total-cambio').textContent = '$ 0.00';
         document.getElementById('btn-finalizar-venta').disabled = true;
-        
+
         document.getElementById('app').style.display = 'none';
         document.getElementById('login-screen').style.display = 'flex';
         document.getElementById('login-error').style.display = 'none';
         document.getElementById('login-form').reset();
-        
+
         showNotification('Sesión cerrada correctamente', 'success');
     } catch (error) {
         console.error('Error en logout:', error);
@@ -349,17 +347,17 @@ async function hasPermission(permiso) {
     if (appState.usuario?.rol === 'Administrador') {
         return true;
     }
-    
+
     return appState.permisos.includes(permiso);
 }
 
 function updateNavigationPermissions() {
     const navLinks = document.querySelectorAll('.nav-link');
     const isAdmin = appState.usuario?.rol === 'Administrador';
-    
+
     navLinks.forEach(link => {
         const section = link.dataset.section;
-        
+
         switch(section) {
             case 'caja':
                 link.style.display = (isAdmin || appState.permisos.includes('acceder_caja')) ? 'flex' : 'none';
@@ -383,13 +381,13 @@ function setupEventListeners() {
             e.preventDefault();
             const targetSection = this.dataset.section;
             showSection(targetSection);
-            
+
             if (window.innerWidth < 768) {
                 document.getElementById('main-nav').classList.remove('active');
             }
         });
     });
-    
+
     const menuToggle = document.getElementById('menu-toggle');
     if (menuToggle) {
         menuToggle.addEventListener('click', function() {
@@ -397,19 +395,19 @@ function setupEventListeners() {
             if (nav) nav.classList.toggle('active');
         });
     }
-    
+
     document.addEventListener('click', function(e) {
         const nav = document.getElementById('main-nav');
         const toggle = document.getElementById('menu-toggle');
-        
-        if (window.innerWidth < 768 && 
-            nav && nav.classList.contains('active') && 
-            !nav.contains(e.target) && 
+
+        if (window.innerWidth < 768 &&
+            nav && nav.classList.contains('active') &&
+            !nav.contains(e.target) &&
             toggle && !toggle.contains(e.target)) {
             nav.classList.remove('active');
         }
     });
-    
+
     const scannerInput = document.getElementById('scanner-input');
     if (scannerInput) {
         scannerInput.addEventListener('keypress', async function(e) {
@@ -422,7 +420,7 @@ function setupEventListeners() {
                 }
             }
         });
-        
+
         scannerInput.addEventListener('paste', async function(e) {
             setTimeout(async () => {
                 const codigo = this.value.trim();
@@ -433,22 +431,22 @@ function setupEventListeners() {
             }, 10);
         });
     }
-    
+
     const btnBuscarManual = document.getElementById('btn-buscar-manual');
     if (btnBuscarManual) {
         btnBuscarManual.addEventListener('click', showBuscadorManual);
     }
-    
+
     const btnLimpiarCarrito = document.getElementById('btn-limpiar-carrito');
     if (btnLimpiarCarrito) {
         btnLimpiarCarrito.addEventListener('click', limpiarCarrito);
     }
-    
+
     const btnAplicarDescuento = document.getElementById('btn-aplicar-descuento');
     if (btnAplicarDescuento) {
         btnAplicarDescuento.addEventListener('click', aplicarDescuento);
     }
-    
+
     document.querySelectorAll('.btn-pago').forEach(btn => {
         btn.addEventListener('click', function() {
             seleccionarMedioPago(this.dataset.medio);
@@ -459,7 +457,7 @@ function setupEventListeners() {
                     const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('$ ', ''));
                     const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
                     const falta = totalAPagar - totalPagado;
-                    
+
                     if (falta > 0) {
                         pagoMonto.value = falta.toFixed(2);
                         pagoMonto.select();
@@ -468,98 +466,98 @@ function setupEventListeners() {
             }, 100);
         });
     });
-    
+
     const btnAgregarPago = document.getElementById('btn-agregar-pago');
     if (btnAgregarPago) {
         btnAgregarPago.addEventListener('click', agregarPago);
     }
-    
+
     document.getElementById('pago-monto')?.addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
             agregarPago();
         }
     });
-    
+
     const btnFinalizarVenta = document.getElementById('btn-finalizar-venta');
     if (btnFinalizarVenta) {
         btnFinalizarVenta.addEventListener('click', finalizarVenta);
     }
-    
+
     const btnCancelarVenta = document.getElementById('btn-cancelar-venta');
     if (btnCancelarVenta) {
         btnCancelarVenta.addEventListener('click', cancelarVenta);
     }
-    
+
     const btnNuevoProducto = document.getElementById('btn-nuevo-producto');
     if (btnNuevoProducto) {
         btnNuevoProducto.addEventListener('click', () => mostrarModalProducto());
     }
-    
+
     const btnRefrescarProductos = document.getElementById('btn-refrescar-productos');
     if (btnRefrescarProductos) {
         btnRefrescarProductos.addEventListener('click', cargarProductos);
     }
-    
+
     const btnFiltrarProductos = document.getElementById('btn-filtrar-productos');
     if (btnFiltrarProductos) {
         btnFiltrarProductos.addEventListener('click', cargarProductos);
     }
-    
+
     const filtroProductos = document.getElementById('filtro-productos');
     if (filtroProductos) {
         filtroProductos.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') cargarProductos();
         });
     }
-    
+
     const btnVentasHoy = document.getElementById('btn-ventas-hoy');
     if (btnVentasHoy) {
         btnVentasHoy.addEventListener('click', cargarVentasHoy);
     }
-    
+
     const btnFiltrarHistorial = document.getElementById('btn-filtrar-historial');
     if (btnFiltrarHistorial) {
         btnFiltrarHistorial.addEventListener('click', cargarHistorial);
     }
-    
+
     const btnCerrarCaja = document.getElementById('btn-cerrar-caja');
     if (btnCerrarCaja) {
         btnCerrarCaja.addEventListener('click', cerrarCaja);
     }
-    
+
     document.getElementById('btn-filtrar-cajas')?.addEventListener('click', cargarHistorialCajas);
     document.getElementById('btn-cargar-detalles')?.addEventListener('click', cargarDetallesCajaDia);
     document.getElementById('btn-imprimir-resumen')?.addEventListener('click', imprimirResumenCaja);
-    
+
     const btnGenerarReporte = document.getElementById('btn-generar-reporte');
     if (btnGenerarReporte) {
         btnGenerarReporte.addEventListener('click', generarReporte);
     }
-    
+
     const btnRefrescarReportes = document.getElementById('btn-refrescar-reportes');
     if (btnRefrescarReportes) {
         btnRefrescarReportes.addEventListener('click', generarReporte);
     }
-    
+
     const btnImprimirReporte = document.getElementById('btn-imprimir-reporte');
     if (btnImprimirReporte) {
         btnImprimirReporte.addEventListener('click', imprimirReporte);
     }
-    
+
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             const tabId = this.dataset.tab;
             mostrarTabConfiguracion(tabId);
         });
     });
-    
+
     document.querySelectorAll('.modal-close').forEach(btn => {
         btn.addEventListener('click', function() {
             const modal = this.closest('.modal');
             if (modal) modal.classList.remove('active');
         });
     });
-    
+
     document.querySelectorAll('.modal').forEach(modal => {
         modal.addEventListener('click', function(e) {
             if (e.target === this) {
@@ -567,32 +565,32 @@ function setupEventListeners() {
             }
         });
     });
-    
+
     const btnBuscarProductos = document.getElementById('btn-buscar-productos');
     if (btnBuscarProductos) {
         btnBuscarProductos.addEventListener('click', buscarProductosManual);
     }
-    
+
     const formProducto = document.getElementById('form-producto');
     if (formProducto) {
         formProducto.addEventListener('submit', guardarProducto);
     }
-    
+
     const precioCostoInput = document.getElementById('producto-precio-costo');
     if (precioCostoInput) {
         precioCostoInput.addEventListener('input', calcularPrecioVenta);
     }
-    
+
     const margenInput = document.getElementById('producto-margen');
     if (margenInput) {
         margenInput.addEventListener('input', calcularPrecioVenta);
     }
-    
+
     const precioVentaInput = document.getElementById('producto-precio-venta');
     if (precioVentaInput) {
         precioVentaInput.addEventListener('input', calcularMargen);
     }
-    
+
     const formAperturaCaja = document.getElementById('form-apertura-caja');
     if (formAperturaCaja) {
         formAperturaCaja.addEventListener('submit', abrirCaja);
@@ -603,33 +601,33 @@ function showSection(sectionId) {
     document.querySelectorAll('.content-section').forEach(section => {
         section.classList.remove('active');
     });
-    
+
     document.querySelectorAll('.nav-link').forEach(link => {
         link.classList.remove('active');
     });
-    
+
     const section = document.getElementById(`seccion-${sectionId}`);
     if (section) {
         section.classList.add('active');
     }
-    
+
     const link = document.querySelector(`.nav-link[data-section="${sectionId}"]`);
     if (link) {
         link.classList.add('active');
     }
-    
+
     const currentSection = document.getElementById('current-section');
     if (currentSection) {
         currentSection.textContent = sectionId.toUpperCase();
     }
-    
+
     if (sectionId === 'venta') {
         setTimeout(() => {
             const scanner = document.getElementById('scanner-input');
             if (scanner) scanner.focus();
         }, 100);
     }
-    
+
     switch(sectionId) {
         case 'productos':
             cargarProductos();
@@ -659,7 +657,7 @@ function setupKeyboardShortcuts() {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || window.innerWidth < 768) {
             return;
         }
-        
+
         switch(e.key) {
             case 'F1':
                 e.preventDefault();
@@ -725,7 +723,7 @@ function setupKeyboardShortcuts() {
 // ==================== GESTIÓN DE PRODUCTOS ====================
 async function buscarYAgregarProducto(codigo) {
     if (!codigo || codigo.trim() === '') return;
-    
+
     try {
         const { data: producto, error } = await supabaseClient
             .from('productos')
@@ -733,7 +731,7 @@ async function buscarYAgregarProducto(codigo) {
             .eq('codigo_barra', codigo.trim())
             .eq('activo', true)
             .single();
-        
+
         if (error) {
             if (error.code === 'PGRST116') {
                 showNotification('Producto no encontrado', 'warning');
@@ -742,11 +740,11 @@ async function buscarYAgregarProducto(codigo) {
             }
             return;
         }
-        
+
         if (producto) {
-            const index = appState.carrito.findIndex(item => 
+            const index = appState.carrito.findIndex(item =>
                 item.producto.id === producto.id);
-            
+
             if (index !== -1) {
                 appState.carrito[index].cantidad += 1;
                 showNotification(`${producto.nombre} - Cantidad aumentada a ${appState.carrito[index].cantidad}`, 'success');
@@ -758,16 +756,16 @@ async function buscarYAgregarProducto(codigo) {
                 });
                 showNotification(`${producto.nombre} agregado al carrito`, 'success');
             }
-            
+
             actualizarCarritoUI();
             guardarEstadoCarrito();
-            
+
             const scannerInput = document.getElementById('scanner-input');
             if (scannerInput) {
                 scannerInput.value = '';
                 scannerInput.focus();
             }
-            
+
             if (typeof playScanSound === 'function') {
                 playScanSound();
             }
@@ -785,9 +783,9 @@ function actualizarCarritoUI() {
     const totalEl = document.getElementById('carrito-total');
     const totalAPagarEl = document.getElementById('total-a-pagar');
     const btnFinalizar = document.getElementById('btn-finalizar-venta');
-    
+
     if (!container || !subtotalEl || !descuentoEl || !totalEl || !totalAPagarEl || !btnFinalizar) return;
-    
+
     if (appState.carrito.length === 0) {
         container.innerHTML = `
             <div class="empty-carrito">
@@ -796,26 +794,26 @@ function actualizarCarritoUI() {
                 <p>Escanee un producto o use F6 para buscar</p>
             </div>
         `;
-        
+
         subtotalEl.textContent = '$ 0.00';
         descuentoEl.textContent = '$ 0.00';
         totalEl.textContent = '$ 0.00';
         totalAPagarEl.textContent = '$ 0.00';
-        
+
         actualizarPagosUI();
-        
+
         btnFinalizar.disabled = true;
         return;
     }
-    
+
     let subtotal = 0;
-    
+
     container.innerHTML = '';
-    
+
     appState.carrito.forEach((item, index) => {
         const itemTotal = item.cantidad * item.precioUnitario;
         subtotal += itemTotal;
-        
+
         const div = document.createElement('div');
         div.className = 'carrito-item';
         div.innerHTML = `
@@ -838,10 +836,10 @@ function actualizarCarritoUI() {
                 <i class="fas fa-trash"></i>
             </button>
         `;
-        
+
         container.appendChild(div);
     });
-    
+
     let descuento = 0;
     if (appState.descuento.valor > 0) {
         if (appState.descuento.tipo === 'porcentaje') {
@@ -851,16 +849,16 @@ function actualizarCarritoUI() {
         }
         if (descuento > subtotal) descuento = subtotal;
     }
-    
+
     const total = subtotal - descuento;
-    
+
     subtotalEl.textContent = `$ ${subtotal.toFixed(2)}`;
     descuentoEl.textContent = `$ ${descuento.toFixed(2)}`;
     totalEl.textContent = `$ ${total.toFixed(2)}`;
     totalAPagarEl.textContent = `$ ${total.toFixed(2)}`;
-    
+
     actualizarPagosUI();
-    
+
     const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
     btnFinalizar.disabled = appState.carrito.length === 0 || totalPagado < total;
 }
@@ -868,17 +866,17 @@ function actualizarCarritoUI() {
 window.actualizarCantidadCarrito = function(index, delta) {
     const item = appState.carrito[index];
     const nuevaCantidad = item.cantidad + delta;
-    
+
     if (nuevaCantidad < 1) {
         eliminarDelCarrito(index);
         return;
     }
-    
+
     if (nuevaCantidad > item.producto.stock) {
         showNotification(`Stock insuficiente. Disponible: ${item.producto.stock}`, 'error');
         return;
     }
-    
+
     item.cantidad = nuevaCantidad;
     actualizarCarritoUI();
     guardarEstadoCarrito();
@@ -889,7 +887,7 @@ window.eliminarDelCarrito = function(index) {
     if (index >= 0 && index < appState.carrito.length) {
         const productoNombre = appState.carrito[index].producto.nombre;
         appState.carrito.splice(index, 1);
-        
+
         if (appState.carrito.length === 0) {
             appState.descuento = { tipo: 'porcentaje', valor: 0 };
             const descuentoInput = document.getElementById('descuento-input');
@@ -897,7 +895,7 @@ window.eliminarDelCarrito = function(index) {
             if (descuentoInput) descuentoInput.value = '';
             if (descuentoTipo) descuentoTipo.value = 'porcentaje';
         }
-        
+
         actualizarCarritoUI();
         guardarEstadoCarrito();
         showNotification(`${productoNombre} eliminado del carrito`, 'info');
@@ -906,24 +904,24 @@ window.eliminarDelCarrito = function(index) {
 
 function limpiarCarrito() {
     if (appState.carrito.length === 0) return;
-    
+
     if (!confirm('¿Está seguro de vaciar el carrito?')) {
         return;
     }
-    
+
     appState.carrito = [];
     appState.pagos = [];
     appState.descuento = { tipo: 'porcentaje', valor: 0 };
-    
+
     const descuentoInput = document.getElementById('descuento-input');
     const descuentoTipo = document.getElementById('descuento-tipo');
-    
+
     if (descuentoInput) descuentoInput.value = '';
     if (descuentoTipo) descuentoTipo.value = 'porcentaje';
-    
+
     const pagoMonto = document.getElementById('pago-monto');
     if (pagoMonto) pagoMonto.value = '';
-    
+
     actualizarCarritoUI();
     actualizarPagosUI();
     guardarEstadoCarrito();
@@ -933,27 +931,27 @@ function limpiarCarrito() {
 function aplicarDescuento() {
     const descuentoInput = document.getElementById('descuento-input');
     const descuentoTipo = document.getElementById('descuento-tipo');
-    
+
     if (!descuentoInput || !descuentoTipo) return;
-    
+
     const valor = parseFloat(descuentoInput.value) || 0;
     const tipo = descuentoTipo.value;
-    
+
     if (valor <= 0) {
         showNotification('Ingrese un valor válido para el descuento', 'warning');
         return;
     }
-    
+
     if (tipo === 'porcentaje' && valor > 100) {
         showNotification('El descuento porcentual no puede ser mayor a 100%', 'warning');
         return;
     }
-    
+
     if (appState.carrito.length === 0) {
         showNotification('El carrito está vacío', 'warning');
         return;
     }
-    
+
     appState.descuento = { tipo, valor };
     actualizarCarritoUI();
     guardarEstadoCarrito();
@@ -965,12 +963,12 @@ function seleccionarMedioPago(medio) {
     document.querySelectorAll('.btn-pago').forEach(btn => {
         btn.classList.remove('active');
     });
-    
+
     const botonSeleccionado = document.querySelector(`.btn-pago[data-medio="${medio}"]`);
     if (botonSeleccionado) {
         botonSeleccionado.classList.add('active');
     }
-    
+
     const pagoMonto = document.getElementById('pago-monto');
     if (pagoMonto) {
         pagoMonto.placeholder = `Monto en ${medio}`;
@@ -991,7 +989,7 @@ window.eliminarPagosPorMedio = function(medio) {
     if (!confirm(`¿Eliminar todos los pagos de ${medio}?`)) {
         return;
     }
-    
+
     appState.pagos = appState.pagos.filter(pago => pago.medio !== medio);
     actualizarPagosUI();
     guardarEstadoCarrito();
@@ -1004,42 +1002,42 @@ function agregarPago() {
         showNotification('Seleccione un medio de pago primero', 'warning');
         return;
     }
-    
+
     const medio = medioElement.dataset.medio;
     const pagoMonto = document.getElementById('pago-monto');
     if (!pagoMonto) return;
-    
+
     let monto = parseFloat(pagoMonto.value);
-    
+
     if (!monto || monto <= 0) {
         const totalAPagarEl = document.getElementById('carrito-total');
         if (!totalAPagarEl) return;
-        
+
         const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('$ ', ''));
         const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
         const falta = totalAPagar - totalPagado;
-        
+
         if (falta <= 0) {
             showNotification('Ya se pagó el total completo', 'warning');
             return;
         }
-        
+
         monto = falta;
     }
-    
+
     if (monto <= 0) {
         showNotification('Ingrese un monto válido', 'warning');
         return;
     }
-    
+
     appState.pagos.push({ medio, monto });
-    
+
     actualizarPagosUI();
     guardarEstadoCarrito();
-    
+
     pagoMonto.value = '';
     pagoMonto.focus();
-    
+
     showNotification(`Pago de $ ${monto.toFixed(2)} agregado (${medio})`, 'success');
 }
 
@@ -1048,9 +1046,9 @@ function actualizarPagosUI() {
     const totalPagadoEl = document.getElementById('total-pagado');
     const cambioEl = document.getElementById('total-cambio');
     const btnFinalizar = document.getElementById('btn-finalizar-venta');
-    
+
     if (!container || !totalPagadoEl || !cambioEl || !btnFinalizar) return;
-    
+
     if (appState.pagos.length === 0) {
         container.innerHTML = `
             <div class="empty-pagos">
@@ -1058,16 +1056,16 @@ function actualizarPagosUI() {
                 <p>No hay pagos registrados</p>
             </div>
         `;
-        
+
         totalPagadoEl.textContent = '$ 0.00';
         cambioEl.textContent = '$ 0.00';
         btnFinalizar.disabled = true;
         return;
     }
-    
+
     const pagosAgrupados = {};
     let totalPagado = 0;
-    
+
     appState.pagos.forEach(pago => {
         if (!pagosAgrupados[pago.medio]) {
             pagosAgrupados[pago.medio] = 0;
@@ -1075,15 +1073,15 @@ function actualizarPagosUI() {
         pagosAgrupados[pago.medio] += pago.monto;
         totalPagado += pago.monto;
     });
-    
+
     const totalAPagarEl = document.getElementById('carrito-total');
     if (!totalAPagarEl) return;
-    
+
     const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('$ ', ''));
     const cambio = totalPagado - totalAPagar;
-    
+
     container.innerHTML = '';
-    
+
     Object.entries(pagosAgrupados).forEach(([medio, monto], index) => {
         const div = document.createElement('div');
         div.className = 'pago-item';
@@ -1099,12 +1097,12 @@ function actualizarPagosUI() {
                 <i class="fas fa-times"></i>
             </button>
         `;
-        
+
         container.appendChild(div);
     });
-    
+
     totalPagadoEl.textContent = `$ ${totalPagado.toFixed(2)}`;
-    
+
     if (cambio >= 0) {
         cambioEl.textContent = `$ ${cambio.toFixed(2)}`;
         cambioEl.className = 'cambio-positivo';
@@ -1112,10 +1110,10 @@ function actualizarPagosUI() {
         cambioEl.textContent = `$ ${Math.abs(cambio).toFixed(2)}`;
         cambioEl.className = 'cambio-negativo';
     }
-    
+
     const puedeFinalizar = appState.carrito.length > 0 && totalPagado >= totalAPagar;
     btnFinalizar.disabled = !puedeFinalizar;
-    
+
     const pagoMontoInput = document.getElementById('pago-monto');
     if (pagoMontoInput) {
         if (cambio < 0) {
@@ -1127,12 +1125,11 @@ function actualizarPagosUI() {
             pagoMontoInput.placeholder = medioActivo ? `Monto en ${medioActivo.dataset.medio}` : 'Monto a pagar';
         }
     }
-    
+
     if (puedeFinalizar) {
         setTimeout(() => btnFinalizar.focus(), 100);
     }
-    
-    // Limpiar campo de monto después de actualizar
+
     if (pagoMontoInput) {
         pagoMontoInput.value = '';
     }
@@ -1145,29 +1142,29 @@ async function finalizarVenta() {
         showSection('caja');
         return;
     }
-    
+
     if (appState.carrito.length === 0) {
         showNotification('El carrito está vacío', 'warning');
         return;
     }
-    
+
     const totalAPagarEl = document.getElementById('carrito-total');
     if (!totalAPagarEl) return;
-    
+
     const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('$ ', ''));
     const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
-    
+
     if (totalPagado < totalAPagar) {
         showNotification('El pago no cubre el total de la venta', 'error');
         return;
     }
-    
+
     const btnFinalizar = document.getElementById('btn-finalizar-venta');
     if (!btnFinalizar) return;
-    
+
     btnFinalizar.disabled = true;
     btnFinalizar.classList.add('loading');
-    
+
     try {
         for (const item of appState.carrito) {
             const { data: producto, error } = await supabaseClient
@@ -1175,39 +1172,39 @@ async function finalizarVenta() {
                 .select('stock')
                 .eq('id', item.producto.id)
                 .single();
-            
+
             if (error) throw error;
-            
+
             if (producto.stock < item.cantidad) {
                 throw new Error(`Stock insuficiente para ${item.producto.nombre}. Stock actual: ${producto.stock}`);
             }
         }
-        
-        const subtotal = appState.carrito.reduce((sum, item) => 
+
+        const subtotal = appState.carrito.reduce((sum, item) =>
             sum + (item.cantidad * item.precioUnitario), 0);
-        
-        const descuento = appState.descuento.valor > 0 ? 
-            (appState.descuento.tipo === 'porcentaje' ? 
-                subtotal * (appState.descuento.valor / 100) : 
+
+        const descuento = appState.descuento.valor > 0 ?
+            (appState.descuento.tipo === 'porcentaje' ?
+                subtotal * (appState.descuento.valor / 100) :
                 appState.descuento.valor) : 0;
-        
+
         const total = subtotal - descuento;
-        
+
         const hoy = new Date();
         const fechaStr = hoy.toISOString().split('T')[0].replace(/-/g, '');
-        
+
         const { data: secuencia, error: secError } = await supabaseClient
             .from('secuencia_tickets')
             .select('siguiente_numero')
             .eq('fecha', fechaStr)
             .single();
-        
+
         let numero = 1;
         if (secError) {
             const { error: insertError } = await supabaseClient
                 .from('secuencia_tickets')
                 .insert([{ fecha: fechaStr, siguiente_numero: 2 }]);
-            
+
             if (insertError) throw insertError;
         } else {
             numero = secuencia.siguiente_numero;
@@ -1215,12 +1212,12 @@ async function finalizarVenta() {
                 .from('secuencia_tickets')
                 .update({ siguiente_numero: numero + 1 })
                 .eq('fecha', fechaStr);
-            
+
             if (updateError) throw updateError;
         }
-        
+
         const ticketId = `T-${fechaStr}-${numero.toString().padStart(4, '0')}`;
-        
+
         const ventaData = {
             ticket_id: ticketId,
             caja_id: appState.cajaActiva.id,
@@ -1229,15 +1226,15 @@ async function finalizarVenta() {
             descuento: descuento,
             total: total
         };
-        
+
         const { data: venta, error: ventaError } = await supabaseClient
             .from('ventas')
             .insert([ventaData])
             .select()
             .single();
-        
+
         if (ventaError) throw ventaError;
-        
+
         for (const item of appState.carrito) {
             const detalleData = {
                 venta_id: venta.id,
@@ -1246,61 +1243,60 @@ async function finalizarVenta() {
                 precio_unitario: item.precioUnitario,
                 subtotal: item.cantidad * item.precioUnitario
             };
-            
+
             const { error: detalleError } = await supabaseClient
                 .from('detalle_ventas')
                 .insert([detalleData]);
-            
+
             if (detalleError) throw detalleError;
-            
+
             const { error: stockError } = await supabaseClient
                 .from('productos')
                 .update({ stock: item.producto.stock - item.cantidad })
                 .eq('id', item.producto.id);
-            
+
             if (stockError) throw stockError;
         }
-        
+
         for (const pago of appState.pagos) {
             const pagoData = {
                 venta_id: venta.id,
                 medio_pago: pago.medio,
                 monto: pago.monto
             };
-            
+
             const { error: pagoError } = await supabaseClient
                 .from('pagos_venta')
                 .insert([pagoData]);
-            
+
             if (pagoError) throw pagoError;
         }
-        
-        // ===== IMPRIMIR TICKET CON QZ TRAY (FALLBACK A HTML) =====
+
         const configMap = await obtenerConfiguracionTicket();
         const cambio = totalPagado - total;
         await imprimirTicketConQZ(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
-        
+
         appState.carrito = [];
         appState.pagos = [];
         appState.descuento = { tipo: 'porcentaje', valor: 0 };
-        
+
         const descuentoInput = document.getElementById('descuento-input');
         const descuentoTipo = document.getElementById('descuento-tipo');
-        
+
         if (descuentoInput) descuentoInput.value = '';
         if (descuentoTipo) descuentoTipo.value = 'porcentaje';
-        
+
         actualizarCarritoUI();
         actualizarPagosUI();
-        limpiarEstadoCarrito(); // Limpiar localStorage después de venta exitosa
-        
+        limpiarEstadoCarrito();
+
         await verificarCajaActiva();
-        
+
         showNotification(`Venta finalizada: ${ticketId}`, 'success');
-        
+
         const scannerInput = document.getElementById('scanner-input');
         if (scannerInput) scannerInput.focus();
-        
+
     } catch (error) {
         console.error('Error finalizando venta:', error);
         showNotification(`Error: ${error.message}`, 'error');
@@ -1309,22 +1305,21 @@ async function finalizarVenta() {
             btnFinalizar.disabled = false;
             btnFinalizar.classList.remove('loading');
         }
-        
+
         await cargarVentasDelDiaEnCaja();
     }
 }
 
 // ==================== FUNCIONES DE IMPRESIÓN QZ TRAY ====================
 
-// Obtener configuración de ticket desde Supabase
 async function obtenerConfiguracionTicket() {
     try {
         const { data: config, error } = await supabaseClient
             .from('configuracion')
             .select('*');
-        
+
         if (error) throw error;
-        
+
         const configMap = {};
         config.forEach(item => {
             configMap[item.clave] = item.valor;
@@ -1332,7 +1327,6 @@ async function obtenerConfiguracionTicket() {
         return configMap;
     } catch (error) {
         console.error('Error obteniendo configuración:', error);
-        // Valores por defecto
         return {
             ticket_encabezado: 'AFMSOLUTIONS',
             ticket_encabezado_extra: 'SISTEMA POS',
@@ -1344,21 +1338,27 @@ async function obtenerConfiguracionTicket() {
     }
 }
 
-// Conectar a QZ Tray con timeout
 async function conectarQZTray() {
     if (qzConectado) return true;
-    
+
     if (typeof qz === 'undefined') {
         console.warn('QZ Tray no está instalado o no se cargó la librería');
         return false;
     }
-    
+
     try {
+        // Configurar el certificado proporcionado
+        if (qz.security && typeof qz.security.setCertificatePromise === 'function') {
+            qz.security.setCertificatePromise(function(resolve) {
+                resolve(QZ_CERTIFICATE);
+            });
+        }
+
         const connectPromise = qz.websocket.connect();
-        const timeoutPromise = new Promise((_, reject) => 
+        const timeoutPromise = new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Timeout conectando a QZ Tray')), 5000)
         );
-        
+
         await Promise.race([connectPromise, timeoutPromise]);
         qzConectado = true;
         return true;
@@ -1369,11 +1369,10 @@ async function conectarQZTray() {
     }
 }
 
-// Buscar impresora por nombre parcial
 async function buscarImpresora(nombreParcial) {
     try {
         const impresoras = await qz.printers.find();
-        const encontrada = impresoras.find(impresora => 
+        const encontrada = impresoras.find(impresora =>
             impresora.toLowerCase().includes(nombreParcial.toLowerCase())
         );
         return encontrada || null;
@@ -1383,66 +1382,54 @@ async function buscarImpresora(nombreParcial) {
     }
 }
 
-// Convertir string a array de bytes (usando TextEncoder para caracteres Latin1)
 function stringToBytes(str) {
     if (!str) return [];
-    // Para ESC/POS se recomienda usar codificación Latin1 (ISO-8859-1)
     const encoder = new TextEncoder('latin1');
     return Array.from(encoder.encode(str));
 }
 
-// Construir comando ESC/POS completo como string binario
 function construirComandosESCPOS(venta, configMap, carrito, pagos, usuario, cambio) {
     let bytes = [];
-    
-    // Helper para agregar bytes individuales
+
     const add = (...args) => {
         bytes.push(...args);
     };
-    
-    // Helper para agregar texto (se convierte a bytes)
+
     const addText = (text) => {
         if (!text) return;
         bytes.push(...stringToBytes(text));
     };
-    
-    // Helper para agregar línea con salto de línea
+
     const addLine = (text = '') => {
         addText(text);
-        add(0x0A); // LF
+        add(0x0A);
     };
-    
+
     const separator = () => {
         addLine('--------------------------------');
     };
-    
-    // 1. INICIALIZACIÓN
-    add(0x1B, 0x40); // ESC @
-    
-    // 2. ENCABEZADO (centrado, doble tamaño)
-    add(0x1B, 0x61, 0x01); // ESC a 1
-    add(0x1D, 0x21, 0x11); // GS ! 17
+
+    add(0x1B, 0x40);
+    add(0x1B, 0x61, 0x01);
+    add(0x1D, 0x21, 0x11);
     addLine(configMap.ticket_encabezado || 'AFMSOLUTIONS');
-    add(0x1D, 0x21, 0x00); // GS ! 0
+    add(0x1D, 0x21, 0x00);
     addLine(configMap.ticket_encabezado_extra || 'SISTEMA POS');
     addLine(configMap.empresa_direccion || 'LOCAL COMERCIAL');
     separator();
-    
-    // 3. FECHA, TICKET, VENDEDOR (izquierda)
-    add(0x1B, 0x61, 0x00); // ESC a 0
+
+    add(0x1B, 0x61, 0x00);
     const fecha = new Date(venta.fecha);
     const fechaFormateada = `${fecha.getDate().toString().padStart(2,'0')}/${(fecha.getMonth()+1).toString().padStart(2,'0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2,'0')}:${fecha.getMinutes().toString().padStart(2,'0')}:${fecha.getSeconds().toString().padStart(2,'0')}`;
     addLine(`Fecha: ${fechaFormateada}`);
     addLine(`Ticket: ${venta.ticket_id}`);
     addLine(`Vendedor: ${usuario?.username || ''}`);
     separator();
-    
-    // 4. CABECERA DE PRODUCTOS (negrita)
-    add(0x1B, 0x45, 0x01); // ESC E 1
+
+    add(0x1B, 0x45, 0x01);
     addLine('ARTÍCULO             CANT  IMPORTE');
-    add(0x1B, 0x45, 0x00); // ESC E 0
-    
-    // 5. PRODUCTOS
+    add(0x1B, 0x45, 0x00);
+
     carrito.forEach(item => {
         let nombre = item.producto.nombre;
         if (nombre.length > 20) {
@@ -1456,15 +1443,13 @@ function construirComandosESCPOS(venta, configMap, carrito, pagos, usuario, camb
         addLine(`${nombre}  ${cantidad} x ${precio} = ${totalItem}`);
     });
     separator();
-    
-    // 6. SUBTOTAL, DESCUENTO, TOTAL (negrita para TOTAL)
+
     addLine(`Subtotal: $${venta.subtotal.toFixed(2)}`);
     addLine(`Descuento: $${venta.descuento.toFixed(2)}`);
-    add(0x1B, 0x45, 0x01); // negrita ON
+    add(0x1B, 0x45, 0x01);
     addLine(`TOTAL: $${venta.total.toFixed(2)}`);
-    add(0x1B, 0x45, 0x00); // negrita OFF
-    
-    // 7. PAGOS Y CAMBIO
+    add(0x1B, 0x45, 0x00);
+
     addLine('');
     addLine('PAGOS:');
     pagos.forEach(pago => {
@@ -1474,62 +1459,47 @@ function construirComandosESCPOS(venta, configMap, carrito, pagos, usuario, camb
         addLine(`Cambio: $${cambio.toFixed(2)}`);
     }
     separator();
-    
-    // 8. PIE DE PÁGINA (centrado)
+
     add(0x1B, 0x61, 0x01);
     addLine(configMap.ticket_pie || '¡Gracias por su compra!');
     addLine(configMap.ticket_legal || 'Conserve su ticket');
     addLine(configMap.empresa_contacto || '');
     addLine(' ');
-    
-    // 9. APERTURA DE CAJÓN (antes del corte)
-    add(0x1B, 0x70, 0x00, 0x00); // ESC p 0 0
-    
-    // 10. CORTE DE PAPEL
-    add(0x1D, 0x56, 0x00); // GS V 0
-    
-    // Convertir el array de bytes a string binario (necesario para QZ Tray 2.x)
+
+    add(0x1B, 0x70, 0x00, 0x00);
+    add(0x1D, 0x56, 0x00);
+
     return String.fromCharCode.apply(null, bytes);
 }
 
-// Función principal de impresión con QZ Tray (API 2.x)
 async function imprimirTicketConQZ(venta, configMap, carrito, pagos, usuario, cambio) {
-    // Verificar si QZ Tray está disponible
     if (typeof qz === 'undefined') {
         showNotification('QZ Tray no instalado. Usando impresión HTML.', 'warning');
         return imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio);
     }
-    
-    // Intentar conectar a QZ Tray
+
     const conectado = await conectarQZTray();
     if (!conectado) {
         showNotification('No se pudo conectar a QZ Tray. Usando impresión HTML.', 'warning');
         return imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio);
     }
-    
+
     try {
-        // Buscar impresora que coincida con el nombre parcial
         const impresora = await buscarImpresora(NOMBRE_IMPRESORA);
         if (!impresora) {
             showNotification(`No se encontró impresora que contenga "${NOMBRE_IMPRESORA}". Usando fallback HTML.`, 'error');
             return imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio);
         }
-        
-        // Construir comando ESC/POS como string binario
+
         const comandos = construirComandosESCPOS(venta, configMap, carrito, pagos, usuario, cambio);
-        
-        // Crear configuración de impresora (API 2.x)
         const config = qz.configs.create(impresora);
-        
-        // Preparar datos para impresión raw
         const data = [{
             type: 'raw',
             data: comandos
         }];
-        
-        // Enviar a imprimir
+
         await qz.print(config, data);
-        
+
         showNotification('Ticket impreso correctamente con QZ Tray', 'success');
         return true;
     } catch (error) {
@@ -1539,19 +1509,17 @@ async function imprimirTicketConQZ(venta, configMap, carrito, pagos, usuario, ca
     }
 }
 
-// ==================== FALLBACK: IMPRESIÓN HTML (MEJORADA) ====================
 function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
     const fecha = new Date(venta.fecha);
     const fechaFormateada = `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2, '0')}:${fecha.getMinutes().toString().padStart(2, '0')}:${fecha.getSeconds().toString().padStart(2, '0')}`;
-    
-    // Construir items HTML con la nueva estructura
+
     let itemsHTML = '';
     carrito.forEach(item => {
         const totalItem = item.cantidad * item.precioUnitario;
-        const nombre = item.producto.nombre.length > 25 ? 
-            item.producto.nombre.substring(0, 22) + '...' : 
+        const nombre = item.producto.nombre.length > 25 ?
+            item.producto.nombre.substring(0, 22) + '...' :
             item.producto.nombre;
-        
+
         itemsHTML += `
             <div class="ticket-item">
                 <div class="item-name">${nombre}</div>
@@ -1564,7 +1532,6 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
         `;
     });
 
-    // Construir pagos HTML
     let pagosHTML = '';
     pagos.forEach(pago => {
         pagosHTML += `
@@ -1574,7 +1541,7 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
             </div>
         `;
     });
-    
+
     const ticketHTML = `
         <!DOCTYPE html>
         <html>
@@ -1593,109 +1560,85 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
                         line-height: 1.25;
                         color: #000;
                     }
-                    
                     @page {
                         size: 58mm auto;
                         margin: 0;
                     }
-                    
                     * {
                         box-sizing: border-box;
                     }
-                    
                     .ticket {
                         width: 100%;
                         padding: 4px;
                     }
-                    
-                    /* ===== HEADER ===== */
                     .ticket-header {
                         text-align: center;
                         margin-bottom: 6px;
                         padding-bottom: 4px;
                         border-bottom: 1px dashed #000;
                     }
-                    
                     .ticket-header h1 {
                         font-size: 13px;
                         margin: 2px 0;
                         font-weight: bold;
                         text-transform: uppercase;
                     }
-                    
                     .ticket-header p {
                         margin: 1px 0;
                         font-size: 9px;
                     }
-                    
-                    /* ===== INFO ===== */
                     .ticket-info {
                         font-size: 9px;
                         margin-bottom: 6px;
                     }
-                    
                     .ticket-info div {
                         margin-bottom: 2px;
                     }
-                    
-                    /* ===== ITEMS ===== */
                     .ticket-items {
                         width: 100%;
                         margin: 6px 0;
                         font-size: 10px;
                     }
-                    
                     .ticket-item {
                         margin-bottom: 4px;
                     }
-                    
                     .item-name {
                         font-weight: bold;
                         word-break: break-word;
                     }
-                    
                     .item-line {
                         display: flex;
                         justify-content: space-between;
                         font-size: 10px;
                     }
-                    
                     .item-qty {
                         width: 20%;
                         text-align: left;
                     }
-                    
                     .item-price {
                         width: 30%;
                         text-align: right;
                     }
-                    
                     .item-total {
                         width: 30%;
                         text-align: right;
                         font-weight: bold;
                     }
-                    
-                    /* ===== TOTALS ===== */
                     .ticket-totals {
                         margin-top: 6px;
                         padding-top: 4px;
                         border-top: 1px dashed #000;
                         font-size: 11px;
                     }
-                    
                     .total-row {
                         display: flex;
                         justify-content: space-between;
                         margin: 2px 0;
                     }
-                    
                     .grand-total {
                         font-size: 13px;
                         font-weight: bold;
                     }
-                    
-                    /* ===== FOOTER ===== */
                     .ticket-footer {
                         text-align: center;
                         margin-top: 8px;
@@ -1703,8 +1646,6 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
                         border-top: 1px dashed #000;
                         font-size: 9px;
                     }
-                    
-                    /* ===== UTILIDADES ===== */
                     .center { text-align: center; }
                     .right { text-align: right; }
                     .left { text-align: left; }
@@ -1719,17 +1660,17 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
                     <p>${configMap.ticket_encabezado_extra || 'SISTEMA POS'}</p>
                     <p>${configMap.empresa_direccion || 'LOCAL COMERCIAL'}</p>
                 </div>
-                
+
                 <div class="ticket-info">
                     <div>Fecha: ${fechaFormateada}</div>
                     <div>Ticket: <strong>${venta.ticket_id}</strong></div>
                     <div>Vendedor: ${usuario?.username || ''}</div>
                 </div>
-                
+
                 <div class="ticket-items">
                     ${itemsHTML}
                 </div>
-                
+
                 <div class="ticket-totals">
                     <div class="total-row">
                         <div>Subtotal:</div>
@@ -1743,7 +1684,7 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
                         <div>TOTAL:</div>
                         <div>$${venta.total.toFixed(2)}</div>
                     </div>
-                    
+
                     <div style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed #000;">
                         <div class="bold">PAGOS:</div>
                         ${pagosHTML}
@@ -1755,14 +1696,14 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
                         ` : ''}
                     </div>
                 </div>
-                
+
                 <div class="ticket-footer">
                     <div>${configMap.ticket_pie || '¡Gracias por su compra!'}</div>
                     <div>${configMap.ticket_legal || 'Conserve su ticket'}</div>
                     <div style="margin-top: 4px; font-size: 6px;">${configMap.empresa_contacto || ''}</div>
                 </div>
             </div>
-            
+
             <script>
                 window.onload = function() {
                     setTimeout(function() {
@@ -1774,7 +1715,7 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
         </body>
         </html>
     `;
-    
+
     const printWindow = window.open('', '_blank', 'width=200,height=400');
     printWindow.document.write(ticketHTML);
     printWindow.document.close();
@@ -1783,11 +1724,11 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
 
 function cancelarVenta() {
     if (appState.carrito.length === 0) return;
-    
+
     if (!confirm('¿Está seguro de cancelar esta venta?')) {
         return;
     }
-    
+
     limpiarCarrito();
 }
 
@@ -1799,18 +1740,18 @@ async function verificarCajaActiva() {
             .select('*')
             .is('fecha_cierre', null)
             .maybeSingle();
-        
+
         if (error && error.code !== 'PGRST116') {
             console.warn('Error verificando caja activa:', error);
         }
-        
+
         appState.cajaActiva = caja || null;
         actualizarUIEstadoCaja();
-        
+
         if (caja) {
             await cargarVentasDelDiaEnCaja();
         }
-        
+
         return caja;
     } catch (error) {
         console.error('Error en verificarCajaActiva:', error);
@@ -1822,7 +1763,7 @@ async function verificarCajaActiva() {
 
 async function cargarEstadoCaja() {
     await verificarCajaActiva();
-    
+
     if (appState.cajaActiva) {
         await cargarVentasDelDiaEnCaja();
     }
@@ -1832,13 +1773,13 @@ function actualizarUIEstadoCaja() {
     const statusElement = document.getElementById('caja-status');
     const statusDetalle = document.getElementById('caja-detalle-status');
     const operaciones = document.getElementById('caja-operaciones');
-    
+
     if (!statusElement || !statusDetalle || !operaciones) return;
-    
+
     if (appState.cajaActiva) {
         statusElement.innerHTML = `<i class="fas fa-circle"></i> Caja: Abierta`;
         statusElement.classList.add('abierta');
-        
+
         statusDetalle.innerHTML = `
             <div class="caja-abierta">
                 <i class="fas fa-unlock fa-3x text-success"></i>
@@ -1848,36 +1789,36 @@ function actualizarUIEstadoCaja() {
                 <p>Usuario: ${appState.usuario?.username || 'N/A'}</p>
             </div>
         `;
-        
+
         operaciones.style.display = 'block';
-        
+
         cargarResumenCaja();
         cargarVentasDelDiaEnCaja();
-        
+
     } else {
         statusElement.innerHTML = `<i class="fas fa-circle"></i> Caja: Cerrada`;
         statusElement.classList.remove('abierta');
-        
-        const puedeAbrirCaja = appState.usuario?.rol === 'Administrador' || 
+
+        const puedeAbrirCaja = appState.usuario?.rol === 'Administrador' ||
                                appState.usuario?.rol === 'Cajero' ||
                                appState.permisos.includes('acceder_caja');
-        
+
         statusDetalle.innerHTML = `
             <div class="caja-cerrada">
                 <i class="fas fa-lock fa-3x"></i>
                 <h3>Caja Cerrada</h3>
                 <p>No hay caja activa en este momento</p>
-                ${puedeAbrirCaja ? 
+                ${puedeAbrirCaja ?
                     `<button id="btn-abrir-caja" class="btn btn-primary">
                         <i class="fas fa-unlock"></i> Abrir Caja
-                    </button>` : 
+                    </button>` :
                     '<p class="text-warning">No tiene permisos para abrir caja</p>'
                 }
             </div>
         `;
-        
+
         operaciones.style.display = 'none';
-        
+
         const btn = document.getElementById('btn-abrir-caja');
         if (btn) {
             btn.onclick = mostrarModalAperturaCaja;
@@ -1886,15 +1827,15 @@ function actualizarUIEstadoCaja() {
 }
 
 function mostrarModalAperturaCaja() {
-    const puedeAbrirCaja = appState.usuario?.rol === 'Administrador' || 
+    const puedeAbrirCaja = appState.usuario?.rol === 'Administrador' ||
                            appState.usuario?.rol === 'Cajero' ||
                            appState.permisos.includes('acceder_caja');
-    
+
     if (!puedeAbrirCaja) {
         showNotification('No tiene permisos para abrir caja', 'error');
         return;
     }
-    
+
     const modal = document.getElementById('modal-apertura-caja');
     if (modal) {
         modal.classList.add('active');
@@ -1905,48 +1846,48 @@ function mostrarModalAperturaCaja() {
 
 async function abrirCaja(e) {
     e.preventDefault();
-    
-    const puedeAbrirCaja = appState.usuario?.rol === 'Administrador' || 
+
+    const puedeAbrirCaja = appState.usuario?.rol === 'Administrador' ||
                            appState.usuario?.rol === 'Cajero' ||
                            appState.permisos.includes('acceder_caja');
-    
+
     if (!puedeAbrirCaja) {
         showNotification('No tiene permisos para abrir caja', 'error');
         return;
     }
-    
+
     const aperturaMonto = document.getElementById('apertura-monto');
     if (!aperturaMonto) return;
-    
+
     const monto = parseFloat(aperturaMonto.value);
-    
+
     if (!monto || monto < 0) {
         showNotification('Ingrese un monto inicial válido', 'warning');
         return;
     }
-    
+
     const btn = e.target.querySelector('button[type="submit"]') || e.target;
     btn.classList.add('loading');
     btn.disabled = true;
-    
+
     try {
         const cajaActiva = await verificarCajaActiva();
         if (cajaActiva) {
             showNotification('Ya hay una caja activa', 'error');
             return;
         }
-        
+
         const cajaData = {
             usuario_id: appState.usuario.id,
             monto_inicial: monto
         };
-        
+
         const { data: caja, error } = await supabaseClient
             .from('caja')
             .insert([cajaData])
             .select()
             .single();
-        
+
         if (error) {
             if (error.code === '23505') {
                 showNotification('Ya hay una caja activa', 'error');
@@ -1956,16 +1897,16 @@ async function abrirCaja(e) {
         } else {
             appState.cajaActiva = caja;
             actualizarUIEstadoCaja();
-            
+
             const modal = document.getElementById('modal-apertura-caja');
             if (modal) modal.classList.remove('active');
-            
+
             const form = document.getElementById('form-apertura-caja');
             if (form) form.reset();
-            
+
             showNotification('Caja abierta correctamente', 'success');
         }
-        
+
     } catch (error) {
         console.error('Error abriendo caja:', error);
         showNotification('Error abriendo caja', 'error');
@@ -1977,7 +1918,7 @@ async function abrirCaja(e) {
 
 async function cargarResumenCaja() {
     if (!appState.cajaActiva) return;
-    
+
     try {
         const { data: ventas, error } = await supabaseClient
             .from('ventas')
@@ -1990,13 +1931,13 @@ async function cargarResumenCaja() {
             `)
             .eq('caja_id', appState.cajaActiva.id)
             .eq('anulada', false);
-        
+
         if (error) throw error;
-        
+
         let totalEfectivo = 0;
         let totalTarjeta = 0;
         let totalTransferencia = 0;
-        
+
         ventas.forEach(venta => {
             if (venta.pagos_venta && venta.pagos_venta.length > 0) {
                 venta.pagos_venta.forEach(pago => {
@@ -2010,31 +1951,31 @@ async function cargarResumenCaja() {
                 });
             }
         });
-        
+
         const montoInicialEl = document.getElementById('caja-monto-inicial');
         const ventasEfectivoEl = document.getElementById('caja-ventas-efectivo');
         const ventasTarjetaEl = document.getElementById('caja-ventas-tarjeta');
         const ventasTransferenciaEl = document.getElementById('caja-ventas-transferencia');
         const totalEstimadoEl = document.getElementById('caja-total-estimado');
         const cierreMontoReal = document.getElementById('cierre-monto-real');
-        
-        if (montoInicialEl) montoInicialEl.textContent = 
+
+        if (montoInicialEl) montoInicialEl.textContent =
             `$ ${parseFloat(appState.cajaActiva.monto_inicial).toFixed(2)}`;
-        if (ventasEfectivoEl) ventasEfectivoEl.textContent = 
+        if (ventasEfectivoEl) ventasEfectivoEl.textContent =
             `$ ${totalEfectivo.toFixed(2)}`;
-        if (ventasTarjetaEl) ventasTarjetaEl.textContent = 
+        if (ventasTarjetaEl) ventasTarjetaEl.textContent =
             `$ ${totalTarjeta.toFixed(2)}`;
-        if (ventasTransferenciaEl) ventasTransferenciaEl.textContent = 
+        if (ventasTransferenciaEl) ventasTransferenciaEl.textContent =
             `$ ${totalTransferencia.toFixed(2)}`;
-        
-        const totalEstimado = parseFloat(appState.cajaActiva.monto_inicial) + 
+
+        const totalEstimado = parseFloat(appState.cajaActiva.monto_inicial) +
             totalEfectivo + totalTarjeta + totalTransferencia;
-        
-        if (totalEstimadoEl) totalEstimadoEl.textContent = 
+
+        if (totalEstimadoEl) totalEstimadoEl.textContent =
             `$ ${totalEstimado.toFixed(2)}`;
-        
+
         if (cierreMontoReal) cierreMontoReal.value = totalEstimado.toFixed(2);
-        
+
     } catch (error) {
         console.error('Error cargando resumen de caja:', error);
     }
@@ -2047,24 +1988,24 @@ async function cerrarCaja() {
             return;
         }
     }
-    
+
     const cierreMontoReal = document.getElementById('cierre-monto-real');
     const cierreObservaciones = document.getElementById('cierre-observaciones');
-    
+
     if (!cierreMontoReal) return;
-    
+
     const montoReal = parseFloat(cierreMontoReal.value);
     const observaciones = cierreObservaciones ? cierreObservaciones.value : '';
-    
+
     if (!montoReal || montoReal < 0) {
         showNotification('Ingrese un monto real válido', 'warning');
         return;
     }
-    
+
     if (!confirm('¿Está seguro de cerrar la caja? Esta acción no se puede deshacer.')) {
         return;
     }
-    
+
     try {
         const { data: ventas, error: ventasError } = await supabaseClient
             .from('ventas')
@@ -2077,13 +2018,13 @@ async function cerrarCaja() {
             `)
             .eq('caja_id', appState.cajaActiva.id)
             .eq('anulada', false);
-        
+
         if (ventasError) throw ventasError;
-        
+
         let totalEfectivo = 0;
         let totalTarjeta = 0;
         let totalTransferencia = 0;
-        
+
         ventas.forEach(venta => {
             if (venta.pagos_venta && venta.pagos_venta.length > 0) {
                 venta.pagos_venta.forEach(pago => {
@@ -2097,7 +2038,7 @@ async function cerrarCaja() {
                 });
             }
         });
-        
+
         const { error: updateError } = await supabaseClient
             .from('caja')
             .update({
@@ -2108,16 +2049,16 @@ async function cerrarCaja() {
                 observaciones: observaciones || null
             })
             .eq('id', appState.cajaActiva.id);
-        
+
         if (updateError) throw updateError;
-        
+
         appState.cajaActiva = null;
         actualizarUIEstadoCaja();
-        
+
         showNotification('Caja cerrada correctamente', 'success');
-        
+
         if (cierreObservaciones) cierreObservaciones.value = '';
-        
+
     } catch (error) {
         console.error('Error cerrando caja:', error);
         showNotification('Error cerrando caja', 'error');
@@ -2129,36 +2070,36 @@ async function cargarHistorialCajas() {
     try {
         const fechaInicio = document.getElementById('caja-fecha-inicio');
         const fechaFin = document.getElementById('caja-fecha-fin');
-        
+
         const hoy = new Date().toISOString().split('T')[0];
         const hace30Dias = new Date();
         hace30Dias.setDate(hace30Dias.getDate() - 30);
         const hace30DiasStr = hace30Dias.toISOString().split('T')[0];
-        
+
         if (fechaInicio) fechaInicio.value = fechaInicio.value || hace30DiasStr;
         if (fechaFin) fechaFin.value = fechaFin.value || hoy;
-        
+
         const fechaInicioVal = fechaInicio?.value || hace30DiasStr;
         const fechaFinVal = fechaFin?.value || hoy;
-        
+
         const { data: cajas, error } = await supabaseClient
             .from('caja')
             .select('*')
             .gte('fecha_apertura', fechaInicioVal + 'T00:00:00')
             .lte('fecha_apertura', fechaFinVal + 'T23:59:59')
             .order('fecha_apertura', { ascending: false });
-        
+
         if (error) {
             console.error('Error en consulta de cajas:', error);
             throw error;
         }
-        
+
         const contenedor = document.getElementById('historial-cajas');
         if (!contenedor) {
             console.error('Contenedor de historial de cajas no encontrado');
             return;
         }
-        
+
         if (!cajas || cajas.length === 0) {
             contenedor.innerHTML = `
                 <div class="empty-reportes">
@@ -2168,23 +2109,23 @@ async function cargarHistorialCajas() {
             `;
             return;
         }
-        
+
         const userIds = [...new Set(cajas.map(c => c.usuario_id).filter(id => id))];
         let usuariosMap = {};
-        
+
         if (userIds.length > 0) {
             const { data: usuarios, error: usuariosError } = await supabaseClient
                 .from('usuarios')
                 .select('id, username')
                 .in('id', userIds);
-            
+
             if (!usuariosError && usuarios) {
                 usuarios.forEach(u => {
                     usuariosMap[u.id] = u.username;
                 });
             }
         }
-        
+
         let html = `
             <div class="table-responsive">
                 <table class="data-table">
@@ -2206,18 +2147,18 @@ async function cargarHistorialCajas() {
                     </thead>
                     <tbody>
         `;
-        
+
         cajas.forEach(caja => {
             const totalVentasEfectivo = parseFloat(caja.total_ventas_efectivo) || 0;
             const totalVentasTarjeta = parseFloat(caja.total_ventas_tarjeta) || 0;
             const totalVentasTransferencia = parseFloat(caja.total_ventas_transferencia) || 0;
             const totalVentas = totalVentasEfectivo + totalVentasTarjeta + totalVentasTransferencia;
             const totalEstimado = (parseFloat(caja.monto_inicial) || 0) + totalVentas;
-            
+
             const estado = caja.fecha_cierre ? 'Cerrada' : 'Abierta';
             const estadoClase = caja.fecha_cierre ? 'text-success' : 'text-warning';
             const usuarioNombre = usuariosMap[caja.usuario_id] || 'N/A';
-            
+
             html += `
                 <tr>
                     <td>${caja.id}</td>
@@ -2244,12 +2185,12 @@ async function cargarHistorialCajas() {
                 </tr>
             `;
         });
-        
+
         html += `
                     </tbody>
                 </table>
             </div>
-            
+
             <div class="mt-4 p-3 bg-light rounded">
                 <h5>Resumen del Período</h5>
                 <div class="d-flex justify-content-between flex-wrap">
@@ -2265,9 +2206,9 @@ async function cargarHistorialCajas() {
                 </div>
             </div>
         `;
-        
+
         contenedor.innerHTML = html;
-        
+
     } catch (error) {
         console.error('Error cargando historial de cajas:', error);
         showNotification('Error cargando historial de cajas: ' + error.message, 'error');
@@ -2278,44 +2219,44 @@ async function cargarDetallesCajaDia() {
     try {
         const fechaInput = document.getElementById('detalle-fecha');
         let fecha = fechaInput?.value;
-        
+
         if (!fecha) {
             fecha = new Date().toISOString().split('T')[0];
             if (fechaInput) fechaInput.value = fecha;
         }
-        
+
         const fechaInicio = fecha + 'T00:00:00';
         const fechaFin = fecha + 'T23:59:59';
-        
+
         const { data: cajas, error: cajasError } = await supabaseClient
             .from('caja')
             .select('*')
             .gte('fecha_apertura', fechaInicio)
             .lte('fecha_apertura', fechaFin);
-        
+
         if (cajasError) {
             console.error('Error obteniendo cajas:', cajasError);
             throw cajasError;
         }
-        
+
         const { data: ventas, error: ventasError } = await supabaseClient
             .from('ventas')
             .select('*')
             .gte('fecha', fechaInicio)
             .lte('fecha', fechaFin)
             .eq('anulada', false);
-        
+
         if (ventasError) {
             console.error('Error obteniendo ventas:', ventasError);
             throw ventasError;
         }
-        
+
         const contenedor = document.getElementById('detalles-caja-dia');
         if (!contenedor) {
             console.error('Contenedor de detalles no encontrado');
             return;
         }
-        
+
         if ((!cajas || cajas.length === 0) && (!ventas || ventas.length === 0)) {
             contenedor.innerHTML = `
                 <div class="empty-reportes">
@@ -2325,9 +2266,9 @@ async function cargarDetallesCajaDia() {
             `;
             return;
         }
-        
+
         let html = '<div class="row">';
-        
+
         if (cajas && cajas.length > 0) {
             html += `
                 <div class="col-md-6 mb-4">
@@ -2338,7 +2279,7 @@ async function cargarDetallesCajaDia() {
                         <div class="card-body">
                             <div class="list-group">
             `;
-            
+
             for (const caja of cajas) {
                 let nombreUsuario = 'N/A';
                 if (caja.usuario_id) {
@@ -2349,11 +2290,11 @@ async function cargarDetallesCajaDia() {
                         .maybeSingle();
                     if (usuario) nombreUsuario = usuario.username;
                 }
-                
+
                 const totalVentas = (parseFloat(caja.total_ventas_efectivo) || 0) +
                                    (parseFloat(caja.total_ventas_tarjeta) || 0) +
                                    (parseFloat(caja.total_ventas_transferencia) || 0);
-                
+
                 html += `
                     <div class="list-item">
                         <div class="d-flex justify-content-between">
@@ -2380,7 +2321,7 @@ async function cargarDetallesCajaDia() {
                     </div>
                 `;
             }
-            
+
             html += `
                             </div>
                         </div>
@@ -2388,19 +2329,19 @@ async function cargarDetallesCajaDia() {
                 </div>
             `;
         }
-        
+
         if (ventas && ventas.length > 0) {
             const ventaIds = ventas.map(v => v.id);
             const { data: pagos, error: pagosError } = await supabaseClient
                 .from('pagos_venta')
                 .select('*')
                 .in('venta_id', ventaIds);
-            
+
             let totalVentas = 0;
             let ventasEfectivo = 0;
             let ventasTarjeta = 0;
             let ventasTransferencia = 0;
-            
+
             const pagosPorVenta = {};
             if (pagos && !pagosError) {
                 pagos.forEach(pago => {
@@ -2410,10 +2351,10 @@ async function cargarDetallesCajaDia() {
                     pagosPorVenta[pago.venta_id].push(pago);
                 });
             }
-            
+
             ventas.forEach(venta => {
                 totalVentas += parseFloat(venta.total) || 0;
-                
+
                 const pagosVenta = pagosPorVenta[venta.id] || [];
                 if (pagosVenta.length > 0) {
                     pagosVenta.forEach(pago => {
@@ -2428,7 +2369,7 @@ async function cargarDetallesCajaDia() {
                     });
                 }
             });
-            
+
             html += `
                 <div class="col-md-6 mb-4">
                     <div class="card">
@@ -2458,33 +2399,33 @@ async function cargarDetallesCajaDia() {
                                     <strong>$ ${ventasTransferencia.toFixed(2)}</strong>
                                 </div>
                             </div>
-                            
+
                             <div class="mt-4">
                                 <h6>Últimas Ventas</h6>
                                 <div class="list-group" style="max-height: 300px; overflow-y: auto;">
             `;
-            
+
             const userIds = [...new Set(ventas.map(v => v.usuario_id).filter(id => id))];
             let usuariosMap = {};
-            
+
             if (userIds.length > 0) {
                 const { data: usuarios } = await supabaseClient
                     .from('usuarios')
                     .select('id, username')
                     .in('id', userIds);
-                
+
                 if (usuarios) {
                     usuarios.forEach(u => {
                         usuariosMap[u.id] = u.username;
                     });
                 }
             }
-            
+
             const ultimasVentas = ventas.slice(0, 5);
-            
+
             for (const venta of ultimasVentas) {
                 const nombreUsuario = usuariosMap[venta.usuario_id] || 'N/A';
-                
+
                 html += `
                     <div class="list-item">
                         <div class="d-flex justify-content-between">
@@ -2492,13 +2433,13 @@ async function cargarDetallesCajaDia() {
                             <span>$ ${parseFloat(venta.total).toFixed(2)}</span>
                         </div>
                         <div class="text-muted small">
-                            ${new Date(venta.fecha).toLocaleTimeString('es-ES')} - 
+                            ${new Date(venta.fecha).toLocaleTimeString('es-ES')} -
                             ${nombreUsuario}
                         </div>
                     </div>
                 `;
             }
-            
+
             html += `
                                 </div>
                             </div>
@@ -2507,11 +2448,11 @@ async function cargarDetallesCajaDia() {
                 </div>
             `;
         }
-        
+
         html += '</div>';
-        
+
         contenedor.innerHTML = html;
-        
+
     } catch (error) {
         console.error('Error cargando detalles del día:', error);
         showNotification('Error cargando detalles del día: ' + error.message, 'error');
@@ -2520,16 +2461,16 @@ async function cargarDetallesCajaDia() {
 
 async function cargarVentasDelDiaEnCaja() {
     if (!appState.cajaActiva) return;
-    
+
     try {
         const fechaCaja = new Date(appState.cajaActiva.fecha_apertura);
-        
+
         const inicioDia = new Date(fechaCaja);
         inicioDia.setHours(0, 0, 0, 0);
-        
+
         const finDia = new Date(fechaCaja);
         finDia.setHours(23, 59, 59, 999);
-        
+
         const { data: ventas, error } = await supabaseClient
             .from('ventas')
             .select(`
@@ -2544,29 +2485,29 @@ async function cargarVentasDelDiaEnCaja() {
             .lte('fecha', finDia.toISOString())
             .eq('anulada', false)
             .order('fecha', { ascending: false });
-        
+
         if (error) {
             console.error('Error en consulta de ventas del día:', error);
             throw error;
         }
-        
+
         const contenedor = document.getElementById('caja-ventas-dia');
         if (!contenedor) {
             console.error('Contenedor caja-ventas-dia no encontrado');
             return;
         }
-        
+
         let totalVentas = 0;
         let cantidadVentas = ventas?.length || 0;
-        
+
         if (ventas && ventas.length > 0) {
             ventas.forEach(venta => {
                 totalVentas += parseFloat(venta.total) || 0;
             });
         }
-        
+
         const ticketPromedio = cantidadVentas > 0 ? totalVentas / cantidadVentas : 0;
-        
+
         contenedor.innerHTML = `
             <div class="stats-item">
                 <div class="stats-icon bg-primary">
@@ -2596,7 +2537,7 @@ async function cargarVentasDelDiaEnCaja() {
                 </div>
             </div>
         `;
-        
+
     } catch (error) {
         console.error('Error cargando ventas del día:', error);
         const contenedor = document.getElementById('caja-ventas-dia');
@@ -2641,9 +2582,9 @@ window.verDetalleCaja = async function(cajaId) {
             .select('*')
             .eq('id', cajaId)
             .single();
-        
+
         if (cajaError) throw cajaError;
-        
+
         const { data: ventas, error: ventasError } = await supabaseClient
             .from('ventas')
             .select(`
@@ -2654,9 +2595,9 @@ window.verDetalleCaja = async function(cajaId) {
             `)
             .eq('caja_id', cajaId)
             .eq('anulada', false);
-        
+
         if (ventasError) throw ventasError;
-        
+
         let nombreUsuario = 'N/A';
         if (caja.usuario_id) {
             const { data: usuario } = await supabaseClient
@@ -2666,7 +2607,7 @@ window.verDetalleCaja = async function(cajaId) {
                 .maybeSingle();
             if (usuario) nombreUsuario = usuario.username;
         }
-        
+
         let detalleHTML = `
             <div class="card">
                 <div class="card-header">
@@ -2687,7 +2628,7 @@ window.verDetalleCaja = async function(cajaId) {
                         </div>
                     </div>
         `;
-        
+
         if (ventas.length > 0) {
             detalleHTML += `
                 <h5>Ventas de esta caja (${ventas.length})</h5>
@@ -2703,7 +2644,7 @@ window.verDetalleCaja = async function(cajaId) {
                         </thead>
                         <tbody>
             `;
-            
+
             ventas.forEach(venta => {
                 const medios = {};
                 if (venta.pagos_venta && venta.pagos_venta.length > 0) {
@@ -2714,11 +2655,11 @@ window.verDetalleCaja = async function(cajaId) {
                         medios[pago.medio_pago] += parseFloat(pago.monto);
                     });
                 }
-                
+
                 const mediosTexto = Object.entries(medios)
                     .map(([medio, monto]) => `${medio}: $ ${monto.toFixed(2)}`)
                     .join(', ');
-                
+
                 detalleHTML += `
                     <tr>
                         <td>${venta.ticket_id}</td>
@@ -2728,7 +2669,7 @@ window.verDetalleCaja = async function(cajaId) {
                     </tr>
                 `;
             });
-            
+
             detalleHTML += `
                         </tbody>
                     </table>
@@ -2737,16 +2678,16 @@ window.verDetalleCaja = async function(cajaId) {
         } else {
             detalleHTML += '<p>No hay ventas registradas para esta caja.</p>';
         }
-        
+
         detalleHTML += `
                 </div>
             </div>
         `;
-        
+
         const modal = document.getElementById('modal-detalle-venta');
         const titulo = document.getElementById('modal-venta-titulo');
         const contenido = document.getElementById('detalle-venta-contenido');
-        
+
         if (modal && titulo && contenido) {
             titulo.innerHTML = `<i class="fas fa-cash-register"></i> Detalle de Caja: ${cajaId}`;
             contenido.innerHTML = detalleHTML;
@@ -2754,7 +2695,7 @@ window.verDetalleCaja = async function(cajaId) {
         } else {
             alert(detalleHTML.replace(/<[^>]*>/g, ''));
         }
-        
+
     } catch (error) {
         console.error('Error cargando detalle de caja:', error);
         showNotification('Error cargando detalle de caja', 'error');
@@ -2765,7 +2706,7 @@ window.forzarCerrarCaja = async function(cajaId) {
     if (!confirm('¿Está seguro de forzar el cierre de esta caja? Esta acción no se puede deshacer.')) {
         return;
     }
-    
+
     try {
         const { error } = await supabaseClient
             .from('caja')
@@ -2774,12 +2715,12 @@ window.forzarCerrarCaja = async function(cajaId) {
                 observaciones: 'Cierre forzado por administrador'
             })
             .eq('id', cajaId);
-        
+
         if (error) throw error;
-        
+
         showNotification('Caja cerrada forzosamente', 'success');
         cargarHistorialCajas();
-        
+
     } catch (error) {
         console.error('Error forzando cierre de caja:', error);
         showNotification('Error forzando cierre de caja', 'error');
@@ -2791,16 +2732,16 @@ async function imprimirResumenCaja() {
         showNotification('No hay caja activa', 'warning');
         return;
     }
-    
+
     try {
         const { data: caja, error: cajaError } = await supabaseClient
             .from('caja')
             .select('*')
             .eq('id', appState.cajaActiva.id)
             .single();
-        
+
         if (cajaError) throw cajaError;
-        
+
         const { data: ventas, error: ventasError } = await supabaseClient
             .from('ventas')
             .select(`
@@ -2812,17 +2753,17 @@ async function imprimirResumenCaja() {
             `)
             .eq('caja_id', appState.cajaActiva.id)
             .eq('anulada', false);
-        
+
         if (ventasError) throw ventasError;
-        
+
         let totalVentas = 0;
         let ventasEfectivo = 0;
         let ventasTarjeta = 0;
         let ventasTransferencia = 0;
-        
+
         ventas.forEach(venta => {
             totalVentas += parseFloat(venta.total) || 0;
-            
+
             if (venta.pagos_venta && venta.pagos_venta.length > 0) {
                 venta.pagos_venta.forEach(pago => {
                     const monto = parseFloat(pago.monto) || 0;
@@ -2836,11 +2777,11 @@ async function imprimirResumenCaja() {
                 });
             }
         });
-        
+
         const totalEstimado = (parseFloat(caja.monto_inicial) || 0) + totalVentas;
         const montoReal = parseFloat(document.getElementById('cierre-monto-real').value) || totalEstimado;
         const diferencia = montoReal - totalEstimado;
-        
+
         const printWindow = window.open('', '_blank');
         printWindow.document.write(`
             <!DOCTYPE html>
@@ -2869,7 +2810,7 @@ async function imprimirResumenCaja() {
                     <h1>RESUMEN DE CAJA</h1>
                     <p>ID: ${caja.id} | Fecha: ${new Date(caja.fecha_apertura).toLocaleString('es-ES')}</p>
                 </div>
-                
+
                 <div class="info-grid">
                     <div class="info-item">
                         <h3>Monto Inicial</h3>
@@ -2888,7 +2829,7 @@ async function imprimirResumenCaja() {
                         <div class="valor">$ ${montoReal.toFixed(2)}</div>
                     </div>
                 </div>
-                
+
                 <h3>Desglose por Medio de Pago</h3>
                 <table class="table">
                     <thead>
@@ -2916,7 +2857,7 @@ async function imprimirResumenCaja() {
                         </tr>
                     </tbody>
                 </table>
-                
+
                 <div class="totales">
                     <h3>Resumen Final</h3>
                     <div style="display: flex; justify-content: space-between; margin: 10px 0;">
@@ -2934,12 +2875,12 @@ async function imprimirResumenCaja() {
                         </strong>
                     </div>
                 </div>
-                
+
                 <div class="firma">
                     <div class="firma-line"></div>
                     <p>Firma del Responsable</p>
                 </div>
-                
+
                 <script>
                     window.onload = function() {
                         window.print();
@@ -2950,7 +2891,7 @@ async function imprimirResumenCaja() {
             </html>
         `);
         printWindow.document.close();
-        
+
     } catch (error) {
         console.error('Error generando resumen:', error);
         showNotification('Error generando resumen', 'error');
@@ -2962,10 +2903,10 @@ async function cargarVentasHoy() {
     const hoy = new Date().toISOString().split('T')[0];
     const fechaInicio = document.getElementById('filtro-fecha-inicio');
     const fechaFin = document.getElementById('filtro-fecha-fin');
-    
+
     if (fechaInicio) fechaInicio.value = hoy;
     if (fechaFin) fechaFin.value = hoy;
-    
+
     await cargarHistorial();
 }
 
@@ -2973,52 +2914,52 @@ async function cargarHistorial() {
     try {
         const fechaInicio = document.getElementById('filtro-fecha-inicio');
         const fechaFin = document.getElementById('filtro-fecha-fin');
-        
+
         if (!fechaInicio || !fechaFin) {
             showNotification('Seleccione un rango de fechas', 'warning');
             return;
         }
-        
+
         const hoy = new Date().toISOString().split('T')[0];
         if (!fechaInicio.value) fechaInicio.value = hoy;
         if (!fechaFin.value) fechaFin.value = hoy;
-        
+
         const { data: ventas, error: ventasError } = await supabaseClient
             .from('ventas')
             .select('*')
             .gte('fecha', fechaInicio.value + 'T00:00:00')
             .lte('fecha', fechaFin.value + 'T23:59:59')
             .order('fecha', { ascending: false });
-        
+
         if (ventasError) {
             console.error('Error en consulta de ventas:', ventasError);
             throw ventasError;
         }
-        
+
         const tbody = document.getElementById('historial-body');
         if (!tbody) {
             console.error('Elemento tbody no encontrado');
             return;
         }
-        
+
         tbody.innerHTML = '';
-        
+
         if (!ventas || ventas.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6" class="text-center">No hay ventas en este período</td></tr>';
             return;
         }
-        
+
         const ventaIds = ventas.map(v => v.id);
-        
+
         const { data: pagos, error: pagosError } = await supabaseClient
             .from('pagos_venta')
             .select('*')
             .in('venta_id', ventaIds);
-        
+
         if (pagosError) {
             console.error('Error obteniendo pagos:', pagosError);
         }
-        
+
         const pagosPorVenta = {};
         if (pagos) {
             pagos.forEach(pago => {
@@ -3028,41 +2969,41 @@ async function cargarHistorial() {
                 pagosPorVenta[pago.venta_id].push(pago);
             });
         }
-        
+
         const userIds = [...new Set(ventas.map(v => v.usuario_id).filter(id => id))];
         let usuariosMap = {};
-        
+
         if (userIds.length > 0) {
             const { data: usuarios, error: usuariosError } = await supabaseClient
                 .from('usuarios')
                 .select('id, username')
                 .in('id', userIds);
-            
+
             if (!usuariosError && usuarios) {
                 usuarios.forEach(u => {
                     usuariosMap[u.id] = u.username;
                 });
             }
         }
-        
+
         ventas.forEach(venta => {
             const pagosVenta = pagosPorVenta[venta.id] || [];
             const medios = {};
-            
+
             pagosVenta.forEach(pago => {
                 if (!medios[pago.medio_pago]) {
                     medios[pago.medio_pago] = 0;
                 }
                 medios[pago.medio_pago] += parseFloat(pago.monto);
             });
-            
+
             const mediosTexto = Object.entries(medios)
                 .map(([medio, monto]) => `${medio}: $ ${monto.toFixed(2)}`)
                 .join('<br>');
-            
+
             const fecha = new Date(venta.fecha).toLocaleString('es-ES');
             const usuarioNombre = usuariosMap[venta.usuario_id] || 'N/A';
-            
+
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${venta.ticket_id}</td>
@@ -3086,10 +3027,10 @@ async function cargarHistorial() {
                     ` : ''}
                 </td>
             `;
-            
+
             tbody.appendChild(tr);
         });
-        
+
     } catch (error) {
         console.error('Error cargando historial:', error);
         showNotification('Error cargando historial: ' + error.message, 'error');
@@ -3103,12 +3044,12 @@ window.verDetalleVenta = async function(id) {
             .select('*')
             .eq('id', id)
             .single();
-        
+
         if (ventaError) {
             console.error('Error obteniendo venta:', ventaError);
             throw ventaError;
         }
-        
+
         const { data: detalles, error: detallesError } = await supabaseClient
             .from('detalle_ventas')
             .select(`
@@ -3118,22 +3059,22 @@ window.verDetalleVenta = async function(id) {
                 productos (nombre, codigo_barra)
             `)
             .eq('venta_id', id);
-        
+
         if (detallesError) {
             console.error('Error obteniendo detalles:', detallesError);
             throw detallesError;
         }
-        
+
         const { data: pagos, error: pagosError } = await supabaseClient
             .from('pagos_venta')
             .select('medio_pago, monto')
             .eq('venta_id', id);
-        
+
         if (pagosError) {
             console.error('Error obteniendo pagos:', pagosError);
             throw pagosError;
         }
-        
+
         let nombreUsuario = 'N/A';
         if (venta.usuario_id) {
             const { data: usuario } = await supabaseClient
@@ -3143,18 +3084,18 @@ window.verDetalleVenta = async function(id) {
                 .maybeSingle();
             if (usuario) nombreUsuario = usuario.username;
         }
-        
+
         const modal = document.getElementById('modal-detalle-venta');
         const titulo = document.getElementById('modal-venta-titulo');
         const contenido = document.getElementById('detalle-venta-contenido');
-        
+
         if (!modal || !titulo || !contenido) {
             console.error('Elementos del modal no encontrados');
             return;
         }
-        
+
         titulo.innerHTML = `<i class="fas fa-receipt"></i> Detalle de Venta: ${venta.ticket_id}`;
-        
+
         let detalleHTML = `
             <div class="venta-info">
                 <p><strong>Ticket:</strong> ${venta.ticket_id}</p>
@@ -3166,7 +3107,7 @@ window.verDetalleVenta = async function(id) {
                 <p><strong>Total:</strong> $ ${parseFloat(venta.total).toFixed(2)}</p>
             </div>
         `;
-        
+
         if (detalles && detalles.length > 0) {
             detalleHTML += `
                 <h4>Productos:</h4>
@@ -3182,7 +3123,7 @@ window.verDetalleVenta = async function(id) {
                     </thead>
                     <tbody>
             `;
-            
+
             detalles.forEach(detalle => {
                 detalleHTML += `
                     <tr>
@@ -3194,13 +3135,13 @@ window.verDetalleVenta = async function(id) {
                     </tr>
                 `;
             });
-            
+
             detalleHTML += `
                     </tbody>
                 </table>
             `;
         }
-        
+
         if (pagos && pagos.length > 0) {
             detalleHTML += `
                 <h4>Pagos:</h4>
@@ -3213,7 +3154,7 @@ window.verDetalleVenta = async function(id) {
                     </thead>
                     <tbody>
             `;
-            
+
             pagos.forEach(pago => {
                 detalleHTML += `
                     <tr>
@@ -3222,16 +3163,16 @@ window.verDetalleVenta = async function(id) {
                     </tr>
                 `;
             });
-            
+
             detalleHTML += `
                     </tbody>
                 </table>
             `;
         }
-        
+
         contenido.innerHTML = detalleHTML;
         modal.classList.add('active');
-        
+
     } catch (error) {
         console.error('Error cargando detalle de venta:', error);
         showNotification('Error cargando detalle de venta: ' + error.message, 'error');
@@ -3244,11 +3185,11 @@ window.anularVenta = async function(id) {
         showNotification('No tiene permisos para anular ventas', 'error');
         return;
     }
-    
+
     if (!confirm('¿Está seguro de anular esta venta? Esta acción revertirá el stock y no se podrá deshacer.')) {
         return;
     }
-    
+
     try {
         const { error } = await supabaseClient
             .from('ventas')
@@ -3258,12 +3199,12 @@ window.anularVenta = async function(id) {
                 fecha_anulacion: new Date().toISOString()
             })
             .eq('id', id);
-        
+
         if (error) throw error;
-        
+
         showNotification('Venta anulada correctamente', 'success');
         cargarHistorial();
-        
+
     } catch (error) {
         console.error('Error anulando venta:', error);
         showNotification('Error anulando venta', 'error');
@@ -3276,20 +3217,20 @@ async function cargarProductos() {
         const filtro = document.getElementById('filtro-productos');
         const proveedor = document.getElementById('filtro-proveedor');
         const estado = document.getElementById('filtro-estado');
-        
+
         let query = supabaseClient
             .from('productos')
             .select('*')
             .order('nombre');
-        
+
         if (filtro && filtro.value) {
             query = query.or(`codigo_barra.ilike.%${filtro.value}%,nombre.ilike.%${filtro.value}%`);
         }
-        
+
         if (proveedor && proveedor.value) {
             query = query.eq('proveedor', proveedor.value);
         }
-        
+
         if (estado && estado.value) {
             if (estado.value === 'activos') {
                 query = query.eq('activo', true);
@@ -3297,26 +3238,26 @@ async function cargarProductos() {
                 query = query.eq('activo', false);
             }
         }
-        
+
         const { data: productos, error } = await query;
-        
+
         if (error) throw error;
-        
+
         const tbody = document.getElementById('productos-body');
         if (!tbody) return;
-        
+
         tbody.innerHTML = '';
-        
+
         if (productos.length === 0) {
             tbody.innerHTML = '<tr><td colspan="9" class="text-center">No se encontraron productos</td></tr>';
             return;
         }
-        
+
         productos.forEach(producto => {
             const tr = document.createElement('tr');
-            const margen = producto.margen_ganancia ? 
+            const margen = producto.margen_ganancia ?
                 `${parseFloat(producto.margen_ganancia).toFixed(2)}%` : 'N/A';
-            
+
             tr.innerHTML = `
                 <td>${producto.codigo_barra}</td>
                 <td>${producto.nombre}</td>
@@ -3339,10 +3280,10 @@ async function cargarProductos() {
                     </button>
                 </td>
             `;
-            
+
             tbody.appendChild(tr);
         });
-        
+
     } catch (error) {
         console.error('Error cargando productos:', error);
         showNotification('Error cargando productos', 'error');
@@ -3353,15 +3294,15 @@ function mostrarModalProducto(producto = null) {
     const modal = document.getElementById('modal-producto');
     const titulo = document.getElementById('modal-producto-titulo');
     const form = document.getElementById('form-producto');
-    
+
     if (!modal || !titulo || !form) {
         console.error('Elementos del modal no encontrados');
         return;
     }
-    
+
     if (producto) {
         titulo.innerHTML = '<i class="fas fa-edit"></i> Editar Producto';
-        
+
         const codigoInput = form.querySelector('#producto-codigo');
         const nombreInput = form.querySelector('#producto-nombre');
         const precioCostoInput = form.querySelector('#producto-precio-costo');
@@ -3370,7 +3311,7 @@ function mostrarModalProducto(producto = null) {
         const proveedorInput = form.querySelector('#producto-proveedor');
         const activoSelect = form.querySelector('#producto-activo');
         const margenInput = form.querySelector('#producto-margen');
-        
+
         if (codigoInput) codigoInput.value = producto.codigo_barra;
         if (nombreInput) nombreInput.value = producto.nombre;
         if (precioCostoInput) precioCostoInput.value = producto.precio_costo;
@@ -3379,14 +3320,14 @@ function mostrarModalProducto(producto = null) {
         if (proveedorInput) proveedorInput.value = producto.proveedor || '';
         if (activoSelect) activoSelect.value = producto.activo;
         if (margenInput) margenInput.value = producto.margen_ganancia || '';
-        
+
         form.dataset.productoId = producto.id;
     } else {
         titulo.innerHTML = '<i class="fas fa-box"></i> Nuevo Producto';
         form.reset();
         delete form.dataset.productoId;
     }
-    
+
     modal.classList.add('active');
     const codigoInput = form.querySelector('#producto-codigo');
     if (codigoInput) codigoInput.focus();
@@ -3396,12 +3337,12 @@ function calcularPrecioVenta() {
     const costoInput = document.getElementById('producto-precio-costo');
     const margenInput = document.getElementById('producto-margen');
     const ventaInput = document.getElementById('producto-precio-venta');
-    
+
     if (!costoInput || !margenInput || !ventaInput) return;
-    
+
     const costo = parseFloat(costoInput.value) || 0;
     const margen = parseFloat(margenInput.value) || 0;
-    
+
     if (costo > 0 && margen > 0) {
         const precioVenta = costo * (1 + margen / 100);
         ventaInput.value = precioVenta.toFixed(2);
@@ -3412,12 +3353,12 @@ function calcularMargen() {
     const costoInput = document.getElementById('producto-precio-costo');
     const ventaInput = document.getElementById('producto-precio-venta');
     const margenInput = document.getElementById('producto-margen');
-    
+
     if (!costoInput || !ventaInput || !margenInput) return;
-    
+
     const costo = parseFloat(costoInput.value) || 0;
     const venta = parseFloat(ventaInput.value) || 0;
-    
+
     if (costo > 0 && venta > 0) {
         const margen = ((venta - costo) / costo) * 100;
         margenInput.value = margen.toFixed(2);
@@ -3426,15 +3367,15 @@ function calcularMargen() {
 
 async function guardarProducto(e) {
     e.preventDefault();
-    
+
     const permiso = e.target.dataset.productoId ? 'modificar_productos' : 'cargar_productos';
     const tienePermiso = await hasPermission(permiso);
-    
+
     if (!tienePermiso) {
         showNotification('No tiene permisos para esta acción', 'error');
         return;
     }
-    
+
     const form = e.target;
     const codigoInput = form.querySelector('#producto-codigo');
     const nombreInput = form.querySelector('#producto-nombre');
@@ -3444,16 +3385,16 @@ async function guardarProducto(e) {
     const proveedorInput = form.querySelector('#producto-proveedor');
     const activoSelect = form.querySelector('#producto-activo');
     const margenInput = form.querySelector('#producto-margen');
-    
-    if (!codigoInput || !nombreInput || !precioCostoInput || !precioVentaInput || 
+
+    if (!codigoInput || !nombreInput || !precioCostoInput || !precioVentaInput ||
         !stockInput || !activoSelect || !margenInput || !proveedorInput) {
         showNotification('Error: formulario incompleto', 'error');
         return;
     }
-    
+
     const codigoValor = codigoInput.value ? codigoInput.value.trim() : '';
     const nombreValor = nombreInput.value ? nombreInput.value.trim() : '';
-    
+
     if (!codigoValor || codigoValor.length === 0) {
         showNotification('El código de barras es obligatorio', 'warning');
         codigoInput.focus();
@@ -3462,7 +3403,7 @@ async function guardarProducto(e) {
     } else {
         codigoInput.classList.remove('input-error');
     }
-    
+
     if (!nombreValor || nombreValor.length === 0) {
         showNotification('El nombre del producto es obligatorio', 'warning');
         nombreInput.focus();
@@ -3471,7 +3412,7 @@ async function guardarProducto(e) {
     } else {
         nombreInput.classList.remove('input-error');
     }
-    
+
     const producto = {
         codigo_barra: codigoValor,
         nombre: nombreValor,
@@ -3482,61 +3423,61 @@ async function guardarProducto(e) {
         activo: activoSelect.value === 'true',
         margen_ganancia: margenInput.value ? parseFloat(margenInput.value) : null
     };
-    
+
     if (producto.precio_costo < 0 || producto.precio_venta < 0) {
         showNotification('Los precios deben ser positivos', 'warning');
         return;
     }
-    
+
     if (producto.stock < 0) {
         showNotification('El stock no puede ser negativo', 'warning');
         return;
     }
-    
+
     const btn = form.querySelector('button[type="submit"]');
     if (btn) {
         btn.classList.add('loading');
         btn.disabled = true;
     }
-    
+
     try {
         let error;
-        
+
         if (form.dataset.productoId) {
             const { error: updateError } = await supabaseClient
                 .from('productos')
                 .update(producto)
                 .eq('id', form.dataset.productoId);
-            
+
             error = updateError;
         } else {
             const { error: insertError } = await supabaseClient
                 .from('productos')
                 .insert([producto]);
-            
+
             error = insertError;
         }
-        
+
         if (error) {
             if (error.code === '23505') {
                 throw new Error('El código de barras ya existe');
             }
             throw error;
         }
-        
+
         showNotification('Producto guardado correctamente', 'success');
-        
+
         const modal = document.getElementById('modal-producto');
         if (modal) modal.classList.remove('active');
-        
+
         form.reset();
         delete form.dataset.productoId;
-        
+
         cargarProductos();
-        
+
     } catch (error) {
         console.error('Error guardando producto:', error);
-        
+
         if (error.message === 'El código de barras ya existe') {
             showNotification(error.message, 'error');
             if (codigoInput) {
@@ -3561,9 +3502,9 @@ window.editarProducto = async function(id) {
             .select('*')
             .eq('id', id)
             .single();
-        
+
         if (error) throw error;
-        
+
         mostrarModalProducto(producto);
     } catch (error) {
         console.error('Error cargando producto:', error);
@@ -3577,19 +3518,19 @@ window.eliminarProducto = async function(id) {
         showNotification('No tiene permisos para eliminar productos', 'error');
         return;
     }
-    
+
     if (!confirm('¿Está seguro de eliminar este producto? Se marcará como inactivo.')) {
         return;
     }
-    
+
     try {
         const { error } = await supabaseClient
             .from('productos')
             .update({ activo: false })
             .eq('id', id);
-        
+
         if (error) throw error;
-        
+
         showNotification('Producto eliminado correctamente', 'success');
         cargarProductos();
     } catch (error) {
@@ -3613,39 +3554,39 @@ async function buscarProductosManual() {
         const buscadorCodigo = document.getElementById('buscador-codigo');
         const buscadorNombre = document.getElementById('buscador-nombre');
         const buscadorProveedor = document.getElementById('buscador-proveedor');
-        
+
         let query = supabaseClient
             .from('productos')
             .select('*')
             .eq('activo', true)
             .order('nombre');
-        
+
         if (buscadorCodigo && buscadorCodigo.value) {
             query = query.ilike('codigo_barra', `%${buscadorCodigo.value}%`);
         }
-        
+
         if (buscadorNombre && buscadorNombre.value) {
             query = query.ilike('nombre', `%${buscadorNombre.value}%`);
         }
-        
+
         if (buscadorProveedor && buscadorProveedor.value) {
             query = query.eq('proveedor', buscadorProveedor.value);
         }
-        
+
         const { data: productos, error } = await query.limit(50);
-        
+
         if (error) throw error;
-        
+
         const tbody = document.getElementById('buscador-body');
         if (!tbody) return;
-        
+
         tbody.innerHTML = '';
-        
+
         if (productos.length === 0) {
             tbody.innerHTML = '<tr><td colspan="5" class="text-center">No se encontraron productos</td></tr>';
             return;
         }
-        
+
         productos.forEach(producto => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
@@ -3659,7 +3600,7 @@ async function buscarProductosManual() {
                     </button>
                 </td>
             `;
-            
+
             tbody.appendChild(tr);
         });
     } catch (error) {
@@ -3676,12 +3617,12 @@ window.agregarDesdeBuscador = async function(id) {
             .eq('id', id)
             .eq('activo', true)
             .single();
-        
+
         if (error) throw error;
-        
-        const index = appState.carrito.findIndex(item => 
+
+        const index = appState.carrito.findIndex(item =>
             item.producto.id === producto.id);
-        
+
         if (index !== -1) {
             appState.carrito[index].cantidad += 1;
             showNotification(`${producto.nombre} - Cantidad aumentada a ${appState.carrito[index].cantidad}`, 'success');
@@ -3693,16 +3634,16 @@ window.agregarDesdeBuscador = async function(id) {
             });
             showNotification(`${producto.nombre} agregado al carrito`, 'success');
         }
-        
+
         actualizarCarritoUI();
         guardarEstadoCarrito();
-        
+
         const modal = document.getElementById('modal-buscador');
         if (modal) modal.classList.remove('active');
-        
+
         const scannerInput = document.getElementById('scanner-input');
         if (scannerInput) scannerInput.focus();
-        
+
     } catch (error) {
         console.error('Error cargando producto:', error);
         showNotification('Error cargando producto', 'error');
@@ -3715,11 +3656,11 @@ function inicializarFechasReportes() {
     const hace7Dias = new Date();
     hace7Dias.setDate(hace7Dias.getDate() - 7);
     const hace7DiasStr = hace7Dias.toISOString().split('T')[0];
-    
+
     const fechaInicio = document.getElementById('reporte-fecha-inicio');
     const fechaFin = document.getElementById('reporte-fecha-fin');
     const fechaActualSpan = document.getElementById('fecha-actual');
-    
+
     if (fechaInicio) fechaInicio.value = hace7DiasStr;
     if (fechaFin) fechaFin.value = hoy;
     if (fechaActualSpan) fechaActualSpan.textContent = hoy;
@@ -3730,29 +3671,29 @@ async function generarReporte() {
         const fechaInicioInput = document.getElementById('reporte-fecha-inicio');
         const fechaFinInput = document.getElementById('reporte-fecha-fin');
         const tipoReporte = document.getElementById('reporte-tipo')?.value || 'general';
-        
+
         const hoy = new Date().toISOString().split('T')[0];
         const hace7Dias = new Date();
         hace7Dias.setDate(hace7Dias.getDate() - 7);
         const hace7DiasStr = hace7Dias.toISOString().split('T')[0];
-        
+
         if (!fechaInicioInput.value) fechaInicioInput.value = hace7DiasStr;
         if (!fechaFinInput.value) fechaFinInput.value = hoy;
-        
+
         const fechaInicio = fechaInicioInput.value;
         const fechaFin = fechaFinInput.value;
-        
+
         if (new Date(fechaInicio) > new Date(fechaFin)) {
             showNotification('La fecha de inicio no puede ser mayor a la fecha fin', 'error');
             return;
         }
-        
+
         const btn = document.getElementById('btn-generar-reporte');
         if (btn) {
             btn.classList.add('loading');
             btn.disabled = true;
         }
-        
+
         const { data: ventas, error: ventasError } = await supabaseClient
             .from('ventas')
             .select(`
@@ -3775,35 +3716,35 @@ async function generarReporte() {
             .lte('fecha', fechaFin + 'T23:59:59')
             .eq('anulada', false)
             .order('fecha', { ascending: false });
-        
+
         if (ventasError) {
             console.error('Error obteniendo ventas:', ventasError);
             throw ventasError;
         }
-        
+
         const { data: productos, error: productosError } = await supabaseClient
             .from('productos')
             .select('*')
             .eq('activo', true);
-        
+
         if (productosError) {
             console.error('Error obteniendo productos:', productosError);
             throw productosError;
         }
-        
+
         const { data: cajas, error: cajasError } = await supabaseClient
             .from('caja')
             .select('*')
             .gte('fecha_apertura', fechaInicio + 'T00:00:00')
             .lte('fecha_apertura', fechaFin + 'T23:59:59');
-        
+
         if (cajasError) {
             console.error('Error obteniendo cajas:', cajasError);
             throw cajasError;
         }
-        
+
         let reporteHTML = '';
-        
+
         switch(tipoReporte) {
             case 'general':
                 reporteHTML = await generarReporteGeneral(ventas, productos, cajas, fechaInicio, fechaFin);
@@ -3820,18 +3761,18 @@ async function generarReporte() {
             default:
                 reporteHTML = await generarReporteGeneral(ventas, productos, cajas, fechaInicio, fechaFin);
         }
-        
+
         const resultados = document.getElementById('reportes-resultados');
         if (resultados) {
             resultados.innerHTML = reporteHTML;
         }
-        
+
         showNotification(`Reporte generado correctamente (${ventas?.length || 0} ventas)`, 'success');
-        
+
     } catch (error) {
         console.error('Error generando reporte:', error);
         showNotification('Error generando reporte: ' + error.message, 'error');
-        
+
         const resultados = document.getElementById('reportes-resultados');
         if (resultados) {
             resultados.innerHTML = `
@@ -3857,7 +3798,7 @@ async function generarReporteGeneral(ventas, productos, cajas, fechaInicio, fech
     let totalProductosVendidos = 0;
     let totalGanancias = 0;
     let totalDescuentos = 0;
-    
+
     const ventasPorDia = {};
     const productosVendidos = {};
     const mediosPago = {
@@ -3865,11 +3806,11 @@ async function generarReporteGeneral(ventas, productos, cajas, fechaInicio, fech
         'TARJETA': 0,
         'TRANSFERENCIA/QR': 0
     };
-    
+
     ventas?.forEach(venta => {
         totalVentas += parseFloat(venta.total) || 0;
         totalDescuentos += parseFloat(venta.descuento) || 0;
-        
+
         const fecha = venta.fecha.split('T')[0];
         if (!ventasPorDia[fecha]) {
             ventasPorDia[fecha] = {
@@ -3879,11 +3820,11 @@ async function generarReporteGeneral(ventas, productos, cajas, fechaInicio, fech
         }
         ventasPorDia[fecha].ventas += parseFloat(venta.total) || 0;
         ventasPorDia[fecha].cantidad += 1;
-        
+
         if (venta.detalle_ventas) {
             venta.detalle_ventas.forEach(detalle => {
                 totalProductosVendidos += detalle.cantidad || 0;
-                
+
                 const productoNombre = detalle.productos?.nombre || 'Desconocido';
                 if (!productosVendidos[productoNombre]) {
                     productosVendidos[productoNombre] = {
@@ -3893,13 +3834,13 @@ async function generarReporteGeneral(ventas, productos, cajas, fechaInicio, fech
                 }
                 productosVendidos[productoNombre].cantidad += detalle.cantidad || 0;
                 productosVendidos[productoNombre].total += parseFloat(detalle.subtotal) || 0;
-                
+
                 const costo = parseFloat(detalle.productos?.precio_costo) || 0;
                 const ganancia = (parseFloat(detalle.precio_unitario) || 0) - costo;
                 totalGanancias += ganancia * (detalle.cantidad || 1);
             });
         }
-        
+
         if (venta.pagos_venta) {
             venta.pagos_venta.forEach(pago => {
                 if (mediosPago[pago.medio_pago] !== undefined) {
@@ -3908,22 +3849,22 @@ async function generarReporteGeneral(ventas, productos, cajas, fechaInicio, fech
             });
         }
     });
-    
+
     const ticketPromedio = ventas?.length > 0 ? totalVentas / ventas.length : 0;
-    
+
     const productosTop = Object.entries(productosVendidos)
         .sort((a, b) => b[1].cantidad - a[1].cantidad)
         .slice(0, 10);
-    
+
     const diasOrdenados = Object.entries(ventasPorDia)
         .sort((a, b) => new Date(a[0]) - new Date(b[0]));
-    
+
     return `
         <div class="reporte-header">
             <h3><i class="fas fa-chart-bar"></i> Reporte General</h3>
             <p>Período: ${fechaInicio} al ${fechaFin}</p>
         </div>
-        
+
         <div class="reporte-resumen">
             <div class="reporte-item">
                 <h4>TOTAL VENTAS</h4>
@@ -3946,7 +3887,7 @@ async function generarReporteGeneral(ventas, productos, cajas, fechaInicio, fech
                 <small>Unidades totales</small>
             </div>
         </div>
-        
+
         <div class="row mt-4">
             <div class="col-md-6">
                 <div class="reporte-desglose">
@@ -3974,7 +3915,7 @@ async function generarReporteGeneral(ventas, productos, cajas, fechaInicio, fech
                     </table>
                 </div>
             </div>
-            
+
             <div class="col-md-6">
                 <div class="reporte-desglose">
                     <h4><i class="fas fa-star"></i> Productos Más Vendidos</h4>
@@ -4001,7 +3942,7 @@ async function generarReporteGeneral(ventas, productos, cajas, fechaInicio, fech
                 </div>
             </div>
         </div>
-        
+
         <div class="mt-4">
             <h4><i class="fas fa-calendar-alt"></i> Ventas por Día</h4>
             <div style="max-height: 300px; overflow-y: auto;">
@@ -4027,7 +3968,7 @@ async function generarReporteGeneral(ventas, productos, cajas, fechaInicio, fech
                 </table>
             </div>
         </div>
-        
+
         <div class="mt-4 p-3 bg-light rounded">
             <h4><i class="fas fa-info-circle"></i> Resumen del Período</h4>
             <div class="row">
@@ -4058,13 +3999,13 @@ function generarReporteVentas(ventas, fechaInicio, fechaFin) {
             </div>
         `;
     }
-    
+
     let html = `
         <div class="reporte-header">
             <h3><i class="fas fa-receipt"></i> Reporte de Ventas</h3>
             <p>Período: ${fechaInicio} al ${fechaFin} | Total: ${ventas.length} ventas</p>
         </div>
-        
+
         <div class="table-responsive">
             <table class="data-table">
                 <thead>
@@ -4080,11 +4021,11 @@ function generarReporteVentas(ventas, fechaInicio, fechaFin) {
                 </thead>
                 <tbody>
     `;
-    
+
     ventas.forEach(venta => {
         const fecha = new Date(venta.fecha).toLocaleString('es-ES');
         const mediosPago = {};
-        
+
         if (venta.pagos_venta && venta.pagos_venta.length > 0) {
             venta.pagos_venta.forEach(pago => {
                 if (!mediosPago[pago.medio_pago]) {
@@ -4093,11 +4034,11 @@ function generarReporteVentas(ventas, fechaInicio, fechaFin) {
                 mediosPago[pago.medio_pago] += parseFloat(pago.monto);
             });
         }
-        
+
         const mediosTexto = Object.entries(mediosPago)
             .map(([medio, monto]) => `${medio}: $ ${monto.toFixed(2)}`)
             .join(', ');
-        
+
         html += `
             <tr>
                 <td>${venta.ticket_id}</td>
@@ -4114,19 +4055,19 @@ function generarReporteVentas(ventas, fechaInicio, fechaFin) {
             </tr>
         `;
     });
-    
+
     html += `
                 </tbody>
             </table>
         </div>
     `;
-    
+
     return html;
 }
 
 function generarReporteProductos(ventas, productos, fechaInicio, fechaFin) {
     const productosVendidos = {};
-    
+
     ventas?.forEach(venta => {
         if (venta.detalle_ventas) {
             venta.detalle_ventas.forEach(detalle => {
@@ -4141,25 +4082,25 @@ function generarReporteProductos(ventas, productos, fechaInicio, fechaFin) {
                 }
                 productosVendidos[productoNombre].cantidad += detalle.cantidad || 0;
                 productosVendidos[productoNombre].total += parseFloat(detalle.subtotal) || 0;
-                
+
                 const costoUnitario = parseFloat(detalle.productos?.precio_costo) || 0;
                 productosVendidos[productoNombre].costo += costoUnitario * (detalle.cantidad || 0);
-                productosVendidos[productoNombre].ganancia = 
+                productosVendidos[productoNombre].ganancia =
                     productosVendidos[productoNombre].total - productosVendidos[productoNombre].costo;
             });
         }
     });
-    
+
     const productosArray = Object.entries(productosVendidos)
         .map(([nombre, datos]) => ({ nombre, ...datos }))
         .sort((a, b) => b.cantidad - a.cantidad);
-    
+
     return `
         <div class="reporte-header">
             <h3><i class="fas fa-boxes"></i> Reporte de Productos</h3>
             <p>Período: ${fechaInicio} al ${fechaFin}</p>
         </div>
-        
+
         <div class="reporte-resumen">
             <div class="reporte-item">
                 <h4>PRODUCTOS VENDIDOS</h4>
@@ -4182,7 +4123,7 @@ function generarReporteProductos(ventas, productos, fechaInicio, fechaFin) {
                 <small>Por productos</small>
             </div>
         </div>
-        
+
         <div class="mt-4">
             <h4><i class="fas fa-list-ol"></i> Detalle de Productos Vendidos</h4>
             <div style="max-height: 400px; overflow-y: auto;">
@@ -4199,7 +4140,7 @@ function generarReporteProductos(ventas, productos, fechaInicio, fechaFin) {
                     </thead>
                     <tbody>
                         ${productosArray.map(producto => {
-                            const margen = producto.costo > 0 ? 
+                            const margen = producto.costo > 0 ?
                                 (producto.ganancia / producto.costo * 100) : 0;
                             return `
                                 <tr>
@@ -4224,15 +4165,15 @@ function generarReporteGanancias(ventas, fechaInicio, fechaFin) {
     let totalCosto = 0;
     let totalGanancias = 0;
     let totalDescuentos = 0;
-    
+
     const gananciasPorDia = {};
-    
+
     ventas?.forEach(venta => {
         totalVentas += parseFloat(venta.total) || 0;
         totalDescuentos += parseFloat(venta.descuento) || 0;
-        
+
         const fecha = venta.fecha.split('T')[0];
-        
+
         if (!gananciasPorDia[fecha]) {
             gananciasPorDia[fecha] = {
                 ventas: 0,
@@ -4240,40 +4181,40 @@ function generarReporteGanancias(ventas, fechaInicio, fechaFin) {
                 ganancia: 0
             };
         }
-        
+
         if (venta.detalle_ventas) {
             let ventaCosto = 0;
             let ventaGanancia = 0;
-            
+
             venta.detalle_ventas.forEach(detalle => {
                 const costo = parseFloat(detalle.productos?.precio_costo) || 0;
                 const precio = parseFloat(detalle.precio_unitario) || 0;
                 const cantidad = detalle.cantidad || 0;
-                
+
                 ventaCosto += costo * cantidad;
                 ventaGanancia += (precio - costo) * cantidad;
             });
-            
+
             totalCosto += ventaCosto;
             totalGanancias += ventaGanancia;
-            
+
             gananciasPorDia[fecha].ventas += parseFloat(venta.total) || 0;
             gananciasPorDia[fecha].costo += ventaCosto;
             gananciasPorDia[fecha].ganancia += ventaGanancia;
         }
     });
-    
+
     const margenTotal = totalCosto > 0 ? (totalGanancias / totalCosto * 100) : 0;
-    
+
     const diasOrdenados = Object.entries(gananciasPorDia)
         .sort((a, b) => new Date(a[0]) - new Date(b[0]));
-    
+
     return `
         <div class="reporte-header">
             <h3><i class="fas fa-money-bill-wave"></i> Reporte de Ganancias</h3>
             <p>Período: ${fechaInicio} al ${fechaFin}</p>
         </div>
-        
+
         <div class="reporte-resumen">
             <div class="reporte-item">
                 <h4>VENTAS TOTALES</h4>
@@ -4296,7 +4237,7 @@ function generarReporteGanancias(ventas, fechaInicio, fechaFin) {
                 <small>Rentabilidad</small>
             </div>
         </div>
-        
+
         <div class="mt-4">
             <h4><i class="fas fa-chart-line"></i> Evolución Diaria de Ganancias</h4>
             <div style="max-height: 300px; overflow-y: auto;">
@@ -4312,7 +4253,7 @@ function generarReporteGanancias(ventas, fechaInicio, fechaFin) {
                     </thead>
                     <tbody>
                         ${diasOrdenados.map(([fecha, datos]) => {
-                            const margenDia = datos.costo > 0 ? 
+                            const margenDia = datos.costo > 0 ?
                                 (datos.ganancia / datos.costo * 100) : 0;
                             return `
                                 <tr>
@@ -4328,7 +4269,7 @@ function generarReporteGanancias(ventas, fechaInicio, fechaFin) {
                 </table>
             </div>
         </div>
-        
+
         <div class="mt-4 p-3 bg-light rounded">
             <h4><i class="fas fa-calculator"></i> Análisis de Rentabilidad</h4>
             <div class="row">
@@ -4348,7 +4289,7 @@ function generarReporteGanancias(ventas, fechaInicio, fechaFin) {
 function imprimirReporte() {
     const contenido = document.getElementById('reportes-resultados').innerHTML;
     const ventana = window.open('', '_blank');
-    
+
     ventana.document.write(`
         <!DOCTYPE html>
         <html>
@@ -4378,14 +4319,12 @@ function imprimirReporte() {
             </div>
             <script>
                 window.onload = function() {
-                    // Auto-print option
-                    // window.print();
                 };
             </script>
         </body>
         </html>
     `);
-    
+
     ventana.document.close();
 }
 
@@ -4395,38 +4334,38 @@ async function cargarConfiguracionTicket() {
         const { data: config, error } = await supabaseClient
             .from('configuracion')
             .select('*');
-        
+
         if (error) throw error;
-        
+
         const form = document.getElementById('config-ticket-form');
         if (!form) return;
-        
+
         form.innerHTML = '';
-        
-        const ticketConfigs = config.filter(item => 
-            item.clave.startsWith('ticket_') || 
+
+        const ticketConfigs = config.filter(item =>
+            item.clave.startsWith('ticket_') ||
             item.clave.startsWith('empresa_')
         );
-        
+
         ticketConfigs.forEach(item => {
             const div = document.createElement('div');
             div.className = 'config-form-group';
-            
-            const isTextarea = item.clave.includes('mensaje') || 
-                              item.clave.includes('legal') || 
+
+            const isTextarea = item.clave.includes('mensaje') ||
+                              item.clave.includes('legal') ||
                               item.clave.includes('pie');
-            
+
             div.innerHTML = `
                 <label for="config-${item.clave}">${item.descripcion || item.clave}:</label>
-                ${isTextarea ? 
+                ${isTextarea ?
                     `<textarea id="config-${item.clave}" rows="3">${item.valor}</textarea>` :
                     `<input type="text" id="config-${item.clave}" value="${item.valor}">`
                 }
             `;
-            
+
             form.appendChild(div);
         });
-        
+
         const btnDiv = document.createElement('div');
         btnDiv.className = 'form-actions';
         btnDiv.innerHTML = `
@@ -4434,14 +4373,14 @@ async function cargarConfiguracionTicket() {
                 <i class="fas fa-save"></i> Guardar Configuración
             </button>
         `;
-        
+
         form.appendChild(btnDiv);
-        
+
         const btnGuardar = document.getElementById('btn-guardar-config');
         if (btnGuardar) {
             btnGuardar.addEventListener('click', guardarConfiguracionTicket);
         }
-        
+
     } catch (error) {
         console.error('Error cargando configuración de ticket:', error);
         showNotification('Error cargando configuración', 'error');
@@ -4452,33 +4391,33 @@ async function guardarConfiguracionTicket() {
     try {
         const configElements = document.querySelectorAll('#config-ticket-form [id^="config-"]');
         const updates = [];
-        
+
         configElements.forEach(element => {
             const clave = element.id.replace('config-', '');
             const valor = element.value.trim();
-            
+
             updates.push({
                 clave,
                 valor
             });
         });
-        
+
         if (appState.usuario?.rol !== 'Administrador') {
             showNotification('Solo administradores pueden modificar la configuración', 'error');
             return;
         }
-        
+
         for (const config of updates) {
             const { error } = await supabaseClient
                 .from('configuracion')
                 .update({ valor: config.valor })
                 .eq('clave', config.clave);
-            
+
             if (error) throw error;
         }
-        
+
         showNotification('Configuración guardada correctamente', 'success');
-        
+
     } catch (error) {
         console.error('Error guardando configuración:', error);
         showNotification('Error guardando configuración', 'error');
@@ -4489,17 +4428,17 @@ function mostrarTabConfiguracion(tabId) {
     document.querySelectorAll('.tab-content').forEach(tab => {
         tab.classList.remove('active');
     });
-    
+
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.remove('active');
     });
-    
+
     const tab = document.getElementById(tabId);
     const tabBtn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
-    
+
     if (tab) tab.classList.add('active');
     if (tabBtn) tabBtn.classList.add('active');
-    
+
     if (tabId === 'config-permisos') {
         cargarConfiguracionPermisos();
     } else if (tabId === 'config-usuarios') {
@@ -4514,31 +4453,31 @@ async function cargarConfiguracionPermisos() {
             .select('*')
             .eq('activo', true)
             .neq('rol', 'Administrador');
-        
+
         if (error) throw error;
-        
+
         const permisosList = document.getElementById('config-permisos-list');
         if (!permisosList) return;
-        
+
         if (usuarios.length === 0) {
             permisosList.innerHTML = '<p>No hay cajeros registrados</p>';
             return;
         }
-        
+
         let html = '<div class="permisos-grid">';
-        
+
         for (const usuario of usuarios) {
             const { data: permisosUsuario, error: permisosError } = await supabaseClient
                 .from('permisos')
                 .select('*')
                 .eq('usuario_id', usuario.id);
-            
+
             if (permisosError) throw permisosError;
-            
+
             const permisosActivos = permisosUsuario
                 .filter(p => p.activo)
                 .map(p => p.permiso);
-            
+
             html += `
                 <div class="usuario-permisos">
                     <h4>${usuario.username}</h4>
@@ -4595,10 +4534,10 @@ async function cargarConfiguracionPermisos() {
                 </div>
             `;
         }
-        
+
         html += '</div>';
         permisosList.innerHTML = html;
-        
+
     } catch (error) {
         console.error('Error cargando permisos:', error);
         showNotification('Error cargando permisos', 'error');
@@ -4609,7 +4548,7 @@ window.guardarPermisosUsuario = async function(id) {
     try {
         const checkboxes = document.querySelectorAll(`input[data-usuario="${id}"]`);
         const permisosSeleccionados = [];
-        
+
         checkboxes.forEach(checkbox => {
             if (checkbox.checked) {
                 permisosSeleccionados.push({
@@ -4619,31 +4558,31 @@ window.guardarPermisosUsuario = async function(id) {
                 });
             }
         });
-        
+
         if (appState.usuario?.rol !== 'Administrador') {
             showNotification('Solo administradores pueden modificar permisos', 'error');
             return;
         }
-        
+
         const { error: deleteError } = await supabaseClient
             .from('permisos')
             .update({ activo: false })
             .eq('usuario_id', id);
-        
+
         if (deleteError) throw deleteError;
-        
+
         if (permisosSeleccionados.length > 0) {
             for (const permiso of permisosSeleccionados) {
                 const { error: upsertError } = await supabaseClient
                     .from('permisos')
                     .upsert(permiso, { onConflict: 'usuario_id,permiso' });
-                
+
                 if (upsertError) throw upsertError;
             }
         }
-        
+
         showNotification('Permisos actualizados correctamente', 'success');
-        
+
     } catch (error) {
         console.error('Error guardando permisos:', error);
         showNotification('Error guardando permisos', 'error');
@@ -4660,23 +4599,23 @@ async function cargarConfiguracionUsuarios() {
         }
         return;
     }
-    
+
     try {
         const { data: usuarios, error } = await supabaseClient
             .from('usuarios')
             .select('*')
             .order('username');
-        
+
         if (error) throw error;
-        
+
         const usuariosList = document.getElementById('config-usuarios-list');
         if (!usuariosList) return;
-        
+
         if (usuarios.length === 0) {
             usuariosList.innerHTML = '<p>No hay usuarios registrados</p>';
             return;
         }
-        
+
         let html = `
             <table class="data-table">
                 <thead>
@@ -4689,7 +4628,7 @@ async function cargarConfiguracionUsuarios() {
                 </thead>
                 <tbody>
         `;
-        
+
         usuarios.forEach(usuario => {
             html += `
                 <tr>
@@ -4704,15 +4643,15 @@ async function cargarConfiguracionUsuarios() {
                 </tr>
             `;
         });
-        
+
         html += `
                 </tbody>
             </table>
             <p class="mt-3"><small>Nota: Para agregar nuevos usuarios, utilice la consola de autenticación de Supabase.</small></p>
         `;
-        
+
         usuariosList.innerHTML = html;
-        
+
     } catch (error) {
         console.error('Error cargando usuarios:', error);
         const usuariosList = document.getElementById('config-usuarios-list');
@@ -4728,19 +4667,19 @@ async function cargarConfiguracionUsuarios() {
 function showNotification(mensaje, tipo = 'info') {
     const notification = document.createElement('div');
     notification.className = `notification ${tipo}`;
-    
+
     let icon = 'info-circle';
     if (tipo === 'success') icon = 'check-circle';
     else if (tipo === 'error') icon = 'exclamation-circle';
     else if (tipo === 'warning') icon = 'exclamation-triangle';
-    
+
     notification.innerHTML = `
         <i class="fas fa-${icon}"></i>
         <span>${mensaje}</span>
     `;
-    
+
     document.body.appendChild(notification);
-    
+
     setTimeout(() => {
         if (notification.parentNode) {
             notification.parentNode.removeChild(notification);

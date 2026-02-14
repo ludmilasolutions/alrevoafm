@@ -14,9 +14,12 @@ let appState = {
     descuento: { tipo: 'porcentaje', valor: 0 },
     cajaActiva: null,
     modoOscuro: window.matchMedia('(prefers-color-scheme: dark)').matches,
-    usbPrinterDevice: null,
-    escposBuffer: []
+    // Eliminadas variables obsoletas de impresión USB
 };
+
+// ==================== VARIABLES QZ TRAY ====================
+let qzConectado = false;
+const NOMBRE_IMPRESORA = 'Xprinter'; // Nombre parcial de la impresora
 
 // ==================== PERSISTENCIA DEL CARRITO ====================
 const CARRITO_STORAGE_KEY = 'afm_pos_carrito';
@@ -248,9 +251,7 @@ document.getElementById('login-form').addEventListener('submit', async function(
                 pagos: [],
                 descuento: { tipo: 'porcentaje', valor: 0 },
                 cajaActiva: null,
-                modoOscuro: appState.modoOscuro,
-                usbPrinterDevice: null,
-                escposBuffer: []
+                modoOscuro: appState.modoOscuro
             };
             
             await checkSession();
@@ -281,9 +282,7 @@ document.getElementById('logout-btn').addEventListener('click', async function()
             pagos: [],
             descuento: { tipo: 'porcentaje', valor: 0 },
             cajaActiva: null,
-            modoOscuro: appState.modoOscuro,
-            usbPrinterDevice: null,
-            escposBuffer: []
+            modoOscuro: appState.modoOscuro
         };
         
         document.getElementById('carrito-items').innerHTML = `
@@ -1252,7 +1251,10 @@ async function finalizarVenta() {
             if (pagoError) throw pagoError;
         }
         
-        await generarTicket(venta);
+        // ===== IMPRIMIR TICKET CON QZ TRAY (FALLBACK A HTML) =====
+        const configMap = await obtenerConfiguracionTicket();
+        const cambio = totalPagado - total;
+        await imprimirTicketConQZ(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
         
         appState.carrito = [];
         appState.pagos = [];
@@ -1288,147 +1290,235 @@ async function finalizarVenta() {
     }
 }
 
-// ==================== IMPRESIÓN ESC/POS ====================
-async function requestPrinter() {
-    if (appState.usbPrinterDevice) {
-        return appState.usbPrinterDevice;
-    }
-    
-    if (!navigator.usb) {
-        console.warn('WebUSB no está soportado en este navegador. Se usará impresión HTML.');
-        return null;
-    }
-    
+// ==================== FUNCIONES DE IMPRESIÓN QZ TRAY ====================
+
+// Obtener configuración de ticket desde Supabase
+async function obtenerConfiguracionTicket() {
     try {
-        const device = await navigator.usb.requestDevice({
-            filters: [
-                { vendorId: 0x0416 },
-                { vendorId: 0x0525 }
-            ]
+        const { data: config, error } = await supabaseClient
+            .from('configuracion')
+            .select('*');
+        
+        if (error) throw error;
+        
+        const configMap = {};
+        config.forEach(item => {
+            configMap[item.clave] = item.valor;
         });
-        
-        await device.open();
-        if (device.configuration === null) {
-            await device.selectConfiguration(1);
-        }
-        await device.claimInterface(0);
-        
-        appState.usbPrinterDevice = device;
-        showNotification('Impresora conectada correctamente', 'success');
-        return device;
+        return configMap;
     } catch (error) {
-        console.error('Error al conectar impresora USB:', error);
-        showNotification('No se pudo conectar a la impresora. Se usará impresión HTML.', 'warning');
-        return null;
+        console.error('Error obteniendo configuración:', error);
+        // Valores por defecto
+        return {
+            ticket_encabezado: 'AFMSOLUTIONS',
+            ticket_encabezado_extra: 'SISTEMA POS',
+            empresa_direccion: 'LOCAL COMERCIAL',
+            ticket_pie: '¡Gracias por su compra!',
+            ticket_legal: 'Conserve su ticket',
+            empresa_contacto: ''
+        };
     }
 }
 
-async function sendESCPOSBuffer(device, buffer) {
-    if (!device) return false;
+// Conectar a QZ Tray con timeout
+async function conectarQZTray() {
+    if (qzConectado) return true;
+    
+    // Verificar si QZ Tray está disponible
+    if (typeof qz === 'undefined') {
+        console.warn('QZ Tray no está instalado o no se cargó la librería');
+        return false;
+    }
+    
     try {
-        const data = new Uint8Array(buffer);
-        const result = await device.transferOut(1, data);
-        return result.bytesWritten === data.length;
+        // Promesa con timeout de 5 segundos
+        const connectPromise = qz.websocket.connect().then(() => {
+            qzConectado = true;
+            return true;
+        });
+        
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout conectando a QZ Tray')), 5000)
+        );
+        
+        await Promise.race([connectPromise, timeoutPromise]);
+        return true;
     } catch (error) {
-        console.error('Error enviando datos a la impresora:', error);
+        console.error('Error conectando a QZ Tray:', error);
+        qzConectado = false;
         return false;
     }
 }
 
-async function printESCPOSTicket(venta, configMap, carrito, pagos, usuario, cambio) {
-    const device = await requestPrinter();
-    if (!device) return false;
+// Buscar impresora por nombre parcial
+async function buscarImpresora(nombreParcial) {
+    try {
+        const impresoras = await qz.printers.find();
+        // Buscar impresora que contenga el nombre parcial (insensible a mayúsculas)
+        const encontrada = impresoras.find(impresora => 
+            impresora.toLowerCase().includes(nombreParcial.toLowerCase())
+        );
+        return encontrada || null;
+    } catch (error) {
+        console.error('Error buscando impresoras:', error);
+        return null;
+    }
+}
+
+// Convertir string a array de bytes (usando TextEncoder para mantener caracteres ASCII/latin1)
+function stringToBytes(str) {
+    if (!str) return [];
+    // Usamos 'latin1' para evitar problemas con caracteres especiales
+    const encoder = new TextEncoder('latin1');
+    return Array.from(encoder.encode(str));
+}
+
+// Construir comando ESC/POS completo como array de bytes (Uint8Array)
+function construirComandosESCPOS(venta, configMap, carrito, pagos, usuario, cambio) {
+    let bytes = [];
     
-    appState.escposBuffer = [];
-    
-    const addBytes = (...bytes) => {
-        appState.escposBuffer.push(...bytes);
+    // Helper para agregar bytes individuales
+    const add = (...args) => {
+        bytes.push(...args);
     };
     
+    // Helper para agregar texto (se convierte a bytes)
     const addText = (text) => {
         if (!text) return;
-        const encoder = new TextEncoder();
-        const encoded = encoder.encode(text + '\n');
-        appState.escposBuffer.push(...encoded);
+        bytes.push(...stringToBytes(text));
     };
     
+    // Helper para agregar línea con salto de línea
     const addLine = (text = '') => {
         addText(text);
+        add(0x0A); // LF (salto de línea)
     };
     
+    // Separador de 32 guiones (ancho aproximado 58mm)
     const separator = () => {
-        addText('----------------------------------------');
+        addLine('--------------------------------');
     };
     
-    addBytes(0x1B, 0x40);
+    // 1. INICIALIZACIÓN
+    add(0x1B, 0x40); // ESC @
     
-    addBytes(0x1B, 0x61, 0x01);
-    addBytes(0x1D, 0x21, 0x11);
-    addText(configMap.ticket_encabezado || 'AFMSOLUTIONS');
-    addBytes(0x1D, 0x21, 0x00);
-    addText(configMap.ticket_encabezado_extra || 'SISTEMA POS');
-    addText(configMap.empresa_direccion || 'LOCAL COMERCIAL');
+    // 2. ENCABEZADO (centrado, doble tamaño)
+    add(0x1B, 0x61, 0x01); // ESC a 1 (centrado)
+    add(0x1D, 0x21, 0x11); // GS ! 17 (doble altura y ancho)
+    addLine(configMap.ticket_encabezado || 'AFMSOLUTIONS');
+    add(0x1D, 0x21, 0x00); // GS ! 0 (tamaño normal)
+    addLine(configMap.ticket_encabezado_extra || 'SISTEMA POS');
+    addLine(configMap.empresa_direccion || 'LOCAL COMERCIAL');
     separator();
     
-    addBytes(0x1B, 0x61, 0x00);
-    
+    // 3. FECHA, TICKET, VENDEDOR (izquierda)
+    add(0x1B, 0x61, 0x00); // ESC a 0 (izquierda)
     const fecha = new Date(venta.fecha);
     const fechaFormateada = `${fecha.getDate().toString().padStart(2,'0')}/${(fecha.getMonth()+1).toString().padStart(2,'0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2,'0')}:${fecha.getMinutes().toString().padStart(2,'0')}:${fecha.getSeconds().toString().padStart(2,'0')}`;
-    
-    addText(`Fecha: ${fechaFormateada}`);
-    addText(`Ticket: ${venta.ticket_id}`);
-    addText(`Vendedor: ${usuario?.username || ''}`);
+    addLine(`Fecha: ${fechaFormateada}`);
+    addLine(`Ticket: ${venta.ticket_id}`);
+    addLine(`Vendedor: ${usuario?.username || ''}`);
     separator();
     
-    addBytes(0x1B, 0x45, 0x01);
-    addText('ARTÍCULO             CANT  IMPORTE');
-    addBytes(0x1B, 0x45, 0x00);
+    // 4. CABECERA DE PRODUCTOS (negrita)
+    add(0x1B, 0x45, 0x01); // ESC E 1 (negrita ON)
+    addLine('ARTÍCULO             CANT  IMPORTE');
+    add(0x1B, 0x45, 0x00); // ESC E 0 (negrita OFF)
     
+    // 5. PRODUCTOS
     carrito.forEach(item => {
-        const nombre = item.producto.nombre.length > 20 ? 
-            item.producto.nombre.substring(0, 20) + '.' : 
-            item.producto.nombre.padEnd(20);
+        // Truncar nombre a 20 caracteres
+        let nombre = item.producto.nombre;
+        if (nombre.length > 20) {
+            nombre = nombre.substring(0, 18) + '..';
+        } else {
+            nombre = nombre.padEnd(20);
+        }
         const cantidad = item.cantidad.toString().padStart(3);
         const precio = `$${item.precioUnitario.toFixed(2)}`.padStart(8);
         const totalItem = `$${(item.cantidad * item.precioUnitario).toFixed(2)}`.padStart(8);
-        addText(`${nombre}  ${cantidad} x ${precio} = ${totalItem}`);
+        addLine(`${nombre}  ${cantidad} x ${precio} = ${totalItem}`);
     });
     separator();
     
-    addText(`Subtotal: $${venta.subtotal.toFixed(2)}`);
-    addText(`Descuento: $${venta.descuento.toFixed(2)}`);
-    addBytes(0x1B, 0x45, 0x01);
-    addText(`TOTAL: $${venta.total.toFixed(2)}`);
-    addBytes(0x1B, 0x45, 0x00);
+    // 6. SUBTOTAL, DESCUENTO, TOTAL (negrita para TOTAL)
+    addLine(`Subtotal: $${venta.subtotal.toFixed(2)}`);
+    addLine(`Descuento: $${venta.descuento.toFixed(2)}`);
+    add(0x1B, 0x45, 0x01); // negrita ON
+    addLine(`TOTAL: $${venta.total.toFixed(2)}`);
+    add(0x1B, 0x45, 0x00); // negrita OFF
     
-    addText('');
-    addText('PAGOS:');
+    // 7. PAGOS Y CAMBIO
+    addLine('');
+    addLine('PAGOS:');
     pagos.forEach(pago => {
-        addText(`${pago.medio}: $${pago.monto.toFixed(2)}`);
+        addLine(`${pago.medio}: $${pago.monto.toFixed(2)}`);
     });
-    
     if (cambio > 0) {
-        addText(`Cambio: $${cambio.toFixed(2)}`);
+        addLine(`Cambio: $${cambio.toFixed(2)}`);
     }
     separator();
     
-    addBytes(0x1B, 0x61, 0x01);
-    addText(configMap.ticket_pie || '¡Gracias por su compra!');
-    addText(configMap.ticket_legal || 'Conserve su ticket');
-    addText(configMap.empresa_contacto || '');
-    addText('');
-    addText(' ');
+    // 8. PIE DE PÁGINA (centrado)
+    add(0x1B, 0x61, 0x01); // centrado
+    addLine(configMap.ticket_pie || '¡Gracias por su compra!');
+    addLine(configMap.ticket_legal || 'Conserve su ticket');
+    addLine(configMap.empresa_contacto || '');
+    addLine(' ');
     
-    addBytes(0x1D, 0x56, 0x00);
+    // 9. APERTURA DE CAJÓN (antes del corte)
+    add(0x1B, 0x70, 0x00, 0x00); // ESC p 0 0 (pin 2, 50ms on/off)
     
-    const success = await sendESCPOSBuffer(device, appState.escposBuffer);
-    if (success) {
-        showNotification('Ticket impreso correctamente', 'success');
-    }
-    return success;
+    // 10. CORTE DE PAPEL
+    add(0x1D, 0x56, 0x00); // GS V 0 (full cut)
+    
+    return new Uint8Array(bytes);
 }
 
-function printViaHTML(venta, configMap, carrito, pagos, usuario, cambio) {
+// Función principal de impresión con QZ Tray
+async function imprimirTicketConQZ(venta, configMap, carrito, pagos, usuario, cambio) {
+    // Verificar si QZ Tray está disponible
+    if (typeof qz === 'undefined') {
+        showNotification('QZ Tray no instalado. Usando impresión HTML.', 'warning');
+        return imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio);
+    }
+    
+    // Intentar conectar a QZ Tray
+    const conectado = await conectarQZTray();
+    if (!conectado) {
+        showNotification('No se pudo conectar a QZ Tray. Usando impresión HTML.', 'warning');
+        return imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio);
+    }
+    
+    try {
+        // Buscar impresora Xprinter
+        const impresora = await buscarImpresora(NOMBRE_IMPRESORA);
+        if (!impresora) {
+            showNotification(`No se encontró impresora que contenga "${NOMBRE_IMPRESORA}". Usando fallback HTML.`, 'error');
+            return imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio);
+        }
+        
+        // Construir comando ESC/POS
+        const comandos = construirComandosESCPOS(venta, configMap, carrito, pagos, usuario, cambio);
+        
+        // Enviar a imprimir
+        await qz.printers.print(impresora, [{
+            type: 'raw',
+            data: comandos,
+            options: { language: 'ESCPOS' }
+        }]);
+        
+        showNotification('Ticket impreso correctamente con QZ Tray', 'success');
+        return true;
+    } catch (error) {
+        console.error('Error imprimiendo con QZ Tray:', error);
+        showNotification('Error en impresión QZ Tray. Usando fallback HTML.', 'error');
+        return imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio);
+    }
+}
+
+// ==================== FALLBACK: IMPRESIÓN HTML (conservada) ====================
+function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
     const fecha = new Date(venta.fecha);
     const fechaFormateada = `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2, '0')}:${fecha.getMinutes().toString().padStart(2, '0')}:${fecha.getSeconds().toString().padStart(2, '0')}`;
     
@@ -1507,57 +1597,6 @@ function printViaHTML(venta, configMap, carrito, pagos, usuario, cambio) {
     printWindow.document.write(ticketHTML);
     printWindow.document.close();
     return true;
-}
-
-async function generarTicket(venta) {
-    try {
-        const { data: config, error } = await supabaseClient
-            .from('configuracion')
-            .select('*');
-        
-        if (error) throw error;
-        
-        const configMap = {};
-        config.forEach(item => {
-            configMap[item.clave] = item.valor;
-        });
-        
-        const cambio = appState.pagos.reduce((s, p) => s + p.monto, 0) - venta.total;
-        
-        const escposSuccess = await printESCPOSTicket(
-            venta,
-            configMap,
-            appState.carrito,
-            appState.pagos,
-            appState.usuario,
-            cambio
-        );
-        
-        if (!escposSuccess) {
-            printViaHTML(
-                venta,
-                configMap,
-                appState.carrito,
-                appState.pagos,
-                appState.usuario,
-                cambio
-            );
-        }
-        
-    } catch (error) {
-        console.error('Error generando ticket:', error);
-        showNotification('Error al generar el ticket', 'error');
-        try {
-            const { data: config } = await supabaseClient.from('configuracion').select('*');
-            const configMap = {};
-            config?.forEach(item => { configMap[item.clave] = item.valor; });
-            const cambio = appState.pagos.reduce((s, p) => s + p.monto, 0) - venta.total;
-            printViaHTML(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
-        } catch (htmlError) {
-            console.error('Error en fallback HTML:', htmlError);
-            showNotification('No se pudo imprimir el ticket', 'error');
-        }
-    }
 }
 
 function cancelarVenta() {

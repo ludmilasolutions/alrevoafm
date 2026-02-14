@@ -1,47 +1,330 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <title>Prueba WebSerial XP-58</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prueba de Servicio de Impresión</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+        }
+        label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #555;
+        }
+        input, textarea, select {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        textarea {
+            font-family: monospace;
+            height: 80px;
+        }
+        .row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .col {
+            flex: 1;
+            min-width: 200px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .btn-secondary {
+            background: #6c757d;
+        }
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+        .response {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .success {
+            border-left: 4px solid #28a745;
+            background: #d4edda;
+            color: #155724;
+            padding: 10px;
+        }
+        .error {
+            border-left: 4px solid #dc3545;
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+        }
+        .items-container {
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        .item-row {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 5px;
+            align-items: center;
+        }
+        .item-row input {
+            flex: 1;
+        }
+        .item-row button {
+            padding: 5px 10px;
+            background: #dc3545;
+            font-size: 12px;
+        }
+        .add-item {
+            background: #28a745;
+            font-size: 12px;
+            padding: 5px 10px;
+        }
+    </style>
 </head>
 <body>
+    <h1>🧪 Probador del Servicio de Impresión (localhost:3000)</h1>
 
-<button onclick="conectar()">Conectar impresora</button>
-<button onclick="imprimir()">Imprimir prueba</button>
+    <div class="panel">
+        <div class="form-group">
+            <label>Endpoint del servicio:</label>
+            <input type="text" id="serviceUrl" value="http://localhost:3000" placeholder="http://localhost:3000">
+        </div>
+        <div class="row">
+            <div class="col">
+                <button id="checkStatus">🔍 Verificar Estado</button>
+            </div>
+            <div class="col">
+                <button id="sendPrint" class="btn-secondary">🖨️ Enviar Ticket de Prueba</button>
+            </div>
+        </div>
+    </div>
 
-<script>
-let port;
-let writer;
+    <div class="panel">
+        <h3>📄 Datos del Ticket</h3>
+        <form id="ticketForm">
+            <div class="row">
+                <div class="col form-group">
+                    <label>Número de Ticket:</label>
+                    <input type="text" id="ticketNumber" value="0001-00001234" required>
+                </div>
+                <div class="col form-group">
+                    <label>Fecha y Hora:</label>
+                    <input type="text" id="date" value="2026-02-13 14:32" placeholder="YYYY-MM-DD HH:mm">
+                </div>
+            </div>
 
-async function conectar() {
-  try {
-    port = await navigator.serial.requestPort();
-    await port.open({ baudRate: 9600 }); // XP-58 normalmente 9600
+            <div class="form-group">
+                <label>Cliente:</label>
+                <input type="text" id="customer" value="Consumidor Final">
+            </div>
 
-    writer = port.writable.getWriter();
-    alert("Conectado correctamente");
-  } catch (err) {
-    alert("Error: " + err.message);
-  }
-}
+            <div class="form-group">
+                <label>Productos (items):</label>
+                <div id="itemsContainer" class="items-container">
+                    <!-- Se llenará con JS -->
+                </div>
+                <button type="button" id="addItem" class="add-item">➕ Agregar producto</button>
+            </div>
 
-async function imprimir() {
-  if (!writer) {
-    alert("Primero conectá la impresora");
-    return;
-  }
+            <div class="row">
+                <div class="col form-group">
+                    <label>Subtotal:</label>
+                    <input type="number" id="subtotal" step="0.01" value="3800">
+                </div>
+                <div class="col form-group">
+                    <label>Descuento:</label>
+                    <input type="number" id="discount" step="0.01" value="0">
+                </div>
+                <div class="col form-group">
+                    <label>Total:</label>
+                    <input type="number" id="total" step="0.01" value="3800">
+                </div>
+            </div>
 
-  const encoder = new TextEncoder();
+            <div class="row">
+                <div class="col form-group">
+                    <label>Método de Pago:</label>
+                    <select id="paymentMethod">
+                        <option value="Efectivo">Efectivo</option>
+                        <option value="Tarjeta">Tarjeta</option>
+                        <option value="Transferencia/QR">Transferencia/QR</option>
+                    </select>
+                </div>
+                <div class="col form-group">
+                    <label>Abrir cajón:</label>
+                    <select id="openDrawer">
+                        <option value="true">Sí</option>
+                        <option value="false" selected>No</option>
+                    </select>
+                </div>
+            </div>
+        </form>
+    </div>
 
-  const texto = "PRUEBA WEB SERIAL\n\n";
-  const corte = new Uint8Array([0x1D, 0x56, 0x01]);
+    <div class="panel">
+        <h3>📡 Respuesta del Servicio</h3>
+        <pre id="responseOutput" class="response">Esperando acción...</pre>
+    </div>
 
-  await writer.write(encoder.encode(texto));
-  await writer.write(corte);
+    <script>
+        // Estado inicial con un producto de ejemplo
+        let items = [
+            { name: "Martillo", qty: 2, price: 1500 },
+            { name: "Clavos 2”", qty: 1, price: 800 }
+        ];
 
-  alert("Enviado a impresora");
-}
-</script>
+        function renderItems() {
+            const container = document.getElementById('itemsContainer');
+            container.innerHTML = '';
+            items.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = 'item-row';
+                div.innerHTML = `
+                    <input type="text" placeholder="Nombre" value="${item.name}" data-index="${index}" data-field="name">
+                    <input type="number" placeholder="Cantidad" value="${item.qty}" data-index="${index}" data-field="qty" step="1" min="1">
+                    <input type="number" placeholder="Precio" value="${item.price}" data-index="${index}" data-field="price" step="0.01" min="0">
+                    <button class="remove-item" data-index="${index}">🗑️</button>
+                `;
+                container.appendChild(div);
+            });
 
+            // Agregar listeners a los inputs para actualizar el array
+            document.querySelectorAll('.item-row input').forEach(input => {
+                input.addEventListener('change', function() {
+                    const index = this.dataset.index;
+                    const field = this.dataset.field;
+                    const value = field === 'name' ? this.value : parseFloat(this.value) || 0;
+                    items[index][field] = value;
+                    // Recalcular totales automáticamente (opcional)
+                });
+            });
+
+            document.querySelectorAll('.remove-item').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const index = this.dataset.index;
+                    items.splice(index, 1);
+                    renderItems();
+                });
+            });
+        }
+
+        document.getElementById('addItem').addEventListener('click', () => {
+            items.push({ name: "Nuevo producto", qty: 1, price: 0 });
+            renderItems();
+        });
+
+        renderItems();
+
+        // Función para mostrar respuesta
+        function showResponse(data, isError = false) {
+            const output = document.getElementById('responseOutput');
+            output.textContent = JSON.stringify(data, null, 2);
+            output.className = 'response ' + (isError ? 'error' : 'success');
+        }
+
+        // Verificar estado
+        document.getElementById('checkStatus').addEventListener('click', async () => {
+            const baseUrl = document.getElementById('serviceUrl').value.trim();
+            try {
+                const res = await fetch(`${baseUrl}/status`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                showResponse(data);
+            } catch (err) {
+                showResponse({ error: err.message }, true);
+            }
+        });
+
+        // Enviar ticket
+        document.getElementById('sendPrint').addEventListener('click', async () => {
+            const baseUrl = document.getElementById('serviceUrl').value.trim();
+
+            // Recolectar datos del formulario
+            const ticketNumber = document.getElementById('ticketNumber').value;
+            const date = document.getElementById('date').value;
+            const customer = document.getElementById('customer').value;
+            const subtotal = parseFloat(document.getElementById('subtotal').value) || 0;
+            const discount = parseFloat(document.getElementById('discount').value) || 0;
+            const total = parseFloat(document.getElementById('total').value) || 0;
+            const paymentMethod = document.getElementById('paymentMethod').value;
+            const openDrawer = document.getElementById('openDrawer').value === 'true';
+
+            // Validar items no vacíos
+            if (items.length === 0) {
+                alert('Debe haber al menos un producto.');
+                return;
+            }
+
+            const payload = {
+                ticketNumber,
+                date,
+                customer,
+                items: items.map(i => ({
+                    name: i.name,
+                    qty: i.qty,
+                    price: i.price
+                })),
+                subtotal,
+                discount,
+                total,
+                paymentMethod,
+                openDrawer
+            };
+
+            try {
+                const res = await fetch(`${baseUrl}/print`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+                showResponse(data);
+            } catch (err) {
+                showResponse({ error: err.message }, true);
+            }
+        });
+    </script>
 </body>
 </html>

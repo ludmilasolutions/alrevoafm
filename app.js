@@ -19,7 +19,7 @@ let appState = {
 
 // ==================== VARIABLES QZ TRAY ====================
 let qzConectado = false;
-const NOMBRE_IMPRESORA = 'Xprinter'; // Nombre parcial de la impresora
+const NOMBRE_IMPRESORA = 'XP-58i'; // Nombre parcial de la impresora
 
 // ==================== PERSISTENCIA DEL CARRITO ====================
 const CARRITO_STORAGE_KEY = 'afm_pos_carrito';

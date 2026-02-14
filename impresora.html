@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Detector de Impresoras QZ Tray</title>
+    <title>Prueba de Impresora ESC/POS con QZ Tray</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -18,16 +18,36 @@
             border-bottom: 2px solid #3498db;
             padding-bottom: 10px;
         }
+        .panel {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        select, button {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
         button {
             background: #3498db;
             color: white;
             border: none;
-            padding: 12px 24px;
-            font-size: 16px;
-            border-radius: 5px;
             cursor: pointer;
-            margin: 20px 0;
             transition: background 0.3s;
+            margin-top: 10px;
         }
         button:hover {
             background: #2980b9;
@@ -36,38 +56,34 @@
             background: #bdc3c7;
             cursor: not-allowed;
         }
-        .resultado {
-            background: white;
-            border-radius: 8px;
-            padding: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin-top: 20px;
+        .status {
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            display: none;
+        }
+        .success {
+            background: #d5f5e3;
+            color: #27ae60;
+            border: 1px solid #27ae60;
+        }
+        .error {
+            background: #fadbd8;
+            color: #e74c3c;
+            border: 1px solid #e74c3c;
+        }
+        .info {
+            background: #d6eaf8;
+            color: #3498db;
+            border: 1px solid #3498db;
         }
         .impresora-item {
             padding: 8px;
             border-bottom: 1px solid #ecf0f1;
             font-family: monospace;
-            font-size: 14px;
         }
         .impresora-item:last-child {
             border-bottom: none;
-        }
-        .error {
-            color: #e74c3c;
-            background: #fadbd8;
-            padding: 15px;
-            border-radius: 5px;
-            margin: 20px 0;
-        }
-        .info {
-            color: #27ae60;
-            background: #d5f5e3;
-            padding: 15px;
-            border-radius: 5px;
-        }
-        .loading {
-            color: #f39c12;
-            font-style: italic;
         }
         .nota {
             font-size: 14px;
@@ -76,49 +92,78 @@
             border-top: 1px dashed #bdc3c7;
             padding-top: 15px;
         }
+        .comandos {
+            background: #ecf0f1;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
     </style>
-    <!-- Incluimos la librería de QZ Tray desde CDN -->
+    <!-- Incluimos la librería de QZ Tray -->
     <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.2/qz-tray.js"></script>
 </head>
 <body>
-    <h1>🔍 Detector de Impresoras para QZ Tray</h1>
-    <p>Esta herramienta te mostrará el nombre exacto de todas las impresoras instaladas en tu sistema que QZ Tray puede detectar.</p>
-    <p><strong>Importante:</strong> Asegúrate de que QZ Tray esté instalado y ejecutándose. Si no lo tienes, descárgalo desde <a href="https://qz.io/download/" target="_blank">https://qz.io/download/</a></p>
+    <h1>🖨️ Herramienta de Prueba para Impresora ESC/POS</h1>
+    <p>Esta herramienta te permite detectar las impresoras instaladas y enviar un ticket de prueba con apertura de cajón.</p>
+    <p><strong>Requisito:</strong> QZ Tray debe estar instalado y ejecutándose. Descárgalo de <a href="https://qz.io/download/" target="_blank">https://qz.io/download/</a> si no lo tienes.</p>
 
-    <button id="btnConectar" onclick="listarImpresoras()">🔌 Conectar y listar impresoras</button>
-
-    <div id="estado" class="loading" style="display: none;">Conectando...</div>
-    <div id="resultado" class="resultado" style="display: none;">
-        <h3>✅ Impresoras detectadas:</h3>
-        <div id="listaImpresoras"></div>
+    <div class="panel">
+        <h3>Paso 1: Conectar y listar impresoras</h3>
+        <button id="btnConectar" onclick="conectarYListar()">🔌 Conectar y listar impresoras</button>
+        <div id="estadoConexion" class="status"></div>
+        <div id="listaImpresoras" style="margin-top: 15px;"></div>
     </div>
-    <div id="error" class="error" style="display: none;"></div>
-    <div id="info" class="info" style="display: none;"></div>
+
+    <div class="panel">
+        <h3>Paso 2: Seleccionar impresora y probar</h3>
+        <div class="form-group">
+            <label for="selectImpresora">Impresora detectada:</label>
+            <select id="selectImpresora" disabled>
+                <option value="">-- Primero lista las impresoras --</option>
+            </select>
+        </div>
+        <button id="btnImprimir" onclick="imprimirPrueba()" disabled>🖨️ Imprimir ticket de prueba</button>
+        <div id="estadoImpresion" class="status"></div>
+    </div>
+
+    <div class="panel">
+        <h3>📄 Comando ESC/POS enviado</h3>
+        <div id="comandoEnviado" class="comandos">Aquí aparecerá el comando hexadecimal enviado...</div>
+    </div>
 
     <div class="nota">
-        <p><strong>Nota:</strong> Si ves una lista vacía o un error, verifica que QZ Tray esté en ejecución (busca el icono en la bandeja del sistema).</p>
-        <p>El nombre que necesitas para tu POS es el que aparece exactamente aquí. Puedes copiarlo y pegarlo en la variable <code>NOMBRE_IMPRESORA</code> de tu <code>app.js</code>.</p>
-        <p>Ejemplo: Si aquí ves <code>"Xprinter XP-58IIH"</code>, en tu código puedes poner <code>const NOMBRE_IMPRESORA = 'Xprinter XP-58IIH';</code></p>
+        <p><strong>Nota:</strong> El ticket de prueba incluye: inicialización, texto con tamaño doble, línea separadora, subtotal, total, apertura de cajón (comando ESC p 0 0) y corte parcial (GS V m). Si tu impresora usa otro comando para el cajón, puedes modificarlo en el código.</p>
+        <p>Si la impresión sale bien y el cajón se abre, QZ Tray está configurado correctamente. Luego puedes usar ese nombre de impresora en tu POS.</p>
     </div>
 
     <script>
-        // Estado de conexión
         let qzConectado = false;
+        let impresorasDetectadas = [];
 
-        async function listarImpresoras() {
+        // Función para conectar y listar impresoras
+        async function conectarYListar() {
             const btn = document.getElementById('btnConectar');
-            const estadoDiv = document.getElementById('estado');
-            const resultadoDiv = document.getElementById('resultado');
-            const errorDiv = document.getElementById('error');
-            const infoDiv = document.getElementById('info');
+            const estado = document.getElementById('estadoConexion');
+            const listaDiv = document.getElementById('listaImpresoras');
+            const select = document.getElementById('selectImpresora');
+            const btnImprimir = document.getElementById('btnImprimir');
 
-            // Ocultar resultados anteriores
-            resultadoDiv.style.display = 'none';
-            errorDiv.style.display = 'none';
-            infoDiv.style.display = 'none';
-            estadoDiv.style.display = 'block';
-            estadoDiv.textContent = 'Conectando a QZ Tray...';
+            // Resetear
+            estado.className = 'status';
+            estado.style.display = 'none';
+            listaDiv.innerHTML = '';
+            select.innerHTML = '<option value="">-- Primero lista las impresoras --</option>';
+            select.disabled = true;
+            btnImprimir.disabled = true;
+
             btn.disabled = true;
+            estado.style.display = 'block';
+            estado.className = 'status info';
+            estado.textContent = 'Conectando a QZ Tray...';
 
             try {
                 // Verificar si qz está disponible
@@ -126,7 +171,7 @@
                     throw new Error('La librería qz-tray no se cargó correctamente. Verifica tu conexión a internet.');
                 }
 
-                // Intentar conectar (con timeout de 5 segundos)
+                // Intentar conectar con timeout de 5 segundos
                 const connectPromise = qz.websocket.connect();
                 const timeoutPromise = new Promise((_, reject) => 
                     setTimeout(() => reject(new Error('Tiempo de espera agotado (5 seg). Verifica que QZ Tray esté corriendo.')), 5000)
@@ -134,43 +179,191 @@
 
                 await Promise.race([connectPromise, timeoutPromise]);
                 qzConectado = true;
-                estadoDiv.textContent = 'Conexión exitosa. Obteniendo lista de impresoras...';
+                estado.textContent = 'Conexión exitosa. Obteniendo impresoras...';
 
                 // Obtener lista de impresoras
                 const impresoras = await qz.printers.find();
+                impresorasDetectadas = impresoras;
 
-                // Mostrar resultados
-                estadoDiv.style.display = 'none';
+                // Mostrar en lista
                 if (impresoras && impresoras.length > 0) {
-                    const lista = document.getElementById('listaImpresoras');
-                    lista.innerHTML = ''; // Limpiar
+                    listaDiv.innerHTML = '<h4>Impresoras encontradas:</h4>';
                     impresoras.forEach((imp, index) => {
                         const div = document.createElement('div');
                         div.className = 'impresora-item';
                         div.textContent = `${index + 1}. ${imp}`;
-                        lista.appendChild(div);
+                        listaDiv.appendChild(div);
                     });
-                    resultadoDiv.style.display = 'block';
+
+                    // Llenar select
+                    select.innerHTML = '';
+                    impresoras.forEach(imp => {
+                        const option = document.createElement('option');
+                        option.value = imp;
+                        option.textContent = imp;
+                        select.appendChild(option);
+                    });
+                    select.disabled = false;
+                    btnImprimir.disabled = false;
+
+                    estado.className = 'status success';
+                    estado.textContent = `✅ ${impresoras.length} impresora(s) detectada(s). Selecciona una y prueba.`;
                 } else {
-                    infoDiv.style.display = 'block';
-                    infoDiv.innerHTML = 'No se encontraron impresoras instaladas. Asegúrate de tener al menos una impresora configurada en el sistema.';
+                    listaDiv.innerHTML = '<p>No se encontraron impresoras instaladas.</p>';
+                    estado.className = 'status error';
+                    estado.textContent = '❌ No se encontraron impresoras. Verifica que tengas al menos una instalada.';
                 }
 
             } catch (error) {
                 console.error('Error:', error);
-                estadoDiv.style.display = 'none';
-                errorDiv.style.display = 'block';
-                errorDiv.innerHTML = `<strong>Error:</strong> ${error.message}<br><br>Posibles causas:<br>- QZ Tray no está instalado o no está en ejecución.<br>- El sitio no se sirve con HTTPS o localhost.<br>- Firewall bloqueando la conexión.`;
+                estado.className = 'status error';
+                estado.textContent = `❌ Error: ${error.message}. Asegúrate de que QZ Tray esté ejecutándose.`;
             } finally {
                 btn.disabled = false;
             }
         }
 
-        // Opcional: ejecutar automáticamente al cargar la página (si se desea)
-        window.onload = function() {
-            // Podemos llamar a listarImpresoras() automáticamente si se prefiere
-            // Pero lo dejamos manual con botón para que el usuario decida
-        };
+        // Función para construir un ticket de prueba en ESC/POS (array de bytes)
+        function construirTicketPrueba() {
+            let bytes = [];
+
+            // Helper para agregar bytes individuales
+            const add = (...args) => {
+                bytes.push(...args);
+            };
+
+            // Helper para convertir texto a bytes (latin1)
+            const addText = (text) => {
+                if (!text) return;
+                // Usamos TextEncoder con latin1 para caracteres básicos
+                const encoder = new TextEncoder('latin1');
+                const encoded = encoder.encode(text);
+                bytes.push(...encoded);
+            };
+
+            // Helper para agregar línea con salto de línea
+            const addLine = (text = '') => {
+                addText(text);
+                add(0x0A); // LF
+            };
+
+            // Separador
+            const separator = () => {
+                addLine('--------------------------------');
+            };
+
+            // 1. Inicializar impresora
+            add(0x1B, 0x40); // ESC @
+
+            // 2. Centrar y doble tamaño para el encabezado
+            add(0x1B, 0x61, 0x01); // ESC a 1 (centrado)
+            add(0x1D, 0x21, 0x11); // GS ! 17 (doble altura y ancho)
+            addLine('PRUEBA QZ TRAY');
+            add(0x1D, 0x21, 0x00); // GS ! 0 (tamaño normal)
+            addLine('Ticket de prueba');
+            addLine('Sistema POS');
+            separator();
+
+            // 3. Alinear a la izquierda
+            add(0x1B, 0x61, 0x00); // ESC a 0 (izquierda)
+
+            // Fecha y hora actual
+            const ahora = new Date();
+            const fechaStr = `${ahora.getDate().toString().padStart(2,'0')}/${(ahora.getMonth()+1).toString().padStart(2,'0')}/${ahora.getFullYear()} ${ahora.getHours().toString().padStart(2,'0')}:${ahora.getMinutes().toString().padStart(2,'0')}:${ahora.getSeconds().toString().padStart(2,'0')}`;
+            addLine(`Fecha: ${fechaStr}`);
+            addLine('Ticket: TEST-001');
+            addLine('Vendedor: PRUEBA');
+            separator();
+
+            // Productos de ejemplo
+            addLine('PRODUCTO             CANT  IMPORTE');
+            addLine('Coca Cola 600ml       2 x $1.50 = $3.00');
+            addLine('Pan Frances          1 x $0.80 = $0.80');
+            addLine('Leche Entera         1 x $1.20 = $1.20');
+            separator();
+
+            // Totales
+            addLine('Subtotal: $5.00');
+            addLine('Descuento: $0.00');
+            add(0x1B, 0x45, 0x01); // Negrita ON
+            addLine('TOTAL: $5.00');
+            add(0x1B, 0x45, 0x00); // Negrita OFF
+
+            // Medios de pago (ejemplo)
+            addLine('');
+            addLine('PAGOS:');
+            addLine('EFECTIVO: $5.00');
+            addLine('Cambio: $0.00');
+            separator();
+
+            // Pie de página centrado
+            add(0x1B, 0x61, 0x01); // Centrado
+            addLine('¡Gracias por su compra!');
+            addLine('Conserve su ticket');
+            addLine(' ');
+
+            // APERTURA DE CAJÓN (comando estándar ESC p 0 0)
+            add(0x1B, 0x70, 0x00, 0x00); // ESC p 0 0 (pin 2, 50ms on/off)
+
+            // CORTE PARCIAL (GS V 1) - algunos modelos usan GS V 0 (full cut)
+            add(0x1D, 0x56, 0x01); // GS V 1 (partial cut)
+
+            return new Uint8Array(bytes);
+        }
+
+        // Función para imprimir el ticket de prueba
+        async function imprimirPrueba() {
+            const select = document.getElementById('selectImpresora');
+            const estado = document.getElementById('estadoImpresion');
+            const comandoDiv = document.getElementById('comandoEnviado');
+            const btnImprimir = document.getElementById('btnImprimir');
+
+            if (!select.value) {
+                estado.className = 'status error';
+                estado.style.display = 'block';
+                estado.textContent = '❌ Por favor selecciona una impresora.';
+                return;
+            }
+
+            const nombreImpresora = select.value;
+
+            estado.className = 'status info';
+            estado.style.display = 'block';
+            estado.textContent = 'Enviando ticket de prueba...';
+            btnImprimir.disabled = true;
+
+            try {
+                // Verificar conexión
+                if (!qzConectado) {
+                    // Intentar conectar nuevamente
+                    await qz.websocket.connect().catch(() => { throw new Error('No se pudo conectar a QZ Tray'); });
+                    qzConectado = true;
+                }
+
+                // Construir comando ESC/POS
+                const ticketBytes = construirTicketPrueba();
+
+                // Mostrar los primeros bytes como hex para depuración (opcional)
+                const hexArray = Array.from(ticketBytes.slice(0, 100)).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+                comandoDiv.textContent = `Hex (primeros 100 bytes): ${hexArray}...\nLongitud total: ${ticketBytes.length} bytes`;
+
+                // Enviar a imprimir
+                await qz.printers.print(nombreImpresora, [{
+                    type: 'raw',
+                    data: ticketBytes,
+                    options: { language: 'ESCPOS' }
+                }]);
+
+                estado.className = 'status success';
+                estado.textContent = '✅ Ticket de prueba enviado correctamente. Revisa la impresora y el cajón.';
+            } catch (error) {
+                console.error('Error al imprimir:', error);
+                estado.className = 'status error';
+                estado.textContent = `❌ Error al imprimir: ${error.message}`;
+            } finally {
+                btnImprimir.disabled = false;
+            }
+        }
     </script>
 </body>
 </html>

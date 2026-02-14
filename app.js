@@ -1324,24 +1324,19 @@ async function obtenerConfiguracionTicket() {
 async function conectarQZTray() {
     if (qzConectado) return true;
     
-    // Verificar si QZ Tray está disponible
     if (typeof qz === 'undefined') {
         console.warn('QZ Tray no está instalado o no se cargó la librería');
         return false;
     }
     
     try {
-        // Promesa con timeout de 5 segundos
-        const connectPromise = qz.websocket.connect().then(() => {
-            qzConectado = true;
-            return true;
-        });
-        
+        const connectPromise = qz.websocket.connect();
         const timeoutPromise = new Promise((_, reject) => 
             setTimeout(() => reject(new Error('Timeout conectando a QZ Tray')), 5000)
         );
         
         await Promise.race([connectPromise, timeoutPromise]);
+        qzConectado = true;
         return true;
     } catch (error) {
         console.error('Error conectando a QZ Tray:', error);
@@ -1354,7 +1349,6 @@ async function conectarQZTray() {
 async function buscarImpresora(nombreParcial) {
     try {
         const impresoras = await qz.printers.find();
-        // Buscar impresora que contenga el nombre parcial (insensible a mayúsculas)
         const encontrada = impresoras.find(impresora => 
             impresora.toLowerCase().includes(nombreParcial.toLowerCase())
         );
@@ -1365,15 +1359,15 @@ async function buscarImpresora(nombreParcial) {
     }
 }
 
-// Convertir string a array de bytes (usando TextEncoder para mantener caracteres ASCII/latin1)
+// Convertir string a array de bytes (usando TextEncoder para caracteres Latin1)
 function stringToBytes(str) {
     if (!str) return [];
-    // Usamos 'latin1' para evitar problemas con caracteres especiales
+    // Para ESC/POS se recomienda usar codificación Latin1 (ISO-8859-1)
     const encoder = new TextEncoder('latin1');
     return Array.from(encoder.encode(str));
 }
 
-// Construir comando ESC/POS completo como array de bytes (Uint8Array)
+// Construir comando ESC/POS completo como string binario
 function construirComandosESCPOS(venta, configMap, carrito, pagos, usuario, cambio) {
     let bytes = [];
     
@@ -1391,10 +1385,9 @@ function construirComandosESCPOS(venta, configMap, carrito, pagos, usuario, camb
     // Helper para agregar línea con salto de línea
     const addLine = (text = '') => {
         addText(text);
-        add(0x0A); // LF (salto de línea)
+        add(0x0A); // LF
     };
     
-    // Separador de 32 guiones (ancho aproximado 58mm)
     const separator = () => {
         addLine('--------------------------------');
     };
@@ -1403,16 +1396,16 @@ function construirComandosESCPOS(venta, configMap, carrito, pagos, usuario, camb
     add(0x1B, 0x40); // ESC @
     
     // 2. ENCABEZADO (centrado, doble tamaño)
-    add(0x1B, 0x61, 0x01); // ESC a 1 (centrado)
-    add(0x1D, 0x21, 0x11); // GS ! 17 (doble altura y ancho)
+    add(0x1B, 0x61, 0x01); // ESC a 1
+    add(0x1D, 0x21, 0x11); // GS ! 17
     addLine(configMap.ticket_encabezado || 'AFMSOLUTIONS');
-    add(0x1D, 0x21, 0x00); // GS ! 0 (tamaño normal)
+    add(0x1D, 0x21, 0x00); // GS ! 0
     addLine(configMap.ticket_encabezado_extra || 'SISTEMA POS');
     addLine(configMap.empresa_direccion || 'LOCAL COMERCIAL');
     separator();
     
     // 3. FECHA, TICKET, VENDEDOR (izquierda)
-    add(0x1B, 0x61, 0x00); // ESC a 0 (izquierda)
+    add(0x1B, 0x61, 0x00); // ESC a 0
     const fecha = new Date(venta.fecha);
     const fechaFormateada = `${fecha.getDate().toString().padStart(2,'0')}/${(fecha.getMonth()+1).toString().padStart(2,'0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2,'0')}:${fecha.getMinutes().toString().padStart(2,'0')}:${fecha.getSeconds().toString().padStart(2,'0')}`;
     addLine(`Fecha: ${fechaFormateada}`);
@@ -1421,13 +1414,12 @@ function construirComandosESCPOS(venta, configMap, carrito, pagos, usuario, camb
     separator();
     
     // 4. CABECERA DE PRODUCTOS (negrita)
-    add(0x1B, 0x45, 0x01); // ESC E 1 (negrita ON)
+    add(0x1B, 0x45, 0x01); // ESC E 1
     addLine('ARTÍCULO             CANT  IMPORTE');
-    add(0x1B, 0x45, 0x00); // ESC E 0 (negrita OFF)
+    add(0x1B, 0x45, 0x00); // ESC E 0
     
     // 5. PRODUCTOS
     carrito.forEach(item => {
-        // Truncar nombre a 20 caracteres
         let nombre = item.producto.nombre;
         if (nombre.length > 20) {
             nombre = nombre.substring(0, 18) + '..';
@@ -1460,22 +1452,23 @@ function construirComandosESCPOS(venta, configMap, carrito, pagos, usuario, camb
     separator();
     
     // 8. PIE DE PÁGINA (centrado)
-    add(0x1B, 0x61, 0x01); // centrado
+    add(0x1B, 0x61, 0x01);
     addLine(configMap.ticket_pie || '¡Gracias por su compra!');
     addLine(configMap.ticket_legal || 'Conserve su ticket');
     addLine(configMap.empresa_contacto || '');
     addLine(' ');
     
     // 9. APERTURA DE CAJÓN (antes del corte)
-    add(0x1B, 0x70, 0x00, 0x00); // ESC p 0 0 (pin 2, 50ms on/off)
+    add(0x1B, 0x70, 0x00, 0x00); // ESC p 0 0
     
     // 10. CORTE DE PAPEL
-    add(0x1D, 0x56, 0x00); // GS V 0 (full cut)
+    add(0x1D, 0x56, 0x00); // GS V 0
     
-    return new Uint8Array(bytes);
+    // Convertir el array de bytes a string binario (necesario para QZ Tray 2.x)
+    return String.fromCharCode.apply(null, bytes);
 }
 
-// Función principal de impresión con QZ Tray
+// Función principal de impresión con QZ Tray (API 2.x)
 async function imprimirTicketConQZ(venta, configMap, carrito, pagos, usuario, cambio) {
     // Verificar si QZ Tray está disponible
     if (typeof qz === 'undefined') {
@@ -1491,22 +1484,27 @@ async function imprimirTicketConQZ(venta, configMap, carrito, pagos, usuario, ca
     }
     
     try {
-        // Buscar impresora Xprinter
+        // Buscar impresora que coincida con el nombre parcial
         const impresora = await buscarImpresora(NOMBRE_IMPRESORA);
         if (!impresora) {
             showNotification(`No se encontró impresora que contenga "${NOMBRE_IMPRESORA}". Usando fallback HTML.`, 'error');
             return imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio);
         }
         
-        // Construir comando ESC/POS
+        // Construir comando ESC/POS como string binario
         const comandos = construirComandosESCPOS(venta, configMap, carrito, pagos, usuario, cambio);
         
-        // Enviar a imprimir
-        await qz.printers.print(impresora, [{
+        // Crear configuración de impresora (API 2.x)
+        const config = qz.configs.create(impresora);
+        
+        // Preparar datos para impresión raw
+        const data = [{
             type: 'raw',
-            data: comandos,
-            options: { language: 'ESCPOS' }
-        }]);
+            data: comandos
+        }];
+        
+        // Enviar a imprimir
+        await qz.print(config, data);
         
         showNotification('Ticket impreso correctamente con QZ Tray', 'success');
         return true;

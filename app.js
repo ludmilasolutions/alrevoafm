@@ -118,6 +118,47 @@ function updateThemeIcon() {
     icon.className = isDark ? 'fas fa-sun' : 'fas fa-moon';
 }
 
+// ==================== FUNCIONES AUXILIARES PARA TICKET ====================
+function normalizeText(text) {
+    if (!text) return '';
+    const map = {
+        'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u',
+        'Á': 'A', 'É': 'E', 'Í': 'I', 'Ó': 'O', 'Ú': 'U',
+        'ñ': 'n', 'Ñ': 'N',
+        '¡': '', '¿': ''  // eliminar signos de exclamación e interrogación
+    };
+    return text.replace(/[áéíóúñÁÉÍÓÚÑ¡¿]/g, m => map[m]);
+}
+
+function truncate(text, maxLen) {
+    if (!text) return '';
+    if (text.length > maxLen) {
+        return text.substring(0, maxLen - 2) + '..';
+    }
+    return text;
+}
+
+function padLeft(text, width) {
+    const str = String(text);
+    if (str.length >= width) return str.substring(0, width);
+    return ' '.repeat(width - str.length) + str;
+}
+
+function padRight(text, width) {
+    const str = String(text);
+    if (str.length >= width) return str.substring(0, width);
+    return str + ' '.repeat(width - str.length);
+}
+
+function center(text, width) {
+    const str = String(text);
+    if (str.length >= width) return str.substring(0, width);
+    const spaces = width - str.length;
+    const left = Math.floor(spaces / 2);
+    const right = spaces - left;
+    return ' '.repeat(left) + str + ' '.repeat(right);
+}
+
 // ==================== INICIALIZACIÓN ====================
 document.addEventListener('DOMContentLoaded', function() {
     initApp();
@@ -1391,83 +1432,87 @@ function stringToBytes(str) {
 function construirComandosESCPOS(venta, configMap, carrito, pagos, usuario, cambio) {
     let bytes = [];
 
-    const add = (...args) => {
-        bytes.push(...args);
-    };
-
+    const add = (...args) => bytes.push(...args);
     const addText = (text) => {
         if (!text) return;
-        bytes.push(...stringToBytes(text));
+        // Normalizar y convertir a bytes en Latin-1
+        const normalized = normalizeText(text);
+        bytes.push(...stringToBytes(normalized));
     };
-
     const addLine = (text = '') => {
         addText(text);
-        add(0x0A);
+        add(0x0A); // LF
     };
 
-    const separator = () => {
-        addLine('--------------------------------');
-    };
+    // Inicializar impresora
+    add(0x1B, 0x40); // ESC @
 
-    add(0x1B, 0x40);
-    add(0x1B, 0x61, 0x01);
-    add(0x1D, 0x21, 0x11);
-    addLine(configMap.ticket_encabezado || 'AFMSOLUTIONS');
-    add(0x1D, 0x21, 0x00);
-    addLine(configMap.ticket_encabezado_extra || 'SISTEMA POS');
-    addLine(configMap.empresa_direccion || 'LOCAL COMERCIAL');
-    separator();
+    // ---------- ENCABEZADO CENTRADO ----------
+    add(0x1B, 0x61, 0x01); // Centrado
+    addLine(center(truncate(configMap.ticket_encabezado || 'AFMSOLUTIONS', 32), 32));
+    addLine(center(truncate(configMap.ticket_encabezado_extra || 'SISTEMA POS', 32), 32));
+    addLine(center(truncate(configMap.empresa_direccion || 'LOCAL COMERCIAL', 32), 32));
 
-    add(0x1B, 0x61, 0x00);
+    // Separador
+    add(0x1B, 0x61, 0x00); // Alineación izquierda
+    addLine('--------------------------------');
+
+    // ---------- INFORMACIÓN DEL TICKET ----------
     const fecha = new Date(venta.fecha);
-    const fechaFormateada = `${fecha.getDate().toString().padStart(2,'0')}/${(fecha.getMonth()+1).toString().padStart(2,'0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2,'0')}:${fecha.getMinutes().toString().padStart(2,'0')}:${fecha.getSeconds().toString().padStart(2,'0')}`;
+    const fechaFormateada = `${fecha.getDate().toString().padStart(2,'0')}/${(fecha.getMonth()+1).toString().padStart(2,'0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2,'0')}:${fecha.getMinutes().toString().padStart(2,'0')}`;
     addLine(`Fecha: ${fechaFormateada}`);
     addLine(`Ticket: ${venta.ticket_id}`);
-    addLine(`Vendedor: ${usuario?.username || ''}`);
-    separator();
+    addLine('--------------------------------');
 
-    add(0x1B, 0x45, 0x01);
-    addLine('ARTÍCULO             CANT  IMPORTE');
-    add(0x1B, 0x45, 0x00);
+    // ---------- TABLA DE PRODUCTOS ----------
+    // Encabezado de columnas (ancho fijo: 18 producto + 1 espacio + 4 cantidad + 1 espacio + 8 subtotal = 32)
+    const header = padRight('PRODUCTO', 18) + ' ' + padLeft('CANT', 4) + ' ' + padLeft('SUBTOTAL', 8);
+    addLine(header);
 
     carrito.forEach(item => {
-        let nombre = item.producto.nombre;
-        if (nombre.length > 20) {
-            nombre = nombre.substring(0, 18) + '..';
-        } else {
-            nombre = nombre.padEnd(20);
-        }
-        const cantidad = item.cantidad.toString().padStart(3);
-        const precio = `$${item.precioUnitario.toFixed(2)}`.padStart(8);
-        const totalItem = `$${(item.cantidad * item.precioUnitario).toFixed(2)}`.padStart(8);
-        addLine(`${nombre}  ${cantidad} x ${precio} = ${totalItem}`);
+        const nombre = truncate(item.producto.nombre, 18);
+        const cantidad = padLeft(item.cantidad.toString(), 4);
+        const subtotal = padLeft('$' + (item.cantidad * item.precioUnitario).toFixed(2), 8);
+        const line = padRight(nombre, 18) + ' ' + cantidad + ' ' + subtotal;
+        addLine(line);
     });
-    separator();
+    addLine('--------------------------------');
 
-    addLine(`Subtotal: $${venta.subtotal.toFixed(2)}`);
-    addLine(`Descuento: $${venta.descuento.toFixed(2)}`);
-    add(0x1B, 0x45, 0x01);
-    addLine(`TOTAL: $${venta.total.toFixed(2)}`);
-    add(0x1B, 0x45, 0x00);
+    // ---------- TOTALES ----------
+    const subtotal = venta.subtotal;
+    const descuento = venta.descuento;
+    const total = venta.total;
 
+    addLine(padLeft(`Subtotal: $${subtotal.toFixed(2)}`, 32));
+    addLine(padLeft(`Descuento: $${descuento.toFixed(2)}`, 32));
+    // Resaltar TOTAL con negrita
+    add(0x1B, 0x45, 0x01); // Negrita ON
+    addLine(padLeft(`TOTAL: $${total.toFixed(2)}`, 32));
+    add(0x1B, 0x45, 0x00); // Negrita OFF
+
+    // ---------- PAGOS ----------
     addLine('');
     addLine('PAGOS:');
     pagos.forEach(pago => {
-        addLine(`${pago.medio}: $${pago.monto.toFixed(2)}`);
+        const medio = truncate(pago.medio, 15);
+        const monto = padLeft('$' + pago.monto.toFixed(2), 16);
+        addLine(padRight(medio, 15) + ' ' + monto);
     });
     if (cambio > 0) {
-        addLine(`Cambio: $${cambio.toFixed(2)}`);
+        addLine(padLeft(`Cambio: $${cambio.toFixed(2)}`, 32));
     }
-    separator();
+    addLine('--------------------------------');
 
-    add(0x1B, 0x61, 0x01);
-    addLine(configMap.ticket_pie || '¡Gracias por su compra!');
-    addLine(configMap.ticket_legal || 'Conserve su ticket');
-    addLine(configMap.empresa_contacto || '');
+    // ---------- PIE DE TICKET ----------
+    add(0x1B, 0x61, 0x01); // Centrado
+    addLine(center(truncate(configMap.ticket_pie || 'Gracias por su compra', 32), 32));
+    addLine(center(truncate(configMap.ticket_legal || 'Conserve su ticket', 32), 32));
+    addLine(center(truncate(configMap.empresa_contacto || '', 32), 32));
+
+    // Espacio final y corte
+    add(0x1B, 0x61, 0x00); // Alineación izquierda
     addLine(' ');
-
-    add(0x1B, 0x70, 0x00, 0x00);
-    add(0x1D, 0x56, 0x00);
+    add(0x1D, 0x56, 0x00); // Corte parcial
 
     return String.fromCharCode.apply(null, bytes);
 }
@@ -1511,33 +1556,31 @@ async function imprimirTicketConQZ(venta, configMap, carrito, pagos, usuario, ca
 
 function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
     const fecha = new Date(venta.fecha);
-    const fechaFormateada = `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2, '0')}:${fecha.getMinutes().toString().padStart(2, '0')}:${fecha.getSeconds().toString().padStart(2, '0')}`;
+    const fechaFormateada = `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2, '0')}:${fecha.getMinutes().toString().padStart(2, '0')}`;
 
     let itemsHTML = '';
     carrito.forEach(item => {
         const totalItem = item.cantidad * item.precioUnitario;
-        const nombre = item.producto.nombre.length > 25 ?
-            item.producto.nombre.substring(0, 22) + '...' :
-            item.producto.nombre;
-
+        const nombre = truncate(item.producto.nombre, 18);
+        const cantidad = padLeft(item.cantidad.toString(), 4);
+        const subtotal = padLeft('$' + totalItem.toFixed(2), 8);
         itemsHTML += `
             <div class="ticket-item">
-                <div class="item-name">${nombre}</div>
-                <div class="item-line">
-                    <div class="item-qty">${item.cantidad} x</div>
-                    <div class="item-price">$${item.precioUnitario.toFixed(2)}</div>
-                    <div class="item-total">$${totalItem.toFixed(2)}</div>
-                </div>
+                <span class="item-name">${nombre}</span>
+                <span class="item-qty">${cantidad}</span>
+                <span class="item-total">${subtotal}</span>
             </div>
         `;
     });
 
     let pagosHTML = '';
     pagos.forEach(pago => {
+        const medio = truncate(pago.medio, 15);
+        const monto = padLeft('$' + pago.monto.toFixed(2), 16);
         pagosHTML += `
-            <div class="total-row">
-                <div>${pago.medio}:</div>
-                <div>$${pago.monto.toFixed(2)}</div>
+            <div class="pago-line">
+                <span class="pago-medio">${medio}</span>
+                <span class="pago-monto">${monto}</span>
             </div>
         `;
     });
@@ -1557,7 +1600,7 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
                         padding: 0;
                         font-family: 'Courier New', monospace;
                         font-size: 11px;
-                        line-height: 1.25;
+                        line-height: 1.2;
                         color: #000;
                     }
                     @page {
@@ -1566,6 +1609,8 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
                     }
                     * {
                         box-sizing: border-box;
+                        margin: 0;
+                        padding: 0;
                     }
                     .ticket {
                         width: 100%;
@@ -1600,27 +1645,22 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
                         font-size: 10px;
                     }
                     .ticket-item {
-                        margin-bottom: 4px;
-                    }
-                    .item-name {
-                        font-weight: bold;
-                        word-break: break-word;
-                    }
-                    .item-line {
                         display: flex;
                         justify-content: space-between;
-                        font-size: 10px;
+                        margin-bottom: 2px;
+                    }
+                    .item-name {
+                        width: 18ch;
+                        overflow: hidden;
+                        white-space: nowrap;
+                        text-overflow: ellipsis;
                     }
                     .item-qty {
-                        width: 20%;
-                        text-align: left;
-                    }
-                    .item-price {
-                        width: 30%;
+                        width: 4ch;
                         text-align: right;
                     }
                     .item-total {
-                        width: 30%;
+                        width: 8ch;
                         text-align: right;
                         font-weight: bold;
                     }
@@ -1632,12 +1672,36 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
                     }
                     .total-row {
                         display: flex;
-                        justify-content: space-between;
+                        justify-content: flex-end;
                         margin: 2px 0;
+                    }
+                    .total-label {
+                        margin-right: 10px;
                     }
                     .grand-total {
                         font-size: 13px;
                         font-weight: bold;
+                        margin-top: 4px;
+                    }
+                    .pagos-section {
+                        margin-top: 6px;
+                        padding-top: 4px;
+                        border-top: 1px dashed #000;
+                    }
+                    .pago-line {
+                        display: flex;
+                        justify-content: space-between;
+                        margin-bottom: 2px;
+                    }
+                    .pago-medio {
+                        width: 15ch;
+                        overflow: hidden;
+                        white-space: nowrap;
+                        text-overflow: ellipsis;
+                    }
+                    .pago-monto {
+                        width: 16ch;
+                        text-align: right;
                     }
                     .ticket-footer {
                         text-align: center;
@@ -1650,57 +1714,69 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
                     .right { text-align: right; }
                     .left { text-align: left; }
                     .bold { font-weight: bold; }
+                    .separator {
+                        text-align: center;
+                        margin: 4px 0;
+                    }
                 }
             </style>
         </head>
         <body>
             <div class="ticket">
                 <div class="ticket-header">
-                    <h1>${configMap.ticket_encabezado || 'AFMSOLUTIONS'}</h1>
-                    <p>${configMap.ticket_encabezado_extra || 'SISTEMA POS'}</p>
-                    <p>${configMap.empresa_direccion || 'LOCAL COMERCIAL'}</p>
+                    <h1>${normalizeText(configMap.ticket_encabezado || 'AFMSOLUTIONS')}</h1>
+                    <p>${normalizeText(configMap.ticket_encabezado_extra || 'SISTEMA POS')}</p>
+                    <p>${normalizeText(configMap.empresa_direccion || 'LOCAL COMERCIAL')}</p>
                 </div>
 
                 <div class="ticket-info">
                     <div>Fecha: ${fechaFormateada}</div>
                     <div>Ticket: <strong>${venta.ticket_id}</strong></div>
-                    <div>Vendedor: ${usuario?.username || ''}</div>
                 </div>
 
+                <div class="separator">--------------------------------</div>
+
                 <div class="ticket-items">
+                    <div class="ticket-item" style="font-weight: bold;">
+                        <span class="item-name">PRODUCTO</span>
+                        <span class="item-qty">CANT</span>
+                        <span class="item-total">SUBTOTAL</span>
+                    </div>
                     ${itemsHTML}
                 </div>
 
+                <div class="separator">--------------------------------</div>
+
                 <div class="ticket-totals">
                     <div class="total-row">
-                        <div>Subtotal:</div>
-                        <div>$${venta.subtotal.toFixed(2)}</div>
+                        <span class="total-label">Subtotal:</span>
+                        <span>$${venta.subtotal.toFixed(2)}</span>
                     </div>
                     <div class="total-row">
-                        <div>Descuento:</div>
-                        <div>$${venta.descuento.toFixed(2)}</div>
+                        <span class="total-label">Descuento:</span>
+                        <span>$${venta.descuento.toFixed(2)}</span>
                     </div>
                     <div class="total-row grand-total">
-                        <div>TOTAL:</div>
-                        <div>$${venta.total.toFixed(2)}</div>
+                        <span class="total-label">TOTAL:</span>
+                        <span>$${venta.total.toFixed(2)}</span>
                     </div>
 
-                    <div style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed #000;">
-                        <div class="bold">PAGOS:</div>
+                    <div class="pagos-section">
+                        <div style="font-weight: bold; margin-bottom: 4px;">PAGOS:</div>
                         ${pagosHTML}
                         ${cambio > 0 ? `
                         <div class="total-row">
-                            <div>Cambio:</div>
-                            <div>$${cambio.toFixed(2)}</div>
+                            <span class="total-label">Cambio:</span>
+                            <span>$${cambio.toFixed(2)}</span>
                         </div>
                         ` : ''}
                     </div>
                 </div>
 
                 <div class="ticket-footer">
-                    <div>${configMap.ticket_pie || '¡Gracias por su compra!'}</div>
-                    <div>${configMap.ticket_legal || 'Conserve su ticket'}</div>
-                    <div style="margin-top: 4px; font-size: 6px;">${configMap.empresa_contacto || ''}</div>
+                    <div>${normalizeText(configMap.ticket_pie || 'Gracias por su compra')}</div>
+                    <div>${normalizeText(configMap.ticket_legal || 'Conserve su ticket')}</div>
+                    <div style="margin-top: 4px;">${normalizeText(configMap.empresa_contacto || '')}</div>
                 </div>
             </div>
 

@@ -1515,21 +1515,38 @@ async function imprimirTicketConQZ(venta, configMap, carrito, pagos, usuario, ca
     }
 }
 
-// ==================== FALLBACK: IMPRESIÓN HTML (conservada) ====================
+// ==================== FALLBACK: IMPRESIÓN HTML (MEJORADA) ====================
 function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
     const fecha = new Date(venta.fecha);
     const fechaFormateada = `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2, '0')}:${fecha.getMinutes().toString().padStart(2, '0')}:${fecha.getSeconds().toString().padStart(2, '0')}`;
     
+    // Construir items HTML con la nueva estructura
     let itemsHTML = '';
     carrito.forEach(item => {
         const totalItem = item.cantidad * item.precioUnitario;
-        const nombre = item.producto.nombre.length > 20 ? 
-            item.producto.nombre.substring(0, 20) + '...' : 
+        const nombre = item.producto.nombre.length > 25 ? 
+            item.producto.nombre.substring(0, 22) + '...' : 
             item.producto.nombre;
+        
         itemsHTML += `
-            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-                <div style="flex: 1; font-size: 9px;">${nombre}</div>
-                <div style="text-align: right; font-size: 9px;">${item.cantidad} x $${item.precioUnitario.toFixed(2)} = $${totalItem.toFixed(2)}</div>
+            <div class="ticket-item">
+                <div class="item-name">${nombre}</div>
+                <div class="item-line">
+                    <div class="item-qty">${item.cantidad} x</div>
+                    <div class="item-price">$${item.precioUnitario.toFixed(2)}</div>
+                    <div class="item-total">$${totalItem.toFixed(2)}</div>
+                </div>
+            </div>
+        `;
+    });
+
+    // Construir pagos HTML
+    let pagosHTML = '';
+    pagos.forEach(pago => {
+        pagosHTML += `
+            <div class="total-row">
+                <div>${pago.medio}:</div>
+                <div>$${pago.monto.toFixed(2)}</div>
             </div>
         `;
     });
@@ -1542,51 +1559,194 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
             <meta charset="UTF-8">
             <style>
                 @media print {
-                    body { font-family: 'Courier New', Courier, monospace; font-size: 8px; width: 58mm; max-width: 58mm; margin: 0; padding: 2px; line-height: 1.1; }
-                    * { box-sizing: border-box; }
-                    .ticket-header { text-align: center; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px dashed #000; }
-                    .ticket-header h1 { font-size: 10px; font-weight: bold; margin: 2px 0; text-transform: uppercase; }
-                    .ticket-info { font-size: 7px; margin-bottom: 4px; }
-                    .ticket-items { margin: 4px 0; }
-                    .ticket-totals { margin-top: 6px; padding-top: 4px; border-top: 1px dashed #000; }
-                    .ticket-total-row { display: flex; justify-content: space-between; margin: 1px 0; }
-                    .ticket-footer { text-align: center; margin-top: 6px; padding-top: 4px; border-top: 1px dashed #000; font-size: 7px; }
-                    .bold { font-weight: bold; }
+                    html, body {
+                        width: 58mm;
+                        max-width: 58mm;
+                        margin: 0;
+                        padding: 0;
+                        font-family: 'Courier New', monospace;
+                        font-size: 11px;
+                        line-height: 1.25;
+                        color: #000;
+                    }
+                    
+                    @page {
+                        size: 58mm auto;
+                        margin: 0;
+                    }
+                    
+                    * {
+                        box-sizing: border-box;
+                    }
+                    
+                    .ticket {
+                        width: 100%;
+                        padding: 4px;
+                    }
+                    
+                    /* ===== HEADER ===== */
+                    .ticket-header {
+                        text-align: center;
+                        margin-bottom: 6px;
+                        padding-bottom: 4px;
+                        border-bottom: 1px dashed #000;
+                    }
+                    
+                    .ticket-header h1 {
+                        font-size: 13px;
+                        margin: 2px 0;
+                        font-weight: bold;
+                        text-transform: uppercase;
+                    }
+                    
+                    .ticket-header p {
+                        margin: 1px 0;
+                        font-size: 9px;
+                    }
+                    
+                    /* ===== INFO ===== */
+                    .ticket-info {
+                        font-size: 9px;
+                        margin-bottom: 6px;
+                    }
+                    
+                    .ticket-info div {
+                        margin-bottom: 2px;
+                    }
+                    
+                    /* ===== ITEMS ===== */
+                    .ticket-items {
+                        width: 100%;
+                        margin: 6px 0;
+                        font-size: 10px;
+                    }
+                    
+                    .ticket-item {
+                        margin-bottom: 4px;
+                    }
+                    
+                    .item-name {
+                        font-weight: bold;
+                        word-break: break-word;
+                    }
+                    
+                    .item-line {
+                        display: flex;
+                        justify-content: space-between;
+                        font-size: 10px;
+                    }
+                    
+                    .item-qty {
+                        width: 20%;
+                        text-align: left;
+                    }
+                    
+                    .item-price {
+                        width: 30%;
+                        text-align: right;
+                    }
+                    
+                    .item-total {
+                        width: 30%;
+                        text-align: right;
+                        font-weight: bold;
+                    }
+                    
+                    /* ===== TOTALS ===== */
+                    .ticket-totals {
+                        margin-top: 6px;
+                        padding-top: 4px;
+                        border-top: 1px dashed #000;
+                        font-size: 11px;
+                    }
+                    
+                    .total-row {
+                        display: flex;
+                        justify-content: space-between;
+                        margin: 2px 0;
+                    }
+                    
+                    .grand-total {
+                        font-size: 13px;
+                        font-weight: bold;
+                    }
+                    
+                    /* ===== FOOTER ===== */
+                    .ticket-footer {
+                        text-align: center;
+                        margin-top: 8px;
+                        padding-top: 4px;
+                        border-top: 1px dashed #000;
+                        font-size: 9px;
+                    }
+                    
+                    /* ===== UTILIDADES ===== */
                     .center { text-align: center; }
                     .right { text-align: right; }
                     .left { text-align: left; }
+                    .bold { font-weight: bold; }
                 }
-                @page { size: 58mm auto; margin: 0; }
             </style>
         </head>
-        <body onload="window.print(); setTimeout(() => window.close(), 100);">
-            <div class="ticket-header">
-                <h1>${configMap.ticket_encabezado || 'AFMSOLUTIONS'}</h1>
-                <div>${configMap.ticket_encabezado_extra || 'SISTEMA POS'}</div>
-                <div>${configMap.empresa_direccion || 'LOCAL COMERCIAL'}</div>
-            </div>
-            <div class="ticket-info">
-                <div>Fecha: ${fechaFormateada}</div>
-                <div>Ticket: <strong>${venta.ticket_id}</strong></div>
-                <div>Vendedor: ${usuario?.username || ''}</div>
-            </div>
-            <div class="ticket-items">${itemsHTML}</div>
-            <div class="ticket-totals">
-                <div class="ticket-total-row"><span>Subtotal:</span><span>$${venta.subtotal.toFixed(2)}</span></div>
-                <div class="ticket-total-row"><span>Descuento:</span><span>$${venta.descuento.toFixed(2)}</span></div>
-                <div class="ticket-total-row bold"><span>TOTAL:</span><span>$${venta.total.toFixed(2)}</span></div>
-                <div style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed #000;">
-                    <div class="bold">PAGOS:</div>
-                    ${pagos.map(pago => `<div class="ticket-total-row"><span>${pago.medio}:</span><span>$${pago.monto.toFixed(2)}</span></div>`).join('')}
-                    ${cambio > 0 ? `<div class="ticket-total-row"><span>Cambio:</span><span>$${cambio.toFixed(2)}</span></div>` : ''}
+        <body>
+            <div class="ticket">
+                <div class="ticket-header">
+                    <h1>${configMap.ticket_encabezado || 'AFMSOLUTIONS'}</h1>
+                    <p>${configMap.ticket_encabezado_extra || 'SISTEMA POS'}</p>
+                    <p>${configMap.empresa_direccion || 'LOCAL COMERCIAL'}</p>
+                </div>
+                
+                <div class="ticket-info">
+                    <div>Fecha: ${fechaFormateada}</div>
+                    <div>Ticket: <strong>${venta.ticket_id}</strong></div>
+                    <div>Vendedor: ${usuario?.username || ''}</div>
+                </div>
+                
+                <div class="ticket-items">
+                    ${itemsHTML}
+                </div>
+                
+                <div class="ticket-totals">
+                    <div class="total-row">
+                        <div>Subtotal:</div>
+                        <div>$${venta.subtotal.toFixed(2)}</div>
+                    </div>
+                    <div class="total-row">
+                        <div>Descuento:</div>
+                        <div>$${venta.descuento.toFixed(2)}</div>
+                    </div>
+                    <div class="total-row grand-total">
+                        <div>TOTAL:</div>
+                        <div>$${venta.total.toFixed(2)}</div>
+                    </div>
+                    
+                    <div style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed #000;">
+                        <div class="bold">PAGOS:</div>
+                        ${pagosHTML}
+                        ${cambio > 0 ? `
+                        <div class="total-row">
+                            <div>Cambio:</div>
+                            <div>$${cambio.toFixed(2)}</div>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+                
+                <div class="ticket-footer">
+                    <div>${configMap.ticket_pie || '¡Gracias por su compra!'}</div>
+                    <div>${configMap.ticket_legal || 'Conserve su ticket'}</div>
+                    <div style="margin-top: 4px; font-size: 6px;">${configMap.empresa_contacto || ''}</div>
                 </div>
             </div>
-            <div class="ticket-footer">
-                <div>${configMap.ticket_pie || '¡Gracias por su compra!'}</div>
-                <div>${configMap.ticket_legal || 'Conserve su ticket'}</div>
-                <div style="margin-top: 4px; font-size: 6px;">${configMap.empresa_contacto || ''}</div>
-            </div>
-            <script>window.onload = function() { setTimeout(() => { window.print(); setTimeout(() => window.close(), 100); }, 100); };</script>
+            
+            <script>
+                window.onload = function() {
+                    setTimeout(function() {
+                        window.print();
+                        setTimeout(function() { window.close(); }, 500);
+                    }, 100);
+                };
+            </script>
         </body>
         </html>
     `;

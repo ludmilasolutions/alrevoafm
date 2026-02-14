@@ -1,165 +1,281 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Test Xprinter 58 - QZ Tray</title>
-
-<script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.2/qz-tray.js"></script>
-
-<style>
-body{
-    font-family: Arial, sans-serif;
-    background:#f4f6f9;
-    max-width:700px;
-    margin:40px auto;
-}
-h1{
-    color:#2c3e50;
-}
-button{
-    background:#007bff;
-    color:white;
-    border:none;
-    padding:10px 18px;
-    border-radius:6px;
-    cursor:pointer;
-    margin-top:10px;
-}
-button:disabled{
-    background:#999;
-}
-select,input{
-    width:100%;
-    padding:8px;
-    margin-top:8px;
-}
-.panel{
-    background:white;
-    padding:20px;
-    border-radius:8px;
-    box-shadow:0 2px 8px rgba(0,0,0,0.1);
-    margin-top:20px;
-}
-.log{
-    background:#eee;
-    padding:10px;
-    font-family:monospace;
-    height:150px;
-    overflow:auto;
-}
-.success{color:green;}
-.error{color:red;}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prueba de Impresión con QZ Tray (versión mejorada)</title>
+    <style>
+        /* (los mismos estilos de antes) */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 14px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        button:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+        }
+        select, textarea, input {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 100%;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+        .panel {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+        .error {
+            color: #e74c3c;
+            background: #fadbd8;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .success {
+            color: #27ae60;
+            background: #d5f5e3;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .loading {
+            color: #f39c12;
+            font-style: italic;
+        }
+        .info {
+            font-size: 14px;
+            color: #7f8c8d;
+            margin-top: 20px;
+        }
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+    </style>
+    <!-- Librería QZ Tray 2.2.2 -->
+    <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.2/qz-tray.js"></script>
 </head>
-
 <body>
+    <h1>🧪 Impresora de Prueba con QZ Tray 2.2.x</h1>
+    <p>Conéctate, selecciona una impresora y envía una prueba (versión mejorada).</p>
 
-<h1>🧪 Test Impresión Xprinter 58</h1>
+    <div class="btn-group">
+        <button id="btnConectar" onclick="conectarYListar()">🔌 Conectar y listar impresoras</button>
+        <button id="btnImprimir" onclick="imprimirPrueba()" disabled>🖨️ Imprimir prueba</button>
+    </div>
 
-<div class="panel">
-    <button onclick="conectar()">🔌 Conectar QZ</button>
-    <select id="impresoras"></select>
-    <input type="text" id="texto" value="PRUEBA DESDE POS AFMSOLUTIONS">
-    <label><input type="checkbox" id="corte" checked> Corte de papel</label>
-    <button onclick="imprimir()">🖨️ Imprimir</button>
-</div>
+    <div id="estado" class="loading" style="display: none;">Conectando...</div>
+    <div id="error" class="error" style="display: none;"></div>
+    <div id="success" class="success" style="display: none;"></div>
 
-<div class="panel">
-    <div id="estado"></div>
-    <div class="log" id="log"></div>
-</div>
+    <div class="panel">
+        <h3>📋 Impresoras detectadas:</h3>
+        <select id="listaImpresoras" size="5" style="height: auto;"></select>
+        <p id="noImpresoras" style="display: none; color: #e67e22;">No se encontraron impresoras.</p>
+    </div>
 
-<script>
-let printerName = null;
+    <div class="panel">
+        <h3>⚙️ Comando de prueba mejorado</h3>
+        <p>Se enviará una secuencia ESC/POS que incluye:</p>
+        <ul>
+            <li>Inicialización</li>
+            <li>Texto con saltos de línea</li>
+            <li>Alimentación de papel (avance 3 líneas)</li>
+            <li>Corte total</li>
+        </ul>
+        <label for="textoPrueba">Texto de prueba:</label>
+        <input type="text" id="textoPrueba" value="Prueba de impresión desde QZ Tray" placeholder="Escribe el texto a imprimir">
+    </div>
 
-function log(msg){
-    const logDiv = document.getElementById("log");
-    logDiv.innerHTML = new Date().toLocaleTimeString() + " - " + msg + "<br>" + logDiv.innerHTML;
-}
+    <div class="info">
+        <p><strong>Nota:</strong> Esta versión usa <code>type: 'raw'</code> sin formato adicional, y fuerza el avance de papel. Si sigue sin imprimir, prueba con otra impresora de la lista (por ejemplo, "Microsoft Print to PDF" para ver si genera un archivo).</p>
+    </div>
 
-async function conectar(){
-    try{
-        log("Conectando a QZ...");
-        await qz.websocket.connect();
+    <script>
+        let qzConectado = false;
+        let impresoraSeleccionada = '';
 
-        const printers = await qz.printers.find();
-        const select = document.getElementById("impresoras");
-        select.innerHTML = "";
+        // Función para conectar y listar impresoras
+        async function conectarYListar() {
+            const btnConectar = document.getElementById('btnConectar');
+            const btnImprimir = document.getElementById('btnImprimir');
+            const estadoDiv = document.getElementById('estado');
+            const errorDiv = document.getElementById('error');
+            const successDiv = document.getElementById('success');
+            const listaSelect = document.getElementById('listaImpresoras');
+            const noImpresoras = document.getElementById('noImpresoras');
 
-        printers.forEach(p=>{
-            const option = document.createElement("option");
-            option.value = p;
-            option.textContent = p;
-            select.appendChild(option);
-        });
+            errorDiv.style.display = 'none';
+            successDiv.style.display = 'none';
+            estadoDiv.style.display = 'block';
+            estadoDiv.textContent = 'Conectando a QZ Tray...';
+            btnConectar.disabled = true;
+            btnImprimir.disabled = true;
 
-        log("Conectado. Impresoras encontradas: " + printers.length);
-        document.getElementById("estado").innerHTML = "<span class='success'>Conectado a QZ</span>";
+            listaSelect.innerHTML = '';
 
-    }catch(err){
-        log("Error conexión: " + err.message);
-        document.getElementById("estado").innerHTML = "<span class='error'>Error conexión</span>";
-    }
-}
+            try {
+                if (typeof qz === 'undefined') {
+                    throw new Error('La librería qz-tray no se cargó. Verifica tu conexión a internet.');
+                }
 
-function construirESCPOSTicket(texto, incluirCorte){
-    const bytes = [];
+                // Conectar con timeout de 5 segundos
+                const connectPromise = qz.websocket.connect();
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Tiempo de espera agotado (5 seg). Verifica que QZ Tray esté corriendo.')), 5000)
+                );
 
-    // Inicializar
-    bytes.push(0x1B, 0x40);
+                await Promise.race([connectPromise, timeoutPromise]);
+                qzConectado = true;
+                estadoDiv.textContent = 'Conexión exitosa. Obteniendo lista de impresoras...';
 
-    // Texto centrado
-    bytes.push(0x1B, 0x61, 0x01);
+                // Obtener lista de impresoras
+                const impresoras = await qz.printers.find();
+                estadoDiv.style.display = 'none';
 
-    for(let i=0;i<texto.length;i++){
-        bytes.push(texto.charCodeAt(i) & 0xFF);
-    }
+                if (impresoras && impresoras.length > 0) {
+                    impresoras.forEach(imp => {
+                        const option = document.createElement('option');
+                        option.value = imp;
+                        option.textContent = imp;
+                        listaSelect.appendChild(option);
+                    });
+                    // Seleccionar la primera por defecto
+                    if (impresoras.length === 1) {
+                        listaSelect.selectedIndex = 0;
+                        impresoraSeleccionada = impresoras[0];
+                        btnImprimir.disabled = false;
+                    }
+                    noImpresoras.style.display = 'none';
+                } else {
+                    noImpresoras.style.display = 'block';
+                }
 
-    bytes.push(0x0A);
-    bytes.push(0x0A);
+                successDiv.style.display = 'block';
+                successDiv.textContent = `Conexión exitosa. ${impresoras.length} impresora(s) encontrada(s).`;
 
-    if(incluirCorte){
-        bytes.push(0x1D, 0x56, 0x01);
-    }
-
-    // 🔥 Convertir bytes a string binario (clave para evitar error .search)
-    return String.fromCharCode.apply(null, bytes);
-}
-
-async function imprimir(){
-    try{
-        const select = document.getElementById("impresoras");
-        if(select.selectedIndex === -1){
-            alert("Seleccioná impresora");
-            return;
+            } catch (error) {
+                estadoDiv.style.display = 'none';
+                errorDiv.style.display = 'block';
+                errorDiv.textContent = `Error: ${error.message}`;
+                qzConectado = false;
+            } finally {
+                btnConectar.disabled = false;
+            }
         }
 
-        printerName = select.value;
+        // Función para construir un comando ESC/POS más robusto
+        function construirComandoPrueba(texto) {
+            const bytes = [];
 
-        const texto = document.getElementById("texto").value;
-        const incluirCorte = document.getElementById("corte").checked;
+            // 1. Inicializar impresora (ESC @)
+            bytes.push(0x1B, 0x40);
 
-        const config = qz.configs.create(printerName);
+            // 2. Establecer alineación izquierda (por si acaso)
+            bytes.push(0x1B, 0x61, 0x00);
 
-        const rawData = construirESCPOSTicket(texto, incluirCorte);
+            // 3. Texto de prueba con saltos de línea
+            const textoConSaltos = texto + '\n\n'; // dos saltos
+            const textoBytes = new TextEncoder().encode(textoConSaltos);
+            bytes.push(...textoBytes);
 
-        const data = [{
-            type: 'raw',
-            format: 'command',
-            data: rawData
-        }];
+            // 4. Comando de alimentación de papel: ESC J n (avance n/144 pulgadas)
+            // Usamos n=50 para avanzar unas 3 líneas
+            bytes.push(0x1B, 0x4A, 50);
 
-        await qz.print(config, data);
+            // 5. Otro salto de línea por seguridad (LF)
+            bytes.push(0x0A);
 
-        log("Impresión enviada correctamente");
+            // 6. Corte total (GS V 0)
+            bytes.push(0x1D, 0x56, 0x00);
 
-    }catch(err){
-        log("Error impresión: " + err.message);
-        document.getElementById("estado").innerHTML = "<span class='error'>Error impresión</span>";
-    }
-}
-</script>
+            // Convertir a string binario
+            return String.fromCharCode.apply(null, bytes);
+        }
 
+        // Función de impresión corregida
+        async function imprimirPrueba() {
+            const btnImprimir = document.getElementById('btnImprimir');
+            const errorDiv = document.getElementById('error');
+            const successDiv = document.getElementById('success');
+            const listaSelect = document.getElementById('listaImpresoras');
+
+            errorDiv.style.display = 'none';
+            successDiv.style.display = 'none';
+
+            if (!qzConectado) {
+                errorDiv.style.display = 'block';
+                errorDiv.textContent = 'No hay conexión con QZ Tray. Conéctate primero.';
+                return;
+            }
+
+            if (listaSelect.selectedIndex === -1) {
+                errorDiv.style.display = 'block';
+                errorDiv.textContent = 'Selecciona una impresora de la lista.';
+                return;
+            }
+            impresoraSeleccionada = listaSelect.options[listaSelect.selectedIndex].value;
+
+            const textoPrueba = document.getElementById('textoPrueba').value.trim() || 'Prueba de impresión';
+            const rawString = construirComandoPrueba(textoPrueba);
+
+            btnImprimir.disabled = true;
+
+            try {
+                // Configuración de impresora
+                const config = qz.configs.create(impresoraSeleccionada);
+
+                // Datos: solo tipo raw, sin formato adicional
+                const data = [{
+                    type: 'raw',
+                    data: rawString
+                }];
+
+                await qz.print(config, data);
+
+                successDiv.style.display = 'block';
+                successDiv.textContent = '✅ Comando enviado correctamente. La impresora debería imprimir.';
+
+            } catch (error) {
+                console.error('Error al imprimir:', error);
+                errorDiv.style.display = 'block';
+                errorDiv.textContent = `Error al imprimir: ${error.message}`;
+            } finally {
+                btnImprimir.disabled = false;
+            }
+        }
+
+        // Habilitar botón de imprimir al seleccionar una impresora
+        document.getElementById('listaImpresoras').addEventListener('change', function() {
+            document.getElementById('btnImprimir').disabled = (this.selectedIndex === -1);
+        });
+    </script>
 </body>
 </html>

@@ -1949,6 +1949,45 @@ body {
   font-size: var(--font-size-base);
 }
 
+/* ===== AJUSTES PARA EVITAR SUPERPOSICIÓN EN REPORTES ===== */
+.reporte-desglose .col-md-6 {
+  display: flex;
+  flex-direction: column;
+  min-width: 0; /* Evita que el contenido ancho fuerce el desbordamiento */
+}
+
+.reporte-desglose .table-container,
+.reporte-desglose [style*="max-height"] {
+  width: 100%;
+  overflow-x: auto; /* Scroll horizontal si es necesario */
+  flex-shrink: 1;
+  min-height: 0;
+}
+
+.reporte-desglose [style*="max-height"] {
+  max-height: 300px !important; /* Fuerza la altura máxima con scroll vertical */
+  overflow-y: auto !important;
+}
+
+.reporte-desglose .data-table {
+  min-width: 100%; /* Ocupa todo el ancho disponible */
+  table-layout: auto; /* Ajuste automático de columnas */
+}
+
+.reporte-desglose .data-table td {
+  white-space: normal; /* Permite saltos de línea en celdas */
+  word-break: break-word;
+}
+
+/* En móviles, las columnas se apilan verticalmente */
+@media (max-width: 768px) {
+  .reporte-desglose .col-md-6 {
+    flex: 0 0 100%;
+    max-width: 100%;
+    margin-bottom: var(--spacing-lg);
+  }
+}
+
 /* ===== CONFIGURACIÓN - CON ANIMACIONES ===== */
 .config-tabs {
   background-color: var(--bg-secondary);

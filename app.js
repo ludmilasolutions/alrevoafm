@@ -2,6 +2,32 @@
 const SUPABASE_URL = 'https://nptthngcshkbuavkjujf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wdHRobmdjc2hrYnVhdmtqdWpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyNTAyMTcsImV4cCI6MjA4NTgyNjIxN30.0P2Yf-wHtNzgoIFLEN-DYME85NFEjKtmz2cyIkyuZfg';
 
+// ==================== CERTIFICADO QZ TRAY ====================
+const QZ_CERTIFICATE = `-----BEGIN CERTIFICATE-----
+MIIECzCCAvOgAwIBAgIGAZxaycxeMA0GCSqGSIb3DQEBCwUAMIGiMQswCQYDVQQG
+EwJVUzELMAkGA1UECAwCTlkxEjAQBgNVBAcMCUNhbmFzdG90YTEbMBkGA1UECgwS
+UVogSW5kdXN0cmllcywgTExDMRswGQYDVQQLDBJRWiBJbmR1c3RyaWVzLCBMTEMx
+HDAaBgkqhkiG9w0BCQEWDXN1cHBvcnRAcXouaW8xGjAYBgNVBAMMEVFaIFRyYXkg
+RGVtbyBDZXJ0MB4XDTI2MDIxMzA2MTUwMFoXDTQ2MDIxMzA2MTUwMFowgaIxCzAJ
+BgNVBAYTAlVTMQswCQYDVQQIDAJOWTESMBAGA1UEBwwJQ2FuYXN0b3RhMRswGQYD
+VQQKDBJRWiBJbmR1c3RyaWVzLCBMTEMxGzAZBgNVBAsMElFaIEluZHVzdHJpZXMs
+IExMQzEcMBoGCSqGSIb3DQEJARYNc3VwcG9ydEBxei5pbzEaMBgGA1UEAwwRUVog
+VHJheSBEZW1vIENlcnQwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCu
+2A5ARJRRDr1Lip1It8EyEbENQW3XrLqKmi10+LxD/6e7Dp9z98P1tWHIH8w/dSVI
+llRqeuoxSuoUZwPT1qcptCRAJQdeC8HDnENpTh1uZQZgOkYnVTgJlb94/JsSXtqE
+vhLytMbINElgD2qZvArx/YshMzil39F1xCqj9F/CmqUu3NZojlMEdr0fgj46y/bU
+tB7TendCAQ3Gvoz97dU1hsETsNjhzSY+PNwsobPjHIBTB3qOKJL/ExrUHoulZXI9
+HOUD+qmxzyopRwQYXXU5ZMzZzJWoyLbT9gBxlsGOZYHEJT2NVnmi/8K3DLRzNYBu
+Qcy5V400U44gACpArCjbAgMBAAGjRTBDMBIGA1UdEwEB/wQIMAYBAf8CAQEwDgYD
+VR0PAQH/BAQDAgEGMB0GA1UdDgQWBBTPTmryDcE6B1yhmjwVyZBgyWyaRzANBgkq
+hkiG9w0BAQsFAAOCAQEAZcuyxYdoIC2SfaNWkXlprBV3fy+W9uVg2v7EzgDOsdrw
+PZVDeaTJ33MTOwWSYNvkkP5b8KwmCU6E0UmBTTHYOWjr3EYdEzZ5E6g7lmz4EUew
+SJxMqoqoEMdCFwRqW0rbEfdiWo8MsTKlaZ/joA6KW4exKRMV+ZYg87t/F9teNqKt
+/jwq3kucTubS3Rz95Tihi2b4f5DzoLemQgV3QUbRrIy652nSFwQtOnVWNjNjGLiZ
+IHmTKTpZGhQw9PEjD27f7dI+uhTmkil2I8iTsS4ryyeoLExLOHVsr0sLBO7Vkv3o
+cvOatGI5O2FxIKtCitM1ydMHAtTG91K0G02zy66Pdg==
+-----END CERTIFICATE-----`;
+
 // Inicialización única de Supabase
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -15,6 +41,10 @@ let appState = {
     cajaActiva: null,
     modoOscuro: window.matchMedia('(prefers-color-scheme: dark)').matches,
 };
+
+// ==================== VARIABLES QZ TRAY ====================
+let qzConectado = false;
+const NOMBRE_IMPRESORA = 'XP-58'; // Nombre parcial de la impresora
 
 // ==================== PERSISTENCIA DEL CARRITO ====================
 const CARRITO_STORAGE_KEY = 'afm_pos_carrito';
@@ -1244,36 +1274,8 @@ async function finalizarVenta() {
 
         const configMap = await obtenerConfiguracionTicket();
         const cambio = totalPagado - total;
+        await imprimirTicketConQZ(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
 
-        // ========== IMPRESIÓN DEL TICKET ==========
-        const ticketData = {
-            venta: venta,
-            config: configMap,
-            carrito: appState.carrito,
-            pagos: appState.pagos,
-            usuario: appState.usuario,
-            cambio: cambio
-        };
-
-        // Verificar si estamos en Electron y la API está disponible
-        if (window.electronAPI && typeof window.electronAPI.printTicket === 'function') {
-            try {
-                // Llamar al proceso principal de Electron para imprimir con QZ Tray
-                await window.electronAPI.printTicket(ticketData);
-                showNotification('Ticket enviado a impresora', 'success');
-            } catch (electronError) {
-                console.error('Error al imprimir con Electron:', electronError);
-                // Fallback a impresión HTML
-                showNotification('Usando impresión de respaldo (HTML)', 'warning');
-                imprimirTicketHTML(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
-            }
-        } else {
-            // No hay Electron, usar impresión HTML directamente
-            console.log('No se detectó Electron, usando impresión HTML');
-            imprimirTicketHTML(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
-        }
-
-        // Limpiar carrito y estado después de la venta
         appState.carrito = [];
         appState.pagos = [];
         appState.descuento = { tipo: 'porcentaje', valor: 0 };
@@ -1308,7 +1310,7 @@ async function finalizarVenta() {
     }
 }
 
-// ==================== FUNCIONES DE IMPRESIÓN ====================
+// ==================== FUNCIONES DE IMPRESIÓN QZ TRAY ====================
 
 async function obtenerConfiguracionTicket() {
     try {
@@ -1336,15 +1338,177 @@ async function obtenerConfiguracionTicket() {
     }
 }
 
-/**
- * Imprime un ticket usando el método HTML (fallback cuando no hay Electron).
- * @param {Object} venta - Datos de la venta
- * @param {Object} configMap - Configuración del ticket
- * @param {Array} carrito - Productos vendidos
- * @param {Array} pagos - Pagos realizados
- * @param {Object} usuario - Usuario que realizó la venta
- * @param {number} cambio - Cambio a devolver
- */
+async function conectarQZTray() {
+    if (qzConectado) return true;
+
+    if (typeof qz === 'undefined') {
+        console.warn('QZ Tray no está instalado o no se cargó la librería');
+        return false;
+    }
+
+    try {
+        // Configurar el certificado proporcionado
+        if (qz.security && typeof qz.security.setCertificatePromise === 'function') {
+            qz.security.setCertificatePromise(function(resolve) {
+                resolve(QZ_CERTIFICATE);
+            });
+        }
+
+        const connectPromise = qz.websocket.connect();
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Timeout conectando a QZ Tray')), 5000)
+        );
+
+        await Promise.race([connectPromise, timeoutPromise]);
+        qzConectado = true;
+        return true;
+    } catch (error) {
+        console.error('Error conectando a QZ Tray:', error);
+        qzConectado = false;
+        return false;
+    }
+}
+
+async function buscarImpresora(nombreParcial) {
+    try {
+        const impresoras = await qz.printers.find();
+        const encontrada = impresoras.find(impresora =>
+            impresora.toLowerCase().includes(nombreParcial.toLowerCase())
+        );
+        return encontrada || null;
+    } catch (error) {
+        console.error('Error buscando impresoras:', error);
+        return null;
+    }
+}
+
+function stringToBytes(str) {
+    if (!str) return [];
+    const encoder = new TextEncoder('latin1');
+    return Array.from(encoder.encode(str));
+}
+
+function construirComandosESCPOS(venta, configMap, carrito, pagos, usuario, cambio) {
+    let bytes = [];
+
+    const add = (...args) => {
+        bytes.push(...args);
+    };
+
+    const addText = (text) => {
+        if (!text) return;
+        bytes.push(...stringToBytes(text));
+    };
+
+    const addLine = (text = '') => {
+        addText(text);
+        add(0x0A);
+    };
+
+    const separator = () => {
+        addLine('--------------------------------');
+    };
+
+    add(0x1B, 0x40);
+    add(0x1B, 0x61, 0x01);
+    add(0x1D, 0x21, 0x11);
+    addLine(configMap.ticket_encabezado || 'AFMSOLUTIONS');
+    add(0x1D, 0x21, 0x00);
+    addLine(configMap.ticket_encabezado_extra || 'SISTEMA POS');
+    addLine(configMap.empresa_direccion || 'LOCAL COMERCIAL');
+    separator();
+
+    add(0x1B, 0x61, 0x00);
+    const fecha = new Date(venta.fecha);
+    const fechaFormateada = `${fecha.getDate().toString().padStart(2,'0')}/${(fecha.getMonth()+1).toString().padStart(2,'0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2,'0')}:${fecha.getMinutes().toString().padStart(2,'0')}:${fecha.getSeconds().toString().padStart(2,'0')}`;
+    addLine(`Fecha: ${fechaFormateada}`);
+    addLine(`Ticket: ${venta.ticket_id}`);
+    addLine(`Vendedor: ${usuario?.username || ''}`);
+    separator();
+
+    add(0x1B, 0x45, 0x01);
+    addLine('ARTÍCULO             CANT  IMPORTE');
+    add(0x1B, 0x45, 0x00);
+
+    carrito.forEach(item => {
+        let nombre = item.producto.nombre;
+        if (nombre.length > 20) {
+            nombre = nombre.substring(0, 18) + '..';
+        } else {
+            nombre = nombre.padEnd(20);
+        }
+        const cantidad = item.cantidad.toString().padStart(3);
+        const precio = `$${item.precioUnitario.toFixed(2)}`.padStart(8);
+        const totalItem = `$${(item.cantidad * item.precioUnitario).toFixed(2)}`.padStart(8);
+        addLine(`${nombre}  ${cantidad} x ${precio} = ${totalItem}`);
+    });
+    separator();
+
+    addLine(`Subtotal: $${venta.subtotal.toFixed(2)}`);
+    addLine(`Descuento: $${venta.descuento.toFixed(2)}`);
+    add(0x1B, 0x45, 0x01);
+    addLine(`TOTAL: $${venta.total.toFixed(2)}`);
+    add(0x1B, 0x45, 0x00);
+
+    addLine('');
+    addLine('PAGOS:');
+    pagos.forEach(pago => {
+        addLine(`${pago.medio}: $${pago.monto.toFixed(2)}`);
+    });
+    if (cambio > 0) {
+        addLine(`Cambio: $${cambio.toFixed(2)}`);
+    }
+    separator();
+
+    add(0x1B, 0x61, 0x01);
+    addLine(configMap.ticket_pie || '¡Gracias por su compra!');
+    addLine(configMap.ticket_legal || 'Conserve su ticket');
+    addLine(configMap.empresa_contacto || '');
+    addLine(' ');
+
+    add(0x1B, 0x70, 0x00, 0x00);
+    add(0x1D, 0x56, 0x00);
+
+    return String.fromCharCode.apply(null, bytes);
+}
+
+async function imprimirTicketConQZ(venta, configMap, carrito, pagos, usuario, cambio) {
+    if (typeof qz === 'undefined') {
+        showNotification('QZ Tray no instalado. Usando impresión HTML.', 'warning');
+        return imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio);
+    }
+
+    const conectado = await conectarQZTray();
+    if (!conectado) {
+        showNotification('No se pudo conectar a QZ Tray. Usando impresión HTML.', 'warning');
+        return imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio);
+    }
+
+    try {
+        const impresora = await buscarImpresora(NOMBRE_IMPRESORA);
+        if (!impresora) {
+            showNotification(`No se encontró impresora que contenga "${NOMBRE_IMPRESORA}". Usando fallback HTML.`, 'error');
+            return imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio);
+        }
+
+        const comandos = construirComandosESCPOS(venta, configMap, carrito, pagos, usuario, cambio);
+        const config = qz.configs.create(impresora);
+        const data = [{
+            type: 'raw',
+            data: comandos
+        }];
+
+        await qz.print(config, data);
+
+        showNotification('Ticket impreso correctamente con QZ Tray', 'success');
+        return true;
+    } catch (error) {
+        console.error('Error imprimiendo con QZ Tray:', error);
+        showNotification('Error en impresión QZ Tray. Usando fallback HTML.', 'error');
+        return imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio);
+    }
+}
+
 function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
     const fecha = new Date(venta.fecha);
     const fechaFormateada = `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2, '0')}:${fecha.getMinutes().toString().padStart(2, '0')}:${fecha.getSeconds().toString().padStart(2, '0')}`;

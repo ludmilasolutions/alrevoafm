@@ -1286,30 +1286,26 @@ async function finalizarVenta() {
         const configMap = await obtenerConfiguracionTicket();
         const cambio = totalPagado - total;
 
-        // Construir objeto simplificado para enviar a Electron
-        const fechaFormateada = new Date(venta.fecha).toLocaleString('es-ES');
-        const datosTicket = {
-            comercio: configMap.ticket_encabezado || 'AFMSOLUTIONS',
-            direccion: configMap.empresa_direccion || 'LOCAL COMERCIAL',
-            fecha: fechaFormateada,
+        // Construir objeto para impresión con la estructura requerida
+        const ticketData = {
             items: appState.carrito.map(item => ({
-                descripcion: item.producto.nombre,
+                nombre: item.producto.nombre,
                 cantidad: item.cantidad,
-                precio: item.precioUnitario
+                precio: item.precioUnitario,
+                total: item.cantidad * item.precioUnitario
             })),
-            total: total,
-            metodoPago: appState.pagos.map(p => p.medio).join(' + ')
+            total: total
         };
 
-        // Intentar impresión con Electron (IPC) usando el objeto simplificado
+        // Intentar impresión con Electron a través de la API expuesta en preload
         if (window.electronAPI && typeof window.electronAPI.imprimirTicket === 'function') {
             try {
-                await window.electronAPI.imprimirTicket(datosTicket);
+                await window.electronAPI.imprimirTicket(ticketData);
                 showNotification('Ticket enviado a impresión', 'success');
             } catch (error) {
                 console.error('Error al imprimir con Electron:', error);
                 showNotification('Error en impresión, usando fallback', 'warning');
-                // Fallback a la función de impresión HTML tradicional (conserva todos los detalles)
+                // Fallback a la función de impresión HTML tradicional
                 imprimirTicketHTML(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
             }
         } else {

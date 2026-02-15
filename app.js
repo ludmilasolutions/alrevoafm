@@ -2,6 +2,32 @@
 const SUPABASE_URL = 'https://nptthngcshkbuavkjujf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wdHRobmdjc2hrYnVhdmtqdWpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyNTAyMTcsImV4cCI6MjA4NTgyNjIxN30.0P2Yf-wHtNzgoIFLEN-DYME85NFEjKtmz2cyIkyuZfg';
 
+// ==================== CERTIFICADO QZ TRAY ====================
+const QZ_CERTIFICATE = `-----BEGIN CERTIFICATE-----
+MIIECzCCAvOgAwIBAgIGAZxaycxeMA0GCSqGSIb3DQEBCwUAMIGiMQswCQYDVQQG
+EwJVUzELMAkGA1UECAwCTlkxEjAQBgNVBAcMCUNhbmFzdG90YTEbMBkGA1UECgwS
+UVogSW5kdXN0cmllcywgTExDMRswGQYDVQQLDBJRWiBJbmR1c3RyaWVzLCBMTEMx
+HDAaBgkqhkiG9w0BCQEWDXN1cHBvcnRAcXouaW8xGjAYBgNVBAMMEVFaIFRyYXkg
+RGVtbyBDZXJ0MB4XDTI2MDIxMzA2MTUwMFoXDTQ2MDIxMzA2MTUwMFowgaIxCzAJ
+BgNVBAYTAlVTMQswCQYDVQQIDAJOWTESMBAGA1UEBwwJQ2FuYXN0b3RhMRswGQYD
+VQQKDBJRWiBJbmR1c3RyaWVzLCBMTEMxGzAZBgNVBAsMElFaIEluZHVzdHJpZXMs
+IExMQzEcMBoGCSqGSIb3DQEJARYNc3VwcG9ydEBxei5pbzEaMBgGA1UEAwwRUVog
+VHJheSBEZW1vIENlcnQwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCu
+2A5ARJRRDr1Lip1It8EyEbENQW3XrLqKmi10+LxD/6e7Dp9z98P1tWHIH8w/dSVI
+llRqeuoxSuoUZwPT1qcptCRAJQdeC8HDnENpTh1uZQZgOkYnVTgJlb94/JsSXtqE
+vhLytMbINElgD2qZvArx/YshMzil39F1xCqj9F/CmqUu3NZojlMEdr0fgj46y/bU
+tB7TendCAQ3Gvoz97dU1hsETsNjhzSY+PNwsobPjHIBTB3qOKJL/ExrUHoulZXI9
+HOUD+qmxzyopRwQYXXU5ZMzZzJWoyLbT9gBxlsGOZYHEJT2NVnmi/8K3DLRzNYBu
+Qcy5V400U44gACpArCjbAgMBAAGjRTBDMBIGA1UdEwEB/wQIMAYBAf8CAQEwDgYD
+VR0PAQH/BAQDAgEGMB0GA1UdDgQWBBTPTmryDcE6B1yhmjwVyZBgyWyaRzANBgkq
+hkiG9w0BAQsFAAOCAQEAZcuyxYdoIC2SfaNWkXlprBV3fy+W9uVg2v7EzgDOsdrw
+PZVDeaTJ33MTOwWSYNvkkP5b8KwmCU6E0UmBTTHYOWjr3EYdEzZ5E6g7lmz4EUew
+SJxMqoqoEMdCFwRqW0rbEfdiWo8MsTKlaZ/joA6KW4exKRMV+ZYg87t/F9teNqKt
+/jwq3kucTubS3Rz95Tihi2b4f5DzoLemQgV3QUbRrIy652nSFwQtOnVWNjNjGLiZ
+IHmTKTpZGhQw9PEjD27f7dI+uhTmkil2I8iTsS4ryyeoLExLOHVsr0sLBO7Vkv3o
+cvOatGI5O2FxIKtCitM1ydMHAtTG91K0G02zy66Pdg==
+-----END CERTIFICATE-----`;
+
 // Inicialización única de Supabase
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -15,6 +41,10 @@ let appState = {
     cajaActiva: null,
     modoOscuro: window.matchMedia('(prefers-color-scheme: dark)').matches,
 };
+
+// ==================== VARIABLES QZ TRAY ====================
+let qzConectado = false;
+const NOMBRE_IMPRESORA = 'XP-58'; // Nombre parcial de la impresora
 
 // ==================== PERSISTENCIA DEL CARRITO ====================
 const CARRITO_STORAGE_KEY = 'afm_pos_carrito';
@@ -86,47 +116,6 @@ function updateThemeIcon() {
     if (!icon) return;
     const isDark = document.body.classList.contains('dark');
     icon.className = isDark ? 'fas fa-sun' : 'fas fa-moon';
-}
-
-// ==================== FUNCIONES AUXILIARES PARA TICKET ====================
-function normalizeText(text) {
-    if (!text) return '';
-    const map = {
-        'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u',
-        'Á': 'A', 'É': 'E', 'Í': 'I', 'Ó': 'O', 'Ú': 'U',
-        'ñ': 'n', 'Ñ': 'N',
-        '¡': '', '¿': ''  // eliminar signos de exclamación e interrogación
-    };
-    return text.replace(/[áéíóúñÁÉÍÓÚÑ¡¿]/g, m => map[m]);
-}
-
-function truncate(text, maxLen) {
-    if (!text) return '';
-    if (text.length > maxLen) {
-        return text.substring(0, maxLen - 2) + '..';
-    }
-    return text;
-}
-
-function padLeft(text, width) {
-    const str = String(text);
-    if (str.length >= width) return str.substring(0, width);
-    return ' '.repeat(width - str.length) + str;
-}
-
-function padRight(text, width) {
-    const str = String(text);
-    if (str.length >= width) return str.substring(0, width);
-    return str + ' '.repeat(width - str.length);
-}
-
-function center(text, width) {
-    const str = String(text);
-    if (str.length >= width) return str.substring(0, width);
-    const spaces = width - str.length;
-    const left = Math.floor(spaces / 2);
-    const right = spaces - left;
-    return ' '.repeat(left) + str + ' '.repeat(right);
 }
 
 // ==================== INICIALIZACIÓN ====================
@@ -1285,35 +1274,8 @@ async function finalizarVenta() {
 
         const configMap = await obtenerConfiguracionTicket();
         const cambio = totalPagado - total;
+        await imprimirTicketConQZ(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
 
-        // Construir objeto para impresión con la estructura requerida
-        const ticketData = {
-            items: appState.carrito.map(item => ({
-                nombre: item.producto.nombre,
-                cantidad: item.cantidad,
-                precio: item.precioUnitario,
-                total: item.cantidad * item.precioUnitario
-            })),
-            total: total
-        };
-
-        // Intentar impresión con Electron a través de la API expuesta en preload
-        if (window.electronAPI && typeof window.electronAPI.imprimirTicket === 'function') {
-            try {
-                await window.electronAPI.imprimirTicket(ticketData);
-                showNotification('Ticket enviado a impresión', 'success');
-            } catch (error) {
-                console.error('Error al imprimir con Electron:', error);
-                showNotification('Error en impresión, usando fallback', 'warning');
-                // Fallback a la función de impresión HTML tradicional
-                imprimirTicketHTML(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
-            }
-        } else {
-            // Modo navegador: usar impresión HTML
-            imprimirTicketHTML(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
-        }
-
-        // Limpiar carrito y estado
         appState.carrito = [];
         appState.pagos = [];
         appState.descuento = { tipo: 'porcentaje', valor: 0 };
@@ -1348,7 +1310,7 @@ async function finalizarVenta() {
     }
 }
 
-// ==================== FUNCIONES DE IMPRESIÓN ====================
+// ==================== FUNCIONES DE IMPRESIÓN QZ TRAY ====================
 
 async function obtenerConfiguracionTicket() {
     try {
@@ -1376,33 +1338,206 @@ async function obtenerConfiguracionTicket() {
     }
 }
 
+async function conectarQZTray() {
+    if (qzConectado) return true;
+
+    if (typeof qz === 'undefined') {
+        console.warn('QZ Tray no está instalado o no se cargó la librería');
+        return false;
+    }
+
+    try {
+        // Configurar el certificado proporcionado
+        if (qz.security && typeof qz.security.setCertificatePromise === 'function') {
+            qz.security.setCertificatePromise(function(resolve) {
+                resolve(QZ_CERTIFICATE);
+            });
+        }
+
+        const connectPromise = qz.websocket.connect();
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Timeout conectando a QZ Tray')), 5000)
+        );
+
+        await Promise.race([connectPromise, timeoutPromise]);
+        qzConectado = true;
+        return true;
+    } catch (error) {
+        console.error('Error conectando a QZ Tray:', error);
+        qzConectado = false;
+        return false;
+    }
+}
+
+async function buscarImpresora(nombreParcial) {
+    try {
+        const impresoras = await qz.printers.find();
+        const encontrada = impresoras.find(impresora =>
+            impresora.toLowerCase().includes(nombreParcial.toLowerCase())
+        );
+        return encontrada || null;
+    } catch (error) {
+        console.error('Error buscando impresoras:', error);
+        return null;
+    }
+}
+
+function stringToBytes(str) {
+    if (!str) return [];
+    const encoder = new TextEncoder('latin1');
+    return Array.from(encoder.encode(str));
+}
+
+function construirComandosESCPOS(venta, configMap, carrito, pagos, usuario, cambio) {
+    let bytes = [];
+
+    const add = (...args) => {
+        bytes.push(...args);
+    };
+
+    const addText = (text) => {
+        if (!text) return;
+        bytes.push(...stringToBytes(text));
+    };
+
+    const addLine = (text = '') => {
+        addText(text);
+        add(0x0A);
+    };
+
+    const separator = () => {
+        addLine('--------------------------------');
+    };
+
+    add(0x1B, 0x40);
+    add(0x1B, 0x61, 0x01);
+    add(0x1D, 0x21, 0x11);
+    addLine(configMap.ticket_encabezado || 'AFMSOLUTIONS');
+    add(0x1D, 0x21, 0x00);
+    addLine(configMap.ticket_encabezado_extra || 'SISTEMA POS');
+    addLine(configMap.empresa_direccion || 'LOCAL COMERCIAL');
+    separator();
+
+    add(0x1B, 0x61, 0x00);
+    const fecha = new Date(venta.fecha);
+    const fechaFormateada = `${fecha.getDate().toString().padStart(2,'0')}/${(fecha.getMonth()+1).toString().padStart(2,'0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2,'0')}:${fecha.getMinutes().toString().padStart(2,'0')}:${fecha.getSeconds().toString().padStart(2,'0')}`;
+    addLine(`Fecha: ${fechaFormateada}`);
+    addLine(`Ticket: ${venta.ticket_id}`);
+    addLine(`Vendedor: ${usuario?.username || ''}`);
+    separator();
+
+    add(0x1B, 0x45, 0x01);
+    addLine('ARTÍCULO             CANT  IMPORTE');
+    add(0x1B, 0x45, 0x00);
+
+    carrito.forEach(item => {
+        let nombre = item.producto.nombre;
+        if (nombre.length > 20) {
+            nombre = nombre.substring(0, 18) + '..';
+        } else {
+            nombre = nombre.padEnd(20);
+        }
+        const cantidad = item.cantidad.toString().padStart(3);
+        const precio = `$${item.precioUnitario.toFixed(2)}`.padStart(8);
+        const totalItem = `$${(item.cantidad * item.precioUnitario).toFixed(2)}`.padStart(8);
+        addLine(`${nombre}  ${cantidad} x ${precio} = ${totalItem}`);
+    });
+    separator();
+
+    addLine(`Subtotal: $${venta.subtotal.toFixed(2)}`);
+    addLine(`Descuento: $${venta.descuento.toFixed(2)}`);
+    add(0x1B, 0x45, 0x01);
+    addLine(`TOTAL: $${venta.total.toFixed(2)}`);
+    add(0x1B, 0x45, 0x00);
+
+    addLine('');
+    addLine('PAGOS:');
+    pagos.forEach(pago => {
+        addLine(`${pago.medio}: $${pago.monto.toFixed(2)}`);
+    });
+    if (cambio > 0) {
+        addLine(`Cambio: $${cambio.toFixed(2)}`);
+    }
+    separator();
+
+    add(0x1B, 0x61, 0x01);
+    addLine(configMap.ticket_pie || '¡Gracias por su compra!');
+    addLine(configMap.ticket_legal || 'Conserve su ticket');
+    addLine(configMap.empresa_contacto || '');
+    addLine(' ');
+
+    add(0x1B, 0x70, 0x00, 0x00);
+    add(0x1D, 0x56, 0x00);
+
+    return String.fromCharCode.apply(null, bytes);
+}
+
+async function imprimirTicketConQZ(venta, configMap, carrito, pagos, usuario, cambio) {
+    if (typeof qz === 'undefined') {
+        showNotification('QZ Tray no instalado. Usando impresión HTML.', 'warning');
+        return imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio);
+    }
+
+    const conectado = await conectarQZTray();
+    if (!conectado) {
+        showNotification('No se pudo conectar a QZ Tray. Usando impresión HTML.', 'warning');
+        return imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio);
+    }
+
+    try {
+        const impresora = await buscarImpresora(NOMBRE_IMPRESORA);
+        if (!impresora) {
+            showNotification(`No se encontró impresora que contenga "${NOMBRE_IMPRESORA}". Usando fallback HTML.`, 'error');
+            return imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio);
+        }
+
+        const comandos = construirComandosESCPOS(venta, configMap, carrito, pagos, usuario, cambio);
+        const config = qz.configs.create(impresora);
+        const data = [{
+            type: 'raw',
+            data: comandos
+        }];
+
+        await qz.print(config, data);
+
+        showNotification('Ticket impreso correctamente con QZ Tray', 'success');
+        return true;
+    } catch (error) {
+        console.error('Error imprimiendo con QZ Tray:', error);
+        showNotification('Error en impresión QZ Tray. Usando fallback HTML.', 'error');
+        return imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio);
+    }
+}
+
 function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
     const fecha = new Date(venta.fecha);
-    const fechaFormateada = `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2, '0')}:${fecha.getMinutes().toString().padStart(2, '0')}`;
+    const fechaFormateada = `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2, '0')}:${fecha.getMinutes().toString().padStart(2, '0')}:${fecha.getSeconds().toString().padStart(2, '0')}`;
 
     let itemsHTML = '';
     carrito.forEach(item => {
         const totalItem = item.cantidad * item.precioUnitario;
-        const nombre = truncate(item.producto.nombre, 18);
-        const cantidad = padLeft(item.cantidad.toString(), 4);
-        const subtotal = padLeft('$' + totalItem.toFixed(2), 8);
+        const nombre = item.producto.nombre.length > 25 ?
+            item.producto.nombre.substring(0, 22) + '...' :
+            item.producto.nombre;
+
         itemsHTML += `
             <div class="ticket-item">
-                <span class="item-name">${nombre}</span>
-                <span class="item-qty">${cantidad}</span>
-                <span class="item-total">${subtotal}</span>
+                <div class="item-name">${nombre}</div>
+                <div class="item-line">
+                    <div class="item-qty">${item.cantidad} x</div>
+                    <div class="item-price">$${item.precioUnitario.toFixed(2)}</div>
+                    <div class="item-total">$${totalItem.toFixed(2)}</div>
+                </div>
             </div>
         `;
     });
 
     let pagosHTML = '';
     pagos.forEach(pago => {
-        const medio = truncate(pago.medio, 15);
-        const monto = padLeft('$' + pago.monto.toFixed(2), 16);
         pagosHTML += `
-            <div class="pago-line">
-                <span class="pago-medio">${medio}</span>
-                <span class="pago-monto">${monto}</span>
+            <div class="total-row">
+                <div>${pago.medio}:</div>
+                <div>$${pago.monto.toFixed(2)}</div>
             </div>
         `;
     });
@@ -1422,7 +1557,7 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
                         padding: 0;
                         font-family: 'Courier New', monospace;
                         font-size: 11px;
-                        line-height: 1.2;
+                        line-height: 1.25;
                         color: #000;
                     }
                     @page {
@@ -1431,8 +1566,6 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
                     }
                     * {
                         box-sizing: border-box;
-                        margin: 0;
-                        padding: 0;
                     }
                     .ticket {
                         width: 100%;
@@ -1467,22 +1600,27 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
                         font-size: 10px;
                     }
                     .ticket-item {
-                        display: flex;
-                        justify-content: space-between;
-                        margin-bottom: 2px;
+                        margin-bottom: 4px;
                     }
                     .item-name {
-                        width: 18ch;
-                        overflow: hidden;
-                        white-space: nowrap;
-                        text-overflow: ellipsis;
+                        font-weight: bold;
+                        word-break: break-word;
+                    }
+                    .item-line {
+                        display: flex;
+                        justify-content: space-between;
+                        font-size: 10px;
                     }
                     .item-qty {
-                        width: 4ch;
+                        width: 20%;
+                        text-align: left;
+                    }
+                    .item-price {
+                        width: 30%;
                         text-align: right;
                     }
                     .item-total {
-                        width: 8ch;
+                        width: 30%;
                         text-align: right;
                         font-weight: bold;
                     }
@@ -1494,36 +1632,12 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
                     }
                     .total-row {
                         display: flex;
-                        justify-content: flex-end;
+                        justify-content: space-between;
                         margin: 2px 0;
-                    }
-                    .total-label {
-                        margin-right: 10px;
                     }
                     .grand-total {
                         font-size: 13px;
                         font-weight: bold;
-                        margin-top: 4px;
-                    }
-                    .pagos-section {
-                        margin-top: 6px;
-                        padding-top: 4px;
-                        border-top: 1px dashed #000;
-                    }
-                    .pago-line {
-                        display: flex;
-                        justify-content: space-between;
-                        margin-bottom: 2px;
-                    }
-                    .pago-medio {
-                        width: 15ch;
-                        overflow: hidden;
-                        white-space: nowrap;
-                        text-overflow: ellipsis;
-                    }
-                    .pago-monto {
-                        width: 16ch;
-                        text-align: right;
                     }
                     .ticket-footer {
                         text-align: center;
@@ -1536,69 +1650,57 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
                     .right { text-align: right; }
                     .left { text-align: left; }
                     .bold { font-weight: bold; }
-                    .separator {
-                        text-align: center;
-                        margin: 4px 0;
-                    }
                 }
             </style>
         </head>
         <body>
             <div class="ticket">
                 <div class="ticket-header">
-                    <h1>${normalizeText(configMap.ticket_encabezado || 'AFMSOLUTIONS')}</h1>
-                    <p>${normalizeText(configMap.ticket_encabezado_extra || 'SISTEMA POS')}</p>
-                    <p>${normalizeText(configMap.empresa_direccion || 'LOCAL COMERCIAL')}</p>
+                    <h1>${configMap.ticket_encabezado || 'AFMSOLUTIONS'}</h1>
+                    <p>${configMap.ticket_encabezado_extra || 'SISTEMA POS'}</p>
+                    <p>${configMap.empresa_direccion || 'LOCAL COMERCIAL'}</p>
                 </div>
 
                 <div class="ticket-info">
                     <div>Fecha: ${fechaFormateada}</div>
                     <div>Ticket: <strong>${venta.ticket_id}</strong></div>
+                    <div>Vendedor: ${usuario?.username || ''}</div>
                 </div>
 
-                <div class="separator">--------------------------------</div>
-
                 <div class="ticket-items">
-                    <div class="ticket-item" style="font-weight: bold;">
-                        <span class="item-name">PRODUCTO</span>
-                        <span class="item-qty">CANT</span>
-                        <span class="item-total">SUBTOTAL</span>
-                    </div>
                     ${itemsHTML}
                 </div>
 
-                <div class="separator">--------------------------------</div>
-
                 <div class="ticket-totals">
                     <div class="total-row">
-                        <span class="total-label">Subtotal:</span>
-                        <span>$${venta.subtotal.toFixed(2)}</span>
+                        <div>Subtotal:</div>
+                        <div>$${venta.subtotal.toFixed(2)}</div>
                     </div>
                     <div class="total-row">
-                        <span class="total-label">Descuento:</span>
-                        <span>$${venta.descuento.toFixed(2)}</span>
+                        <div>Descuento:</div>
+                        <div>$${venta.descuento.toFixed(2)}</div>
                     </div>
                     <div class="total-row grand-total">
-                        <span class="total-label">TOTAL:</span>
-                        <span>$${venta.total.toFixed(2)}</span>
+                        <div>TOTAL:</div>
+                        <div>$${venta.total.toFixed(2)}</div>
                     </div>
 
-                    <div class="pagos-section">
-                        <div style="font-weight: bold; margin-bottom: 4px;">PAGOS:</div>
+                    <div style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed #000;">
+                        <div class="bold">PAGOS:</div>
                         ${pagosHTML}
                         ${cambio > 0 ? `
                         <div class="total-row">
-                            <span class="total-label">Cambio:</span>
-                            <span>$${cambio.toFixed(2)}</span>
+                            <div>Cambio:</div>
+                            <div>$${cambio.toFixed(2)}</div>
                         </div>
                         ` : ''}
                     </div>
                 </div>
 
                 <div class="ticket-footer">
-                    <div>${normalizeText(configMap.ticket_pie || 'Gracias por su compra')}</div>
-                    <div>${normalizeText(configMap.ticket_legal || 'Conserve su ticket')}</div>
-                    <div style="margin-top: 4px;">${normalizeText(configMap.empresa_contacto || '')}</div>
+                    <div>${configMap.ticket_pie || '¡Gracias por su compra!'}</div>
+                    <div>${configMap.ticket_legal || 'Conserve su ticket'}</div>
+                    <div style="margin-top: 4px; font-size: 6px;">${configMap.empresa_contacto || ''}</div>
                 </div>
             </div>
 

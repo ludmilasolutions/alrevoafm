@@ -1286,17 +1286,22 @@ async function finalizarVenta() {
         const configMap = await obtenerConfiguracionTicket();
         const cambio = totalPagado - total;
 
-        // Preparar datos para imprimir
+        // Construir objeto simplificado para enviar a Electron
+        const fechaFormateada = new Date(venta.fecha).toLocaleString('es-ES');
         const datosTicket = {
-            venta,
-            config: configMap,
-            items: appState.carrito,      // Array con producto, cantidad, precioUnitario
-            pagos: appState.pagos,         // Array con medio, monto
-            usuario: appState.usuario,
-            cambio
+            comercio: configMap.ticket_encabezado || 'AFMSOLUTIONS',
+            direccion: configMap.empresa_direccion || 'LOCAL COMERCIAL',
+            fecha: fechaFormateada,
+            items: appState.carrito.map(item => ({
+                descripcion: item.producto.nombre,
+                cantidad: item.cantidad,
+                precio: item.precioUnitario
+            })),
+            total: total,
+            metodoPago: appState.pagos.map(p => p.medio).join(' + ')
         };
 
-        // Intentar impresión con Electron (IPC)
+        // Intentar impresión con Electron (IPC) usando el objeto simplificado
         if (window.electronAPI && typeof window.electronAPI.imprimirTicket === 'function') {
             try {
                 await window.electronAPI.imprimirTicket(datosTicket);
@@ -1304,10 +1309,11 @@ async function finalizarVenta() {
             } catch (error) {
                 console.error('Error al imprimir con Electron:', error);
                 showNotification('Error en impresión, usando fallback', 'warning');
+                // Fallback a la función de impresión HTML tradicional (conserva todos los detalles)
                 imprimirTicketHTML(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
             }
         } else {
-            // Fallback a impresión HTML (navegador)
+            // Modo navegador: usar impresión HTML
             imprimirTicketHTML(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
         }
 

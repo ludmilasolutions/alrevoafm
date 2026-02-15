@@ -2,32 +2,6 @@
 const SUPABASE_URL = 'https://nptthngcshkbuavkjujf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wdHRobmdjc2hrYnVhdmtqdWpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyNTAyMTcsImV4cCI6MjA4NTgyNjIxN30.0P2Yf-wHtNzgoIFLEN-DYME85NFEjKtmz2cyIkyuZfg';
 
-// ==================== CERTIFICADO QZ TRAY ====================
-const QZ_CERTIFICATE = `-----BEGIN CERTIFICATE-----
-MIIECzCCAvOgAwIBAgIGAZxaycxeMA0GCSqGSIb3DQEBCwUAMIGiMQswCQYDVQQG
-EwJVUzELMAkGA1UECAwCTlkxEjAQBgNVBAcMCUNhbmFzdG90YTEbMBkGA1UECgwS
-UVogSW5kdXN0cmllcywgTExDMRswGQYDVQQLDBJRWiBJbmR1c3RyaWVzLCBMTEMx
-HDAaBgkqhkiG9w0BCQEWDXN1cHBvcnRAcXouaW8xGjAYBgNVBAMMEVFaIFRyYXkg
-RGVtbyBDZXJ0MB4XDTI2MDIxMzA2MTUwMFoXDTQ2MDIxMzA2MTUwMFowgaIxCzAJ
-BgNVBAYTAlVTMQswCQYDVQQIDAJOWTESMBAGA1UEBwwJQ2FuYXN0b3RhMRswGQYD
-VQQKDBJRWiBJbmR1c3RyaWVzLCBMTEMxGzAZBgNVBAsMElFaIEluZHVzdHJpZXMs
-IExMQzEcMBoGCSqGSIb3DQEJARYNc3VwcG9ydEBxei5pbzEaMBgGA1UEAwwRUVog
-VHJheSBEZW1vIENlcnQwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCu
-2A5ARJRRDr1Lip1It8EyEbENQW3XrLqKmi10+LxD/6e7Dp9z98P1tWHIH8w/dSVI
-llRqeuoxSuoUZwPT1qcptCRAJQdeC8HDnENpTh1uZQZgOkYnVTgJlb94/JsSXtqE
-vhLytMbINElgD2qZvArx/YshMzil39F1xCqj9F/CmqUu3NZojlMEdr0fgj46y/bU
-tB7TendCAQ3Gvoz97dU1hsETsNjhzSY+PNwsobPjHIBTB3qOKJL/ExrUHoulZXI9
-HOUD+qmxzyopRwQYXXU5ZMzZzJWoyLbT9gBxlsGOZYHEJT2NVnmi/8K3DLRzNYBu
-Qcy5V400U44gACpArCjbAgMBAAGjRTBDMBIGA1UdEwEB/wQIMAYBAf8CAQEwDgYD
-VR0PAQH/BAQDAgEGMB0GA1UdDgQWBBTPTmryDcE6B1yhmjwVyZBgyWyaRzANBgkq
-hkiG9w0BAQsFAAOCAQEAZcuyxYdoIC2SfaNWkXlprBV3fy+W9uVg2v7EzgDOsdrw
-PZVDeaTJ33MTOwWSYNvkkP5b8KwmCU6E0UmBTTHYOWjr3EYdEzZ5E6g7lmz4EUew
-SJxMqoqoEMdCFwRqW0rbEfdiWo8MsTKlaZ/joA6KW4exKRMV+ZYg87t/F9teNqKt
-/jwq3kucTubS3Rz95Tihi2b4f5DzoLemQgV3QUbRrIy652nSFwQtOnVWNjNjGLiZ
-IHmTKTpZGhQw9PEjD27f7dI+uhTmkil2I8iTsS4ryyeoLExLOHVsr0sLBO7Vkv3o
-cvOatGI5O2FxIKtCitM1ydMHAtTG91K0G02zy66Pdg==
------END CERTIFICATE-----`;
-
 // Inicialización única de Supabase
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -41,10 +15,6 @@ let appState = {
     cajaActiva: null,
     modoOscuro: window.matchMedia('(prefers-color-scheme: dark)').matches,
 };
-
-// ==================== VARIABLES QZ TRAY ====================
-let qzConectado = false;
-const NOMBRE_IMPRESORA = 'XP-58'; // Nombre parcial de la impresora
 
 // ==================== PERSISTENCIA DEL CARRITO ====================
 const CARRITO_STORAGE_KEY = 'afm_pos_carrito';
@@ -1315,8 +1285,33 @@ async function finalizarVenta() {
 
         const configMap = await obtenerConfiguracionTicket();
         const cambio = totalPagado - total;
-        await imprimirTicketConQZ(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
 
+        // Preparar datos para imprimir
+        const datosTicket = {
+            venta,
+            config: configMap,
+            items: appState.carrito,      // Array con producto, cantidad, precioUnitario
+            pagos: appState.pagos,         // Array con medio, monto
+            usuario: appState.usuario,
+            cambio
+        };
+
+        // Intentar impresión con Electron (IPC)
+        if (window.electronAPI && typeof window.electronAPI.imprimirTicket === 'function') {
+            try {
+                await window.electronAPI.imprimirTicket(datosTicket);
+                showNotification('Ticket enviado a impresión', 'success');
+            } catch (error) {
+                console.error('Error al imprimir con Electron:', error);
+                showNotification('Error en impresión, usando fallback', 'warning');
+                imprimirTicketHTML(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
+            }
+        } else {
+            // Fallback a impresión HTML (navegador)
+            imprimirTicketHTML(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
+        }
+
+        // Limpiar carrito y estado
         appState.carrito = [];
         appState.pagos = [];
         appState.descuento = { tipo: 'porcentaje', valor: 0 };
@@ -1351,7 +1346,7 @@ async function finalizarVenta() {
     }
 }
 
-// ==================== FUNCIONES DE IMPRESIÓN QZ TRAY ====================
+// ==================== FUNCIONES DE IMPRESIÓN ====================
 
 async function obtenerConfiguracionTicket() {
     try {
@@ -1376,181 +1371,6 @@ async function obtenerConfiguracionTicket() {
             ticket_legal: 'Conserve su ticket',
             empresa_contacto: ''
         };
-    }
-}
-
-async function conectarQZTray() {
-    if (qzConectado) return true;
-
-    if (typeof qz === 'undefined') {
-        console.warn('QZ Tray no está instalado o no se cargó la librería');
-        return false;
-    }
-
-    try {
-        // Configurar el certificado proporcionado
-        if (qz.security && typeof qz.security.setCertificatePromise === 'function') {
-            qz.security.setCertificatePromise(function(resolve) {
-                resolve(QZ_CERTIFICATE);
-            });
-        }
-
-        const connectPromise = qz.websocket.connect();
-        const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Timeout conectando a QZ Tray')), 5000)
-        );
-
-        await Promise.race([connectPromise, timeoutPromise]);
-        qzConectado = true;
-        return true;
-    } catch (error) {
-        console.error('Error conectando a QZ Tray:', error);
-        qzConectado = false;
-        return false;
-    }
-}
-
-async function buscarImpresora(nombreParcial) {
-    try {
-        const impresoras = await qz.printers.find();
-        const encontrada = impresoras.find(impresora =>
-            impresora.toLowerCase().includes(nombreParcial.toLowerCase())
-        );
-        return encontrada || null;
-    } catch (error) {
-        console.error('Error buscando impresoras:', error);
-        return null;
-    }
-}
-
-function stringToBytes(str) {
-    if (!str) return [];
-    const encoder = new TextEncoder('latin1');
-    return Array.from(encoder.encode(str));
-}
-
-function construirComandosESCPOS(venta, configMap, carrito, pagos, usuario, cambio) {
-    let bytes = [];
-
-    const add = (...args) => bytes.push(...args);
-    const addText = (text) => {
-        if (!text) return;
-        // Normalizar y convertir a bytes en Latin-1
-        const normalized = normalizeText(text);
-        bytes.push(...stringToBytes(normalized));
-    };
-    const addLine = (text = '') => {
-        addText(text);
-        add(0x0A); // LF
-    };
-
-    // Inicializar impresora
-    add(0x1B, 0x40); // ESC @
-
-    // ---------- ENCABEZADO CENTRADO ----------
-    add(0x1B, 0x61, 0x01); // Centrado
-    addLine(center(truncate(configMap.ticket_encabezado || 'AFMSOLUTIONS', 32), 32));
-    addLine(center(truncate(configMap.ticket_encabezado_extra || 'SISTEMA POS', 32), 32));
-    addLine(center(truncate(configMap.empresa_direccion || 'LOCAL COMERCIAL', 32), 32));
-
-    // Separador
-    add(0x1B, 0x61, 0x00); // Alineación izquierda
-    addLine('--------------------------------');
-
-    // ---------- INFORMACIÓN DEL TICKET ----------
-    const fecha = new Date(venta.fecha);
-    const fechaFormateada = `${fecha.getDate().toString().padStart(2,'0')}/${(fecha.getMonth()+1).toString().padStart(2,'0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2,'0')}:${fecha.getMinutes().toString().padStart(2,'0')}`;
-    addLine(`Fecha: ${fechaFormateada}`);
-    addLine(`Ticket: ${venta.ticket_id}`);
-    addLine('--------------------------------');
-
-    // ---------- TABLA DE PRODUCTOS ----------
-    // Encabezado de columnas (ancho fijo: 18 producto + 1 espacio + 4 cantidad + 1 espacio + 8 subtotal = 32)
-    const header = padRight('PRODUCTO', 18) + ' ' + padLeft('CANT', 4) + ' ' + padLeft('SUBTOTAL', 8);
-    addLine(header);
-
-    carrito.forEach(item => {
-        const nombre = truncate(item.producto.nombre, 18);
-        const cantidad = padLeft(item.cantidad.toString(), 4);
-        const subtotal = padLeft('$' + (item.cantidad * item.precioUnitario).toFixed(2), 8);
-        const line = padRight(nombre, 18) + ' ' + cantidad + ' ' + subtotal;
-        addLine(line);
-    });
-    addLine('--------------------------------');
-
-    // ---------- TOTALES ----------
-    const subtotal = venta.subtotal;
-    const descuento = venta.descuento;
-    const total = venta.total;
-
-    addLine(padLeft(`Subtotal: $${subtotal.toFixed(2)}`, 32));
-    addLine(padLeft(`Descuento: $${descuento.toFixed(2)}`, 32));
-    // Resaltar TOTAL con negrita
-    add(0x1B, 0x45, 0x01); // Negrita ON
-    addLine(padLeft(`TOTAL: $${total.toFixed(2)}`, 32));
-    add(0x1B, 0x45, 0x00); // Negrita OFF
-
-    // ---------- PAGOS ----------
-    addLine('');
-    addLine('PAGOS:');
-    pagos.forEach(pago => {
-        const medio = truncate(pago.medio, 15);
-        const monto = padLeft('$' + pago.monto.toFixed(2), 16);
-        addLine(padRight(medio, 15) + ' ' + monto);
-    });
-    if (cambio > 0) {
-        addLine(padLeft(`Cambio: $${cambio.toFixed(2)}`, 32));
-    }
-    addLine('--------------------------------');
-
-    // ---------- PIE DE TICKET ----------
-    add(0x1B, 0x61, 0x01); // Centrado
-    addLine(center(truncate(configMap.ticket_pie || 'Gracias por su compra', 32), 32));
-    addLine(center(truncate(configMap.ticket_legal || 'Conserve su ticket', 32), 32));
-    addLine(center(truncate(configMap.empresa_contacto || '', 32), 32));
-
-    // Espacio final y corte
-    add(0x1B, 0x61, 0x00); // Alineación izquierda
-    addLine(' ');
-    add(0x1D, 0x56, 0x00); // Corte parcial
-
-    return String.fromCharCode.apply(null, bytes);
-}
-
-async function imprimirTicketConQZ(venta, configMap, carrito, pagos, usuario, cambio) {
-    if (typeof qz === 'undefined') {
-        showNotification('QZ Tray no instalado. Usando impresión HTML.', 'warning');
-        return imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio);
-    }
-
-    const conectado = await conectarQZTray();
-    if (!conectado) {
-        showNotification('No se pudo conectar a QZ Tray. Usando impresión HTML.', 'warning');
-        return imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio);
-    }
-
-    try {
-        const impresora = await buscarImpresora(NOMBRE_IMPRESORA);
-        if (!impresora) {
-            showNotification(`No se encontró impresora que contenga "${NOMBRE_IMPRESORA}". Usando fallback HTML.`, 'error');
-            return imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio);
-        }
-
-        const comandos = construirComandosESCPOS(venta, configMap, carrito, pagos, usuario, cambio);
-        const config = qz.configs.create(impresora);
-        const data = [{
-            type: 'raw',
-            data: comandos
-        }];
-
-        await qz.print(config, data);
-
-        showNotification('Ticket impreso correctamente con QZ Tray', 'success');
-        return true;
-    } catch (error) {
-        console.error('Error imprimiendo con QZ Tray:', error);
-        showNotification('Error en impresión QZ Tray. Usando fallback HTML.', 'error');
-        return imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio);
     }
 }
 

@@ -1245,31 +1245,23 @@ async function finalizarVenta() {
         const configMap = await obtenerConfiguracionTicket();
         const cambio = totalPagado - total;
 
-        // Impresión: Electron o fallback HTML
-        const ticketData = {
-            items: appState.carrito.map(item => ({
-                nombre: item.producto.nombre,
-                cantidad: item.cantidad,
-                precio: item.precioUnitario   // precio unitario
-            })),
-            total: total
-        };
+        // --- Generar el ticket como HTML string ---
+        const ticketHTML = generarTicketHTML(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
 
-        let impresionExitosa = false;
+        // --- Enviar a Electron o fallback a impresión en navegador ---
         if (window.electronAPI && typeof window.electronAPI.imprimirTicket === 'function') {
             try {
-                await window.electronAPI.imprimirTicket(ticketData);
-                impresionExitosa = true;
+                await window.electronAPI.imprimirTicket(ticketHTML);
                 showNotification('Ticket impreso correctamente', 'success');
             } catch (electronError) {
                 console.error('Error en impresión Electron:', electronError);
                 showNotification('Error en impresión, usando fallback HTML', 'error');
-                // Fallback a HTML
-                imprimirTicketHTML(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
+                // Fallback a ventana de impresión
+                imprimirEnNavegador(ticketHTML);
             }
         } else {
-            // Modo navegador, usar impresión HTML
-            imprimirTicketHTML(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
+            // Modo navegador: abrir ventana de impresión
+            imprimirEnNavegador(ticketHTML);
         }
 
         appState.carrito = [];
@@ -1334,10 +1326,15 @@ async function obtenerConfiguracionTicket() {
     }
 }
 
-function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
+/**
+ * Genera el HTML del ticket para impresora térmica 58mm.
+ * @returns {string} HTML listo para imprimir.
+ */
+function generarTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
     const fecha = new Date(venta.fecha);
     const fechaFormateada = `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2, '0')}:${fecha.getMinutes().toString().padStart(2, '0')}:${fecha.getSeconds().toString().padStart(2, '0')}`;
 
+    // Items del carrito
     let itemsHTML = '';
     carrito.forEach(item => {
         const totalItem = item.cantidad * item.precioUnitario;
@@ -1357,6 +1354,7 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
         `;
     });
 
+    // Pagos
     let pagosHTML = '';
     pagos.forEach(pago => {
         pagosHTML += `
@@ -1367,7 +1365,8 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
         `;
     });
 
-    const ticketHTML = `
+    // HTML completo con estilos optimizados para 58mm
+    return `
         <!DOCTYPE html>
         <html>
         <head>
@@ -1528,23 +1527,25 @@ function imprimirTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
                     <div style="margin-top: 4px; font-size: 6px;">${configMap.empresa_contacto || ''}</div>
                 </div>
             </div>
-
-            <script>
-                window.onload = function() {
-                    setTimeout(function() {
-                        window.print();
-                        setTimeout(function() { window.close(); }, 500);
-                    }, 100);
-                };
-            </script>
         </body>
         </html>
     `;
+}
 
+/**
+ * Imprime el ticket abriendo una nueva ventana y llamando a window.print().
+ * @param {string} ticketHTML - HTML del ticket.
+ */
+function imprimirEnNavegador(ticketHTML) {
     const printWindow = window.open('', '_blank', 'width=200,height=400');
     printWindow.document.write(ticketHTML);
     printWindow.document.close();
-    return true;
+    // Esperar a que se cargue el contenido y luego imprimir
+    setTimeout(() => {
+        printWindow.print();
+        // Cerrar la ventana después de imprimir (opcional)
+        printWindow.onafterprint = () => printWindow.close();
+    }, 100);
 }
 
 function cancelarVenta() {

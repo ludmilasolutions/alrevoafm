@@ -3016,3 +3016,18 @@ body {
 .stagger-item:nth-child(4) { animation-delay: 0.4s; }
 .stagger-item:nth-child(5) { animation-delay: 0.5s; }
 .stagger-item:nth-child(6) { animation-delay: 0.6s; }
+
+/* ===== MODIFICACIÓN PARA EL MODAL DEL BUSCADOR MANUAL ===== */
+#modal-buscador .modal-content {
+    max-width: 1000px;    /* Ancho fijo mayor */
+    width: 90vw;          /* También puede ser relativo al viewport */
+    min-width: 800px;     /* Evita que se achique demasiado en pantallas pequeñas */
+}
+
+/* Ajuste para pantallas menores que 800px */
+@media (max-width: 800px) {
+    #modal-buscador .modal-content {
+        max-width: 95vw;
+        min-width: 95vw;
+    }
+}

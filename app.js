@@ -1245,8 +1245,22 @@ async function finalizarVenta() {
         const configMap = await obtenerConfiguracionTicket();
         const cambio = totalPagado - total;
 
-        // Imprimir ticket usando ESC/POS
-        await imprimirTicketPOS(venta, appState.carrito, appState.pagos, appState.usuario, configMap, cambio);
+        // --- Generar el ticket como cadena ESC/POS ---
+        const ticketESC = generarTicketESC(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
+
+        // --- Enviar a Electron ---
+        if (window.electronAPI && typeof window.electronAPI.imprimirTicket === 'function') {
+            try {
+                await window.electronAPI.imprimirTicket(ticketESC);
+                showNotification('Ticket impreso correctamente', 'success');
+            } catch (electronError) {
+                console.error('Error en impresión Electron:', electronError);
+                showNotification('Error al imprimir el ticket', 'error');
+            }
+        } else {
+            // Si no hay Electron, mostramos error (la impresión ESC/POS requiere backend)
+            showNotification('No se puede imprimir: Electron no está disponible', 'error');
+        }
 
         appState.carrito = [];
         appState.pagos = [];
@@ -1282,207 +1296,7 @@ async function finalizarVenta() {
     }
 }
 
-// ==================== IMPRESIÓN ESC/POS ====================
-
-/**
- * Normaliza una cadena eliminando acentos y caracteres no ASCII.
- * @param {string} str - Cadena a normalizar.
- * @returns {string} Cadena sin acentos ni caracteres especiales.
- */
-function normalizeString(str) {
-    if (!str) return '';
-    const map = {
-        'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u',
-        'Á': 'A', 'É': 'E', 'Í': 'I', 'Ó': 'O', 'Ú': 'U',
-        'ñ': 'n', 'Ñ': 'N',
-        'ü': 'u', 'Ü': 'U'
-    };
-    return str.replace(/[áéíóúñüÁÉÍÓÚÑÜ]/g, match => map[match] || match);
-}
-
-/**
- * Escapa caracteres especiales para ESC/POS (no necesario, pero por claridad).
- * @param {string} str - Cadena a imprimir.
- * @returns {string} Cadena lista para incluir en el ticket.
- */
-function escapeESCString(str) {
-    // Reemplazar caracteres que puedan interferir con comandos
-    // Por ahora solo normalizamos acentos.
-    return normalizeString(str);
-}
-
-/**
- * Rellena una cadena con espacios a la izquierda o derecha para alcanzar un ancho fijo.
- * @param {string} str - Cadena a rellenar.
- * @param {number} width - Ancho deseado.
- * @param {string} align - 'left' o 'right'.
- * @returns {string} Cadena rellena.
- */
-function padString(str, width, align = 'left') {
-    str = str.substring(0, width); // Truncar si es muy largo
-    const spaces = width - str.length;
-    if (spaces <= 0) return str;
-    if (align === 'right') {
-        return ' '.repeat(spaces) + str;
-    }
-    return str + ' '.repeat(spaces);
-}
-
-/**
- * Formatea una línea de producto para 32 columnas.
- * @param {string} nombre - Nombre del producto.
- * @param {number} cantidad - Cantidad.
- * @param {number} precio - Precio unitario.
- * @param {number} total - Total del producto.
- * @returns {string} Línea formateada de 32 caracteres.
- */
-function formatProductLine(nombre, cantidad, precio, total) {
-    const nombreTrunc = nombre.substring(0, 16); // 16 caracteres para nombre
-    const cantStr = cantidad.toString().padStart(3); // 3 dígitos
-    const precioStr = precio.toFixed(2).padStart(6); // 6 caracteres (incluye punto)
-    const totalStr = total.toFixed(2).padStart(6); // 6 caracteres
-    // Total: 16 + 3 + 6 + 6 = 31, dejamos un espacio entre columnas
-    return padString(nombreTrunc, 16) + ' ' + cantStr + ' ' + precioStr + ' ' + totalStr;
-}
-
-/**
- * Genera el contenido del ticket en formato ESC/POS.
- * @param {Object} venta - Objeto venta devuelto por Supabase.
- * @param {Object} configMap - Configuración de la empresa.
- * @param {Array} carrito - Carrito de la venta.
- * @param {Array} pagos - Pagos de la venta.
- * @param {Object} usuario - Usuario que realizó la venta.
- * @param {number} cambio - Cambio a devolver.
- * @returns {string} Cadena con comandos ESC/POS.
- */
-function generarTicketESCPOS(venta, configMap, carrito, pagos, usuario, cambio) {
-    const ESC = '\x1B';
-    const GS = '\x1D';
-    const LF = '\n';
-
-    const INIT = ESC + '@';
-    const CENTER = ESC + 'a' + '\x01';
-    const LEFT = ESC + 'a' + '\x00';
-    const BOLD_ON = ESC + 'E' + '\x01';
-    const BOLD_OFF = ESC + 'E' + '\x00';
-    const DOUBLE_SIZE = GS + '!' + '\x11'; // doble ancho y alto
-    const NORMAL_SIZE = GS + '!' + '\x00';
-    const CUT = GS + 'V' + '\x01'; // corte con avance
-
-    let ticket = INIT;
-
-    // --- Cabecera centrada y grande ---
-    ticket += CENTER;
-    ticket += DOUBLE_SIZE;
-    ticket += BOLD_ON;
-    ticket += escapeESCString(configMap.ticket_encabezado || 'AFMSOLUTIONS') + LF;
-    ticket += NORMAL_SIZE;
-    ticket += escapeESCString(configMap.ticket_encabezado_extra || 'SISTEMA POS') + LF;
-    ticket += BOLD_OFF;
-    ticket += escapeESCString(configMap.empresa_direccion || 'LOCAL COMERCIAL') + LF;
-    ticket += LF;
-
-    // --- Información de la venta (izquierda) ---
-    ticket += LEFT;
-    ticket += NORMAL_SIZE;
-    const fecha = new Date(venta.fecha);
-    const fechaStr = fecha.toLocaleDateString('es-ES') + ' ' + fecha.toLocaleTimeString('es-ES');
-    ticket += 'Fecha: ' + escapeESCString(fechaStr) + LF;
-    ticket += 'Ticket: ' + escapeESCString(venta.ticket_id) + LF;
-    ticket += 'Vendedor: ' + escapeESCString(usuario?.username || '') + LF;
-    ticket += LF;
-
-    // --- Encabezado de productos ---
-    ticket += BOLD_ON;
-    ticket += padString('Producto', 16) + ' ' + padString('Cant', 3, 'right') + ' ' +
-              padString('Precio', 6, 'right') + ' ' + padString('Total', 6, 'right') + LF;
-    ticket += BOLD_OFF;
-    ticket += '-'.repeat(32) + LF;
-
-    // --- Detalle de productos ---
-    carrito.forEach(item => {
-        const nombre = escapeESCString(item.producto.nombre);
-        const cantidad = item.cantidad;
-        const precio = item.precioUnitario;
-        const totalItem = cantidad * precio;
-        ticket += formatProductLine(nombre, cantidad, precio, totalItem) + LF;
-    });
-
-    ticket += '-'.repeat(32) + LF;
-
-    // --- Totales ---
-    const subtotal = carrito.reduce((sum, item) => sum + item.cantidad * item.precioUnitario, 0);
-    const descuento = venta.descuento;
-    const total = venta.total;
-
-    ticket += padString('Subtotal:', 18, 'right') + ' ' + padString('$' + subtotal.toFixed(2), 12, 'right') + LF;
-    if (descuento > 0) {
-        ticket += padString('Descuento:', 18, 'right') + ' ' + padString('$' + descuento.toFixed(2), 12, 'right') + LF;
-    }
-    ticket += BOLD_ON;
-    ticket += padString('TOTAL:', 18, 'right') + ' ' + padString('$' + total.toFixed(2), 12, 'right') + LF;
-    ticket += BOLD_OFF;
-    ticket += LF;
-
-    // --- Pagos ---
-    ticket += BOLD_ON + 'PAGOS:' + BOLD_OFF + LF;
-    let totalPagado = 0;
-    const pagosAgrupados = {};
-    pagos.forEach(p => {
-        totalPagado += p.monto;
-        if (!pagosAgrupados[p.medio]) pagosAgrupados[p.medio] = 0;
-        pagosAgrupados[p.medio] += p.monto;
-    });
-    Object.entries(pagosAgrupados).forEach(([medio, monto]) => {
-        ticket += padString(medio + ':', 18, 'right') + ' ' + padString('$' + monto.toFixed(2), 12, 'right') + LF;
-    });
-    if (cambio > 0) {
-        ticket += padString('Cambio:', 18, 'right') + ' ' + padString('$' + cambio.toFixed(2), 12, 'right') + LF;
-    }
-    ticket += LF;
-
-    // --- Pie de página centrado ---
-    ticket += CENTER;
-    ticket += escapeESCString(configMap.ticket_pie || '¡Gracias por su compra!') + LF;
-    ticket += escapeESCString(configMap.ticket_legal || 'Conserve su ticket') + LF;
-    if (configMap.empresa_contacto) {
-        ticket += escapeESCString(configMap.empresa_contacto) + LF;
-    }
-    ticket += LF;
-
-    // --- Corte ---
-    ticket += CUT;
-
-    return ticket;
-}
-
-/**
- * Imprime el ticket usando la API de Electron.
- * @param {Object} venta - Objeto venta.
- * @param {Array} carrito - Carrito de la venta.
- * @param {Array} pagos - Pagos de la venta.
- * @param {Object} usuario - Usuario actual.
- * @param {Object} configMap - Configuración de la empresa.
- * @param {number} cambio - Cambio.
- */
-async function imprimirTicketPOS(venta, carrito, pagos, usuario, configMap, cambio) {
-    const escposString = generarTicketESC/POS(venta, configMap, carrito, pagos, usuario, cambio);
-
-    if (window.electronAPI && typeof window.electronAPI.imprimirTicket === 'function') {
-        try {
-            await window.electronAPI.imprimirTicket(escposString);
-            showNotification('Ticket impreso correctamente', 'success');
-        } catch (error) {
-            console.error('Error en impresión Electron:', error);
-            showNotification('Error al imprimir el ticket: ' + error.message, 'error');
-        }
-    } else {
-        // Modo navegador: solo mostrar en consola para depuración
-        console.log('=== TICKET ESC/POS ===');
-        console.log(escposString.replace(/\x1B/g, '<ESC>').replace(/\x1D/g, '<GS>'));
-        showNotification('Impresión no disponible en modo navegador', 'warning');
-    }
-}
+// ==================== FUNCIONES DE IMPRESIÓN ESC/POS ====================
 
 async function obtenerConfiguracionTicket() {
     try {
@@ -1508,6 +1322,86 @@ async function obtenerConfiguracionTicket() {
             empresa_contacto: ''
         };
     }
+}
+
+/**
+ * Genera una cadena con comandos ESC/POS para impresora térmica 58mm (32 columnas).
+ * @returns {string} Cadena binaria lista para enviar a la impresora.
+ */
+function generarTicketESC(venta, configMap, carrito, pagos, usuario, cambio) {
+    // Inicialización de la impresora
+    let ticket = '\x1B\x40'; // ESC @
+
+    // ----- Encabezado -----
+    // Título centrado y en tamaño doble
+    ticket += '\x1B\x61\x01'; // Centrado
+    ticket += '\x1D\x21\x11'; // Doble altura y ancho (GS ! 0x11)
+    ticket += (configMap.ticket_encabezado || 'AFMSOLUTIONS') + '\n';
+    ticket += '\x1D\x21\x00'; // Restablecer tamaño normal
+    ticket += (configMap.ticket_encabezado_extra || 'SISTEMA POS') + '\n';
+    ticket += (configMap.empresa_direccion || 'LOCAL COMERCIAL') + '\n';
+    ticket += '\x1B\x61\x00'; // Alineación izquierda
+
+    // Línea separadora
+    ticket += '--------------------------------\n';
+
+    // ----- Información de la venta -----
+    const fecha = new Date(venta.fecha);
+    const fechaFormateada = `${fecha.getDate().toString().padStart(2,'0')}/${(fecha.getMonth()+1).toString().padStart(2,'0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2,'0')}:${fecha.getMinutes().toString().padStart(2,'0')}:${fecha.getSeconds().toString().padStart(2,'0')}`;
+    ticket += `Fecha: ${fechaFormateada}\n`;
+    ticket += `Ticket: ${venta.ticket_id}\n`;
+    ticket += `Vendedor: ${usuario?.username || ''}\n`;
+    ticket += '--------------------------------\n';
+
+    // ----- Productos -----
+    carrito.forEach(item => {
+        const nombre = item.producto.nombre;
+        // Truncar nombre a 22 caracteres para dejar espacio a cantidad, precio y total
+        const nombreCorto = nombre.length > 22 ? nombre.substring(0, 20) + '..' : nombre.padEnd(22, ' ');
+        const cantidad = item.cantidad.toString().padStart(3, ' ');
+        const precio = item.precioUnitario.toFixed(2).padStart(7, ' ');
+        const totalItem = (item.cantidad * item.precioUnitario).toFixed(2).padStart(7, ' ');
+        ticket += `${nombreCorto}${cantidad} x${precio}  $${totalItem}\n`;
+    });
+
+    ticket += '--------------------------------\n';
+
+    // ----- Totales -----
+    ticket += `Subtotal:      $ ${venta.subtotal.toFixed(2).padStart(7)}\n`;
+    if (venta.descuento > 0) {
+        ticket += `Descuento:    -$ ${venta.descuento.toFixed(2).padStart(7)}\n`;
+    }
+    ticket += '\x1B\x45\x01'; // Negrita ON
+    ticket += `TOTAL:         $ ${venta.total.toFixed(2).padStart(7)}\n`;
+    ticket += '\x1B\x45\x00'; // Negrita OFF
+
+    // ----- Pagos -----
+    ticket += '--------------------------------\n';
+    ticket += 'PAGOS:\n';
+    let totalPagado = 0;
+    pagos.forEach(pago => {
+        ticket += `${pago.medio.padEnd(12)} $ ${pago.monto.toFixed(2).padStart(7)}\n`;
+        totalPagado += pago.monto;
+    });
+    if (cambio > 0) {
+        ticket += `Cambio:        $ ${cambio.toFixed(2).padStart(7)}\n`;
+    }
+    ticket += '--------------------------------\n';
+
+    // ----- Pie de página centrado -----
+    ticket += '\x1B\x61\x01'; // Centrado
+    ticket += (configMap.ticket_pie || '¡Gracias por su compra!') + '\n';
+    ticket += (configMap.ticket_legal || 'Conserve su ticket') + '\n';
+    ticket += (configMap.empresa_contacto || '') + '\n';
+    ticket += '\x1B\x61\x00'; // Alineación izquierda
+
+    // Líneas en blanco antes del corte
+    ticket += '\n\n';
+
+    // Corte de papel (full cut)
+    ticket += '\x1D\x56\x00'; // GS V 0
+
+    return ticket;
 }
 
 function cancelarVenta() {

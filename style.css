@@ -1724,20 +1724,19 @@ body {
   font-style: italic;
 }
 
-/* Tarjetas de resumen mejoradas */
+/* Tarjetas de resumen mejoradas con efecto vidrio */
 .reporte-resumen {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
   gap: var(--spacing-lg);
   margin-bottom: var(--spacing-xl);
 }
 
 .reporte-item {
-  background: var(--bg-secondary);
-  padding: var(--spacing-lg);
+  background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+  padding: var(--spacing-xl) var(--spacing-lg);
   border-radius: var(--radius-lg);
   text-align: center;
-  border-top: 4px solid var(--primary-500);
   box-shadow: var(--shadow-md);
   transition: all var(--transition-base);
   position: relative;
@@ -1745,8 +1744,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
-  animation: slideInUp 0.5s var(--animation-bounce);
-  transform: translateY(0);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(5px);
 }
 
 .reporte-item::before {
@@ -1755,38 +1754,33 @@ body {
   top: 0;
   left: 0;
   right: 0;
-  bottom: 0;
-  background: linear-gradient(135deg, var(--primary-50), transparent);
-  opacity: 0;
-  transition: opacity var(--transition-base);
-  z-index: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--primary-500), var(--primary-300));
+  opacity: 0.8;
 }
 
 .reporte-item:hover {
-  transform: translateY(-4px);
+  transform: translateY(-5px) scale(1.02);
   box-shadow: var(--shadow-xl);
 }
 
-.reporte-item:hover::before {
-  opacity: 1;
-}
-
-.reporte-item > * {
-  position: relative;
-  z-index: 1;
+.reporte-item i {
+  font-size: 2rem;
+  color: var(--primary-500);
+  margin-bottom: var(--spacing-sm);
 }
 
 .reporte-item h4 {
   margin-bottom: var(--spacing-xs);
   color: var(--text-secondary);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .reporte-valor {
   font-size: var(--font-size-2xl);
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--font-weight-bold);
   color: var(--primary-600);
   line-height: 1.2;
 }
@@ -1796,9 +1790,31 @@ body {
   color: var(--text-tertiary);
 }
 
-/* Desglose de reportes */
+/* Gráficos de barras simples con CSS */
+.reporte-barra-container {
+  margin-top: var(--spacing-md);
+  background-color: var(--bg-tertiary);
+  border-radius: var(--radius-full);
+  height: 0.5rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.reporte-barra {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary-500), var(--primary-400));
+  border-radius: var(--radius-full);
+  transition: width 0.5s var(--animation-bounce);
+}
+
+/* Desglose de reportes con mejor estructura */
 .reporte-desglose {
   margin-top: var(--spacing-xl);
+  background-color: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-md);
 }
 
 .reporte-desglose h3,
@@ -1818,36 +1834,41 @@ body {
   color: var(--primary-500);
 }
 
-/* Tablas dentro de reportes */
+/* Tablas dentro de reportes con mejor aspecto */
 .reporte-tabla {
   overflow-x: auto;
   margin-bottom: var(--spacing-lg);
   border-radius: var(--radius-md);
   background-color: var(--bg-secondary);
   box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-light);
 }
 
 .reporte-tabla .data-table {
   min-width: 100%;
   border-collapse: separate;
   border-spacing: 0;
+  width: 100%;
 }
 
 .reporte-tabla .data-table th {
-  background: linear-gradient(135deg, var(--primary-500), var(--primary-600));
+  background: linear-gradient(135deg, var(--primary-600), var(--primary-500));
   color: white;
   font-weight: var(--font-weight-semibold);
-  padding: var(--spacing-sm) var(--spacing-md);
+  padding: var(--spacing-md) var(--spacing-md);
   white-space: nowrap;
   font-size: var(--font-size-sm);
   position: sticky;
   top: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .reporte-tabla .data-table td {
-  padding: var(--spacing-sm) var(--spacing-md);
+  padding: var(--spacing-md) var(--spacing-md);
   border-bottom: 1px solid var(--border-light);
   font-size: var(--font-size-sm);
+  vertical-align: middle;
 }
 
 .reporte-tabla .data-table tr:last-child td {
@@ -1862,30 +1883,32 @@ body {
   background-color: var(--bg-hover);
   transform: translateX(2px);
   box-shadow: var(--shadow-sm);
+  transition: all var(--transition-fast);
 }
 
-/* Sección de análisis */
+/* Sección de análisis con diseño de tarjetas */
 .reporte-analisis {
   background: linear-gradient(135deg, var(--primary-50), var(--bg-secondary));
   border-radius: var(--radius-lg);
-  padding: var(--spacing-lg);
+  padding: var(--spacing-xl);
   margin-top: var(--spacing-xl);
   border: 1px solid var(--border-light);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
 }
 
 .reporte-analisis h4 {
-  margin-bottom: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-lg);
+  color: var(--primary-700);
 }
 
 .reporte-analisis .row {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--spacing-lg);
+  gap: var(--spacing-xl);
   justify-content: space-between;
 }
 
@@ -1893,6 +1916,15 @@ body {
   margin-bottom: var(--spacing-xs);
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
+  display: flex;
+  justify-content: space-between;
+  min-width: 200px;
+  padding: var(--spacing-xs) 0;
+  border-bottom: 1px dashed var(--border-light);
+}
+
+.reporte-analisis p:last-child {
+  border-bottom: none;
 }
 
 .reporte-analisis strong {
@@ -1900,10 +1932,10 @@ body {
   font-weight: var(--font-weight-semibold);
 }
 
-/* Estado vacío */
+/* Estado vacío mejorado */
 .empty-reportes {
   text-align: center;
-  padding: var(--spacing-2xl);
+  padding: var(--spacing-3xl) var(--spacing-2xl);
   color: var(--text-tertiary);
   animation: fadeIn 0.5s ease;
   background-color: var(--bg-secondary);
@@ -1913,13 +1945,13 @@ body {
 
 .empty-reportes i {
   margin-bottom: var(--spacing-md);
-  opacity: 0.4;
-  font-size: 3rem;
+  opacity: 0.5;
+  font-size: 4rem;
   color: var(--primary-400);
 }
 
 .empty-reportes p {
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-lg);
   margin-bottom: var(--spacing-xs);
 }
 
@@ -1940,7 +1972,7 @@ body {
 
 .error-reportes i {
   margin-bottom: var(--spacing-md);
-  font-size: 2rem;
+  font-size: 2.5rem;
   color: var(--danger-500);
 }
 
@@ -1953,29 +1985,31 @@ body {
 .reporte-desglose .col-md-6 {
   display: flex;
   flex-direction: column;
-  min-width: 0; /* Evita que el contenido ancho fuerce el desbordamiento */
+  min-width: 0;
 }
 
 .reporte-desglose .table-container,
 .reporte-desglose [style*="max-height"] {
   width: 100%;
-  overflow-x: auto; /* Scroll horizontal si es necesario */
+  overflow-x: auto;
   flex-shrink: 1;
   min-height: 0;
 }
 
 .reporte-desglose [style*="max-height"] {
-  max-height: 300px !important; /* Fuerza la altura máxima con scroll vertical */
+  max-height: 350px !important;
   overflow-y: auto !important;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
 }
 
 .reporte-desglose .data-table {
-  min-width: 100%; /* Ocupa todo el ancho disponible */
-  table-layout: auto; /* Ajuste automático de columnas */
+  min-width: 100%;
+  table-layout: auto;
 }
 
 .reporte-desglose .data-table td {
-  white-space: normal; /* Permite saltos de línea en celdas */
+  white-space: normal;
   word-break: break-word;
 }
 
@@ -1985,6 +2019,10 @@ body {
     flex: 0 0 100%;
     max-width: 100%;
     margin-bottom: var(--spacing-lg);
+  }
+  
+  .reporte-resumen {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -2741,7 +2779,7 @@ body {
   }
   
   .btn-pago {
-    min-height: 5rem; /* Aún más grande en móvil */
+    min-height: 5rem;
   }
   
   .descuento-control {

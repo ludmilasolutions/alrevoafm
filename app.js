@@ -1245,24 +1245,8 @@ async function finalizarVenta() {
         const configMap = await obtenerConfiguracionTicket();
         const cambio = totalPagado - total;
 
-        // --- Generar el ticket como HTML string ---
-        const ticketHTML = generarTicketHTML(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
-
-        // --- Enviar a Electron o fallback a impresión en navegador ---
-        if (window.electronAPI && typeof window.electronAPI.imprimirTicket === 'function') {
-            try {
-                await window.electronAPI.imprimirTicket(ticketHTML);
-                showNotification('Ticket impreso correctamente', 'success');
-            } catch (electronError) {
-                console.error('Error en impresión Electron:', electronError);
-                showNotification('Error en impresión, usando fallback HTML', 'error');
-                // Fallback a ventana de impresión
-                imprimirEnNavegador(ticketHTML);
-            }
-        } else {
-            // Modo navegador: abrir ventana de impresión
-            imprimirEnNavegador(ticketHTML);
-        }
+        // Imprimir ticket usando ESC/POS
+        await imprimirTicketPOS(venta, appState.carrito, appState.pagos, appState.usuario, configMap, cambio);
 
         appState.carrito = [];
         appState.pagos = [];
@@ -1298,7 +1282,207 @@ async function finalizarVenta() {
     }
 }
 
-// ==================== FUNCIONES DE IMPRESIÓN ====================
+// ==================== IMPRESIÓN ESC/POS ====================
+
+/**
+ * Normaliza una cadena eliminando acentos y caracteres no ASCII.
+ * @param {string} str - Cadena a normalizar.
+ * @returns {string} Cadena sin acentos ni caracteres especiales.
+ */
+function normalizeString(str) {
+    if (!str) return '';
+    const map = {
+        'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u',
+        'Á': 'A', 'É': 'E', 'Í': 'I', 'Ó': 'O', 'Ú': 'U',
+        'ñ': 'n', 'Ñ': 'N',
+        'ü': 'u', 'Ü': 'U'
+    };
+    return str.replace(/[áéíóúñüÁÉÍÓÚÑÜ]/g, match => map[match] || match);
+}
+
+/**
+ * Escapa caracteres especiales para ESC/POS (no necesario, pero por claridad).
+ * @param {string} str - Cadena a imprimir.
+ * @returns {string} Cadena lista para incluir en el ticket.
+ */
+function escapeESCString(str) {
+    // Reemplazar caracteres que puedan interferir con comandos
+    // Por ahora solo normalizamos acentos.
+    return normalizeString(str);
+}
+
+/**
+ * Rellena una cadena con espacios a la izquierda o derecha para alcanzar un ancho fijo.
+ * @param {string} str - Cadena a rellenar.
+ * @param {number} width - Ancho deseado.
+ * @param {string} align - 'left' o 'right'.
+ * @returns {string} Cadena rellena.
+ */
+function padString(str, width, align = 'left') {
+    str = str.substring(0, width); // Truncar si es muy largo
+    const spaces = width - str.length;
+    if (spaces <= 0) return str;
+    if (align === 'right') {
+        return ' '.repeat(spaces) + str;
+    }
+    return str + ' '.repeat(spaces);
+}
+
+/**
+ * Formatea una línea de producto para 32 columnas.
+ * @param {string} nombre - Nombre del producto.
+ * @param {number} cantidad - Cantidad.
+ * @param {number} precio - Precio unitario.
+ * @param {number} total - Total del producto.
+ * @returns {string} Línea formateada de 32 caracteres.
+ */
+function formatProductLine(nombre, cantidad, precio, total) {
+    const nombreTrunc = nombre.substring(0, 16); // 16 caracteres para nombre
+    const cantStr = cantidad.toString().padStart(3); // 3 dígitos
+    const precioStr = precio.toFixed(2).padStart(6); // 6 caracteres (incluye punto)
+    const totalStr = total.toFixed(2).padStart(6); // 6 caracteres
+    // Total: 16 + 3 + 6 + 6 = 31, dejamos un espacio entre columnas
+    return padString(nombreTrunc, 16) + ' ' + cantStr + ' ' + precioStr + ' ' + totalStr;
+}
+
+/**
+ * Genera el contenido del ticket en formato ESC/POS.
+ * @param {Object} venta - Objeto venta devuelto por Supabase.
+ * @param {Object} configMap - Configuración de la empresa.
+ * @param {Array} carrito - Carrito de la venta.
+ * @param {Array} pagos - Pagos de la venta.
+ * @param {Object} usuario - Usuario que realizó la venta.
+ * @param {number} cambio - Cambio a devolver.
+ * @returns {string} Cadena con comandos ESC/POS.
+ */
+function generarTicketESC/POS(venta, configMap, carrito, pagos, usuario, cambio) {
+    const ESC = '\x1B';
+    const GS = '\x1D';
+    const LF = '\n';
+
+    const INIT = ESC + '@';
+    const CENTER = ESC + 'a' + '\x01';
+    const LEFT = ESC + 'a' + '\x00';
+    const BOLD_ON = ESC + 'E' + '\x01';
+    const BOLD_OFF = ESC + 'E' + '\x00';
+    const DOUBLE_SIZE = GS + '!' + '\x11'; // doble ancho y alto
+    const NORMAL_SIZE = GS + '!' + '\x00';
+    const CUT = GS + 'V' + '\x01'; // corte con avance
+
+    let ticket = INIT;
+
+    // --- Cabecera centrada y grande ---
+    ticket += CENTER;
+    ticket += DOUBLE_SIZE;
+    ticket += BOLD_ON;
+    ticket += escapeESCString(configMap.ticket_encabezado || 'AFMSOLUTIONS') + LF;
+    ticket += NORMAL_SIZE;
+    ticket += escapeESCString(configMap.ticket_encabezado_extra || 'SISTEMA POS') + LF;
+    ticket += BOLD_OFF;
+    ticket += escapeESCString(configMap.empresa_direccion || 'LOCAL COMERCIAL') + LF;
+    ticket += LF;
+
+    // --- Información de la venta (izquierda) ---
+    ticket += LEFT;
+    ticket += NORMAL_SIZE;
+    const fecha = new Date(venta.fecha);
+    const fechaStr = fecha.toLocaleDateString('es-ES') + ' ' + fecha.toLocaleTimeString('es-ES');
+    ticket += 'Fecha: ' + escapeESCString(fechaStr) + LF;
+    ticket += 'Ticket: ' + escapeESCString(venta.ticket_id) + LF;
+    ticket += 'Vendedor: ' + escapeESCString(usuario?.username || '') + LF;
+    ticket += LF;
+
+    // --- Encabezado de productos ---
+    ticket += BOLD_ON;
+    ticket += padString('Producto', 16) + ' ' + padString('Cant', 3, 'right') + ' ' +
+              padString('Precio', 6, 'right') + ' ' + padString('Total', 6, 'right') + LF;
+    ticket += BOLD_OFF;
+    ticket += '-'.repeat(32) + LF;
+
+    // --- Detalle de productos ---
+    carrito.forEach(item => {
+        const nombre = escapeESCString(item.producto.nombre);
+        const cantidad = item.cantidad;
+        const precio = item.precioUnitario;
+        const totalItem = cantidad * precio;
+        ticket += formatProductLine(nombre, cantidad, precio, totalItem) + LF;
+    });
+
+    ticket += '-'.repeat(32) + LF;
+
+    // --- Totales ---
+    const subtotal = carrito.reduce((sum, item) => sum + item.cantidad * item.precioUnitario, 0);
+    const descuento = venta.descuento;
+    const total = venta.total;
+
+    ticket += padString('Subtotal:', 18, 'right') + ' ' + padString('$' + subtotal.toFixed(2), 12, 'right') + LF;
+    if (descuento > 0) {
+        ticket += padString('Descuento:', 18, 'right') + ' ' + padString('$' + descuento.toFixed(2), 12, 'right') + LF;
+    }
+    ticket += BOLD_ON;
+    ticket += padString('TOTAL:', 18, 'right') + ' ' + padString('$' + total.toFixed(2), 12, 'right') + LF;
+    ticket += BOLD_OFF;
+    ticket += LF;
+
+    // --- Pagos ---
+    ticket += BOLD_ON + 'PAGOS:' + BOLD_OFF + LF;
+    let totalPagado = 0;
+    const pagosAgrupados = {};
+    pagos.forEach(p => {
+        totalPagado += p.monto;
+        if (!pagosAgrupados[p.medio]) pagosAgrupados[p.medio] = 0;
+        pagosAgrupados[p.medio] += p.monto;
+    });
+    Object.entries(pagosAgrupados).forEach(([medio, monto]) => {
+        ticket += padString(medio + ':', 18, 'right') + ' ' + padString('$' + monto.toFixed(2), 12, 'right') + LF;
+    });
+    if (cambio > 0) {
+        ticket += padString('Cambio:', 18, 'right') + ' ' + padString('$' + cambio.toFixed(2), 12, 'right') + LF;
+    }
+    ticket += LF;
+
+    // --- Pie de página centrado ---
+    ticket += CENTER;
+    ticket += escapeESCString(configMap.ticket_pie || '¡Gracias por su compra!') + LF;
+    ticket += escapeESCString(configMap.ticket_legal || 'Conserve su ticket') + LF;
+    if (configMap.empresa_contacto) {
+        ticket += escapeESCString(configMap.empresa_contacto) + LF;
+    }
+    ticket += LF;
+
+    // --- Corte ---
+    ticket += CUT;
+
+    return ticket;
+}
+
+/**
+ * Imprime el ticket usando la API de Electron.
+ * @param {Object} venta - Objeto venta.
+ * @param {Array} carrito - Carrito de la venta.
+ * @param {Array} pagos - Pagos de la venta.
+ * @param {Object} usuario - Usuario actual.
+ * @param {Object} configMap - Configuración de la empresa.
+ * @param {number} cambio - Cambio.
+ */
+async function imprimirTicketPOS(venta, carrito, pagos, usuario, configMap, cambio) {
+    const escposString = generarTicketESC/POS(venta, configMap, carrito, pagos, usuario, cambio);
+
+    if (window.electronAPI && typeof window.electronAPI.imprimirTicket === 'function') {
+        try {
+            await window.electronAPI.imprimirTicket(escposString);
+            showNotification('Ticket impreso correctamente', 'success');
+        } catch (error) {
+            console.error('Error en impresión Electron:', error);
+            showNotification('Error al imprimir el ticket: ' + error.message, 'error');
+        }
+    } else {
+        // Modo navegador: solo mostrar en consola para depuración
+        console.log('=== TICKET ESC/POS ===');
+        console.log(escposString.replace(/\x1B/g, '<ESC>').replace(/\x1D/g, '<GS>'));
+        showNotification('Impresión no disponible en modo navegador', 'warning');
+    }
+}
 
 async function obtenerConfiguracionTicket() {
     try {
@@ -1324,228 +1508,6 @@ async function obtenerConfiguracionTicket() {
             empresa_contacto: ''
         };
     }
-}
-
-/**
- * Genera el HTML del ticket para impresora térmica 58mm.
- * @returns {string} HTML listo para imprimir.
- */
-function generarTicketHTML(venta, configMap, carrito, pagos, usuario, cambio) {
-    const fecha = new Date(venta.fecha);
-    const fechaFormateada = `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2, '0')}:${fecha.getMinutes().toString().padStart(2, '0')}:${fecha.getSeconds().toString().padStart(2, '0')}`;
-
-    // Items del carrito
-    let itemsHTML = '';
-    carrito.forEach(item => {
-        const totalItem = item.cantidad * item.precioUnitario;
-        const nombre = item.producto.nombre.length > 25 ?
-            item.producto.nombre.substring(0, 22) + '...' :
-            item.producto.nombre;
-
-        itemsHTML += `
-            <div class="ticket-item">
-                <div class="item-name">${nombre}</div>
-                <div class="item-line">
-                    <div class="item-qty">${item.cantidad} x</div>
-                    <div class="item-price">$${item.precioUnitario.toFixed(2)}</div>
-                    <div class="item-total">$${totalItem.toFixed(2)}</div>
-                </div>
-            </div>
-        `;
-    });
-
-    // Pagos
-    let pagosHTML = '';
-    pagos.forEach(pago => {
-        pagosHTML += `
-            <div class="total-row">
-                <div>${pago.medio}:</div>
-                <div>$${pago.monto.toFixed(2)}</div>
-            </div>
-        `;
-    });
-
-    // HTML completo con estilos optimizados para 58mm
-    return `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Ticket ${venta.ticket_id}</title>
-            <meta charset="UTF-8">
-            <style>
-                @media print {
-                    html, body {
-                        width: 58mm;
-                        max-width: 58mm;
-                        margin: 0;
-                        padding: 0;
-                        font-family: 'Courier New', monospace;
-                        font-size: 11px;
-                        line-height: 1.25;
-                        color: #000;
-                    }
-                    @page {
-                        size: 58mm auto;
-                        margin: 0;
-                    }
-                    * {
-                        box-sizing: border-box;
-                    }
-                    .ticket {
-                        width: 100%;
-                        padding: 4px;
-                    }
-                    .ticket-header {
-                        text-align: center;
-                        margin-bottom: 6px;
-                        padding-bottom: 4px;
-                        border-bottom: 1px dashed #000;
-                    }
-                    .ticket-header h1 {
-                        font-size: 13px;
-                        margin: 2px 0;
-                        font-weight: bold;
-                        text-transform: uppercase;
-                    }
-                    .ticket-header p {
-                        margin: 1px 0;
-                        font-size: 9px;
-                    }
-                    .ticket-info {
-                        font-size: 9px;
-                        margin-bottom: 6px;
-                    }
-                    .ticket-info div {
-                        margin-bottom: 2px;
-                    }
-                    .ticket-items {
-                        width: 100%;
-                        margin: 6px 0;
-                        font-size: 10px;
-                    }
-                    .ticket-item {
-                        margin-bottom: 4px;
-                    }
-                    .item-name {
-                        font-weight: bold;
-                        word-break: break-word;
-                    }
-                    .item-line {
-                        display: flex;
-                        justify-content: space-between;
-                        font-size: 10px;
-                    }
-                    .item-qty {
-                        width: 20%;
-                        text-align: left;
-                    }
-                    .item-price {
-                        width: 30%;
-                        text-align: right;
-                    }
-                    .item-total {
-                        width: 30%;
-                        text-align: right;
-                        font-weight: bold;
-                    }
-                    .ticket-totals {
-                        margin-top: 6px;
-                        padding-top: 4px;
-                        border-top: 1px dashed #000;
-                        font-size: 11px;
-                    }
-                    .total-row {
-                        display: flex;
-                        justify-content: space-between;
-                        margin: 2px 0;
-                    }
-                    .grand-total {
-                        font-size: 13px;
-                        font-weight: bold;
-                    }
-                    .ticket-footer {
-                        text-align: center;
-                        margin-top: 8px;
-                        padding-top: 4px;
-                        border-top: 1px dashed #000;
-                        font-size: 9px;
-                    }
-                    .center { text-align: center; }
-                    .right { text-align: right; }
-                    .left { text-align: left; }
-                    .bold { font-weight: bold; }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="ticket">
-                <div class="ticket-header">
-                    <h1>${configMap.ticket_encabezado || 'AFMSOLUTIONS'}</h1>
-                    <p>${configMap.ticket_encabezado_extra || 'SISTEMA POS'}</p>
-                    <p>${configMap.empresa_direccion || 'LOCAL COMERCIAL'}</p>
-                </div>
-
-                <div class="ticket-info">
-                    <div>Fecha: ${fechaFormateada}</div>
-                    <div>Ticket: <strong>${venta.ticket_id}</strong></div>
-                    <div>Vendedor: ${usuario?.username || ''}</div>
-                </div>
-
-                <div class="ticket-items">
-                    ${itemsHTML}
-                </div>
-
-                <div class="ticket-totals">
-                    <div class="total-row">
-                        <div>Subtotal:</div>
-                        <div>$${venta.subtotal.toFixed(2)}</div>
-                    </div>
-                    <div class="total-row">
-                        <div>Descuento:</div>
-                        <div>$${venta.descuento.toFixed(2)}</div>
-                    </div>
-                    <div class="total-row grand-total">
-                        <div>TOTAL:</div>
-                        <div>$${venta.total.toFixed(2)}</div>
-                    </div>
-
-                    <div style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed #000;">
-                        <div class="bold">PAGOS:</div>
-                        ${pagosHTML}
-                        ${cambio > 0 ? `
-                        <div class="total-row">
-                            <div>Cambio:</div>
-                            <div>$${cambio.toFixed(2)}</div>
-                        </div>
-                        ` : ''}
-                    </div>
-                </div>
-
-                <div class="ticket-footer">
-                    <div>${configMap.ticket_pie || '¡Gracias por su compra!'}</div>
-                    <div>${configMap.ticket_legal || 'Conserve su ticket'}</div>
-                    <div style="margin-top: 4px; font-size: 6px;">${configMap.empresa_contacto || ''}</div>
-                </div>
-            </div>
-        </body>
-        </html>
-    `;
-}
-
-/**
- * Imprime el ticket abriendo una nueva ventana y llamando a window.print().
- * @param {string} ticketHTML - HTML del ticket.
- */
-function imprimirEnNavegador(ticketHTML) {
-    const printWindow = window.open('', '_blank', 'width=200,height=400');
-    printWindow.document.write(ticketHTML);
-    printWindow.document.close();
-    // Esperar a que se cargue el contenido y luego imprimir
-    setTimeout(() => {
-        printWindow.print();
-        // Cerrar la ventana después de imprimir (opcional)
-        printWindow.onafterprint = () => printWindow.close();
-    }, 100);
 }
 
 function cancelarVenta() {

@@ -1355,7 +1355,7 @@ function formatProductLine(nombre, cantidad, precio, total) {
  * @param {number} cambio - Cambio a devolver.
  * @returns {string} Cadena con comandos ESC/POS.
  */
-function generarTicketESC/POS(venta, configMap, carrito, pagos, usuario, cambio) {
+function generarTicketESCPOS(venta, configMap, carrito, pagos, usuario, cambio) {
     const ESC = '\x1B';
     const GS = '\x1D';
     const LF = '\n';

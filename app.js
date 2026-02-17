@@ -1343,7 +1343,7 @@ function generarTicketESC(venta, configMap, carrito, pagos, usuario, cambio) {
     ticket += '\x1B\x61\x00'; // Alineación izquierda
 
     // Línea separadora
-    ticket += '--------------------------------\n';
+    ticket += '--------------------------------\n'; // 32 guiones
 
     // ----- Información de la venta -----
     const fecha = new Date(venta.fecha);
@@ -1353,38 +1353,52 @@ function generarTicketESC(venta, configMap, carrito, pagos, usuario, cambio) {
     ticket += `Vendedor: ${usuario?.username || ''}\n`;
     ticket += '--------------------------------\n';
 
+    // Funciones auxiliares para formatear líneas de 32 caracteres
+    const formatearProducto = (nombre, cantidad, precioUnitario) => {
+        const totalItem = cantidad * precioUnitario;
+        // Precio formateado a 8 caracteres (incluye '$' y espacio)
+        const precioStr = `$${totalItem.toFixed(2)}`.padStart(8);
+        // Parte izquierda: "CANTIDADx NOMBRE"
+        const izquierda = `${cantidad}x ${nombre}`;
+        // Truncar izquierda para que quepa en 32 - 8 = 24 caracteres
+        const izquierdaTruncada = izquierda.length > 24 ? izquierda.substring(0, 22) + '..' : izquierda;
+        // Rellenar con espacios hasta 24 caracteres
+        const izquierdaPadded = izquierdaTruncada.padEnd(24, ' ');
+        return izquierdaPadded + precioStr;
+    };
+
+    const formatearTotales = (label, valor) => {
+        const valorStr = `$${valor.toFixed(2)}`.padStart(8);
+        const labelTrunc = label.length > 24 ? label.substring(0, 22) + '..' : label;
+        const labelPadded = labelTrunc.padEnd(24, ' ');
+        return labelPadded + valorStr;
+    };
+
     // ----- Productos -----
     carrito.forEach(item => {
-        const nombre = item.producto.nombre;
-        // Truncar nombre a 22 caracteres para dejar espacio a cantidad, precio y total
-        const nombreCorto = nombre.length > 22 ? nombre.substring(0, 20) + '..' : nombre.padEnd(22, ' ');
-        const cantidad = item.cantidad.toString().padStart(3, ' ');
-        const precio = item.precioUnitario.toFixed(2).padStart(7, ' ');
-        const totalItem = (item.cantidad * item.precioUnitario).toFixed(2).padStart(7, ' ');
-        ticket += `${nombreCorto}${cantidad} x${precio}  $${totalItem}\n`;
+        ticket += formatearProducto(item.producto.nombre, item.cantidad, item.precioUnitario) + '\n';
     });
 
     ticket += '--------------------------------\n';
 
     // ----- Totales -----
-    ticket += `Subtotal:      $ ${venta.subtotal.toFixed(2).padStart(7)}\n`;
+    ticket += formatearTotales('Subtotal:', venta.subtotal) + '\n';
     if (venta.descuento > 0) {
-        ticket += `Descuento:    -$ ${venta.descuento.toFixed(2).padStart(7)}\n`;
+        ticket += formatearTotales('Descuento:', -venta.descuento) + '\n';
     }
     ticket += '\x1B\x45\x01'; // Negrita ON
-    ticket += `TOTAL:         $ ${venta.total.toFixed(2).padStart(7)}\n`;
+    ticket += formatearTotales('TOTAL:', venta.total) + '\n';
     ticket += '\x1B\x45\x00'; // Negrita OFF
 
-    // ----- Pagos -----
     ticket += '--------------------------------\n';
     ticket += 'PAGOS:\n';
     let totalPagado = 0;
     pagos.forEach(pago => {
-        ticket += `${pago.medio.padEnd(12)} $ ${pago.monto.toFixed(2).padStart(7)}\n`;
+        ticket += formatearTotales(pago.medio, pago.monto) + '\n';
         totalPagado += pago.monto;
     });
     if (cambio > 0) {
-        ticket += `Cambio:        $ ${cambio.toFixed(2).padStart(7)}\n`;
+        ticket += formatearTotales('Cambio:', cambio) + '\n';
     }
     ticket += '--------------------------------\n';
 
@@ -1397,6 +1411,9 @@ function generarTicketESC(venta, configMap, carrito, pagos, usuario, cambio) {
 
     // Líneas en blanco antes del corte
     ticket += '\n\n';
+
+    // Comando apertura cajón (justo antes del corte)
+    ticket += '\x1B\x70\x00\x19\xFA'; // ESC p 0 25 250
 
     // Corte de papel (full cut)
     ticket += '\x1D\x56\x00'; // GS V 0

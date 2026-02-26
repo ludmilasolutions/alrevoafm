@@ -265,6 +265,41 @@ body {
   transform: translateY(-1px);
 }
 
+.input-group input.error {
+  border-color: var(--danger-500);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+}
+
+.input-group input.success {
+  border-color: var(--success-500);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
+
+.input-group input:disabled {
+  background-color: var(--bg-tertiary);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.input-group .error-message {
+  color: var(--danger-500);
+  font-size: var(--font-size-xs);
+  margin-top: var(--spacing-xs);
+  display: none;
+}
+
+.input-group input.error + .error-message,
+.input-group.has-error .error-message {
+  display: block;
+  animation: shake 0.4s ease;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+
 /* ===== BOTONES OPTIMIZADOS CON ANIMACIONES ===== */
 .btn {
   display: inline-flex;
@@ -2350,12 +2385,13 @@ body {
   right: 0;
   bottom: 0;
   background-color: var(--bg-overlay);
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   z-index: 2000;
   align-items: center;
   justify-content: center;
   padding: var(--spacing-lg);
-  animation: fadeIn 0.3s ease;
+  animation: fadeIn 0.25s ease-out;
 }
 
 .modal.active {
@@ -2364,27 +2400,33 @@ body {
 
 .modal-content {
   background-color: var(--bg-secondary);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   width: 100%;
   max-width: 40rem;
   max-height: 85vh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  box-shadow: var(--shadow-xl);
-  animation: modalSlideIn 0.4s var(--animation-bounce);
-  transform: translateY(0);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  animation: modalSlideIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform: translateY(0) scale(1);
 }
 
 @keyframes modalSlideIn {
   from {
     opacity: 0;
-    transform: translateY(-20px) scale(0.95);
+    transform: translateY(-30px) scale(0.9);
+    filter: blur(4px);
   }
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+    filter: blur(0);
   }
+}
+
+.modal.active .modal-content {
+  animation: modalSlideIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
 .modal-header {
@@ -2457,31 +2499,36 @@ body {
 
 /* ===== SCROLLBAR PERSONALIZADO MEJORADO ===== */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
-  border-radius: 4px;
+  background: var(--bg-tertiary);
+  border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--gray-300);
-  border-radius: 4px;
-  transition: background-color var(--transition-base);
+  background: linear-gradient(180deg, var(--gray-400), var(--gray-300));
+  border-radius: 5px;
+  border: 2px solid var(--bg-tertiary);
+  transition: all var(--transition-base);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--gray-400);
+  background: linear-gradient(180deg, var(--gray-500), var(--gray-400));
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: var(--gray-800);
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: var(--gray-600);
+  background: linear-gradient(180deg, var(--gray-600), var(--gray-700));
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: var(--gray-500);
+  background: linear-gradient(180deg, var(--gray-500), var(--gray-600));
 }
 
 /* ===== NOTIFICACIONES ===== */
@@ -2490,29 +2537,50 @@ body {
   top: 20px;
   right: 20px;
   padding: var(--spacing-md) var(--spacing-lg);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background-color: var(--bg-secondary);
   color: var(--text-primary);
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.2);
   display: flex;
   align-items: center;
   gap: var(--spacing-md);
   z-index: 3000;
-  animation: slideInRight 0.3s ease, fadeOut 0.3s ease 4.7s forwards;
+  animation: slideInRight 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), fadeOut 0.3s ease 4.5s forwards;
   border-left: 4px solid var(--primary-500);
-  max-width: 350px;
+  max-width: 380px;
+  backdrop-filter: blur(10px);
 }
 
 .notification.success {
   border-left-color: var(--success-500);
+  background: linear-gradient(135deg, var(--bg-secondary), rgba(16, 185, 129, 0.1));
+}
+
+.notification.success .notification-icon {
+  color: var(--success-500);
 }
 
 .notification.error {
   border-left-color: var(--danger-500);
+  background: linear-gradient(135deg, var(--bg-secondary), rgba(239, 68, 68, 0.1));
+}
+
+.notification.error .notification-icon {
+  color: var(--danger-500);
 }
 
 .notification.warning {
   border-left-color: var(--warning-500);
+  background: linear-gradient(135deg, var(--bg-secondary), rgba(245, 158, 11, 0.1));
+}
+
+.notification.warning .notification-icon {
+  color: var(--warning-500);
+}
+
+.notification-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
 }
 
 @keyframes slideInRight {
@@ -3025,6 +3093,61 @@ body {
   100% {
     background-position: -200% 0;
   }
+}
+
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--border-light);
+  border-top-color: var(--primary-500);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.spinner-sm {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+
+.spinner-lg {
+  width: 40px;
+  height: 40px;
+  border-width: 4px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.btn .spinner {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+  border-color: rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+}
+
+.btn.loading {
+  pointer-events: none;
+  opacity: 0.8;
+}
+
+.btn.loading .btn-text {
+  opacity: 0;
+}
+
+.btn.loading::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
 /* ===== EFECTOS DE SUPERFICIE ===== */

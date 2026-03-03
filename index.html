@@ -9,6 +9,7 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛒</text></svg>">
     <link rel="icon" type="image/png" href="https://img.icons8.com/color/96/000000/checkout.png">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
+    <!-- Script de QZ Tray eliminado: ahora usamos Electron para impresión -->
 </head>
 <body>
     <!-- Script para aplicar el tema guardado antes de que se pinte la página (evita parpadeo) -->
@@ -63,7 +64,6 @@
             <div class="header-title">
                 <h1><i class="fas fa-store"></i> <span id="current-section">VENTA</span></h1>
             </div>
-
             <button id="theme-toggle" class="theme-toggle" aria-label="Cambiar tema">
                 <i class="fas fa-moon"></i>
             </button>
@@ -127,7 +127,7 @@
 
         <!-- Contenido Principal -->
         <main class="main-content">
-            <!-- Sección de Venta -->
+            <!-- Sección de Venta (COMPLETAMENTE REDISEÑADA) -->
             <section id="seccion-venta" class="content-section active">
                 <div class="venta-container">
                     <!-- Scanner Compacto -->
@@ -153,7 +153,7 @@
 
                     <!-- Contenedor Principal: Carrito + Pagos -->
                     <div class="main-grid">
-                        <!-- Carrito Ampliado -->
+                        <!-- Carrito Ampliado (70% del espacio) -->
                         <div class="carrito-ampliado">
                             <div class="carrito-header">
                                 <h3><i class="fas fa-shopping-cart"></i> CARRITO DE VENTA</h3>
@@ -206,26 +206,10 @@
                             </div>
                         </div>
 
-                        <!-- Panel de Pagos -->
+                        <!-- Panel de Pagos (30% del espacio) -->
                         <div class="pagos-panel">
                             <div class="pagos-header">
                                 <h3><i class="fas fa-credit-card"></i> MEDIOS DE PAGO</h3>
-                            </div>
-                            
-                            <!-- Sección de Cliente (para crédito) -->
-                            <div class="cliente-section">
-                                <label for="cliente-input"><i class="fas fa-user"></i> Cliente (para crédito):</label>
-                                <div class="cliente-input-group">
-                                    <input type="text" id="cliente-input" placeholder="Buscar cliente...">
-                                    <input type="hidden" id="cliente-id">
-                                    <button id="btn-limpiar-cliente" class="btn btn-sm" title="Limpiar cliente">
-                                        <i class="fas fa-times"></i>
-                                    </button>
-                                    <button id="btn-nuevo-cliente" class="btn btn-sm btn-primary" title="Nuevo cliente">
-                                        <i class="fas fa-user-plus"></i>
-                                    </button>
-                                </div>
-                                <div id="cliente-info" class="cliente-info"></div>
                             </div>
                             
                             <div class="pagos-opciones">
@@ -240,10 +224,6 @@
                                 <button class="btn-pago" data-medio="TRANSFERENCIA/QR" accesskey="3">
                                     <i class="fas fa-qrcode"></i>
                                     <span>TRANSFERENCIA/QR (3)</span>
-                                </button>
-                                <button class="btn-pago" data-medio="CUENTA_CORRIENTE" accesskey="4">
-                                    <i class="fas fa-book"></i>
-                                    <span>CTA. CTE. (4)</span>
                                 </button>
                             </div>
                             
@@ -287,18 +267,15 @@
                     <!-- Total Final y Botón Finalizar (SIEMPRE VISIBLES) -->
                     <div class="finalizacion-fija">
                         <div class="finalizacion-container">
-                            <div class="total-final total-final-grande">
+                            <div class="total-final">
                                 <span class="total-label">TOTAL VENTA:</span>
-                                <span id="carrito-total-final" class="total-monto total-monto-grande">$ 0.00</span>
+                                <span id="carrito-total-final" class="total-monto">$ 0.00</span>
                             </div>
-                            <div class="acciones-finales acciones-finales-grandes">
-                                <button id="btn-presupuesto" class="btn btn-info btn-grande" title="Crear Presupuesto PDF">
-                                    <i class="fas fa-file-invoice"></i> PRESUPUESTO
-                                </button>
-                                <button id="btn-cancelar-venta" class="btn btn-danger btn-grande">
+                            <div class="acciones-finales">
+                                <button id="btn-cancelar-venta" class="btn btn-danger">
                                     <i class="fas fa-times-circle"></i> Cancelar
                                 </button>
-                                <button id="btn-finalizar-venta" class="btn-finalizar btn-finalizar-grande" disabled title="Finalizar venta (F1)">
+                                <button id="btn-finalizar-venta" class="btn-finalizar" disabled title="Finalizar venta (F1)">
                                     <i class="fas fa-check-circle"></i> FINALIZAR VENTA (F1)
                                 </button>
                             </div>
@@ -314,9 +291,6 @@
                     <div class="section-actions">
                         <button id="btn-nuevo-producto" class="btn btn-primary">
                             <i class="fas fa-plus"></i> Nuevo Producto
-                        </button>
-                        <button id="btn-nueva-transferencia" class="btn btn-info">
-                            <i class="fas fa-exchange-alt"></i> Transferir Stock
                         </button>
                         <button id="btn-refrescar-productos" class="btn">
                             <i class="fas fa-sync"></i> Refrescar
@@ -336,20 +310,19 @@
                             <option value="">Todos los proveedores</option>
                         </select>
                         <select id="filtro-estado">
-                            <option value="todos">Todos</option>
                             <option value="activos">Solo activos</option>
+                            <option value="todos">Todos</option>
                             <option value="inactivos">Solo inactivos</option>
                         </select>
                     </div>
                 </div>
                 
                 <div class="table-container">
-                    <table class="data-table" id="productos-table">
+                    <table id="tabla-productos" class="data-table">
                         <thead>
                             <tr>
                                 <th>Código</th>
                                 <th>Nombre</th>
-                                <th>Unidad</th>
                                 <th>Precio Venta</th>
                                 <th>Precio Costo</th>
                                 <th>Margen %</th>
@@ -451,11 +424,6 @@
                                         <span><i class="fas fa-qrcode"></i> Ventas Transferencia:</span>
                                         <strong id="caja-ventas-transferencia">$ 0.00</strong>
                                     </div>
-                                    <!-- NUEVO: Ventas Cuenta Corriente -->
-                                    <div class="resumen-item">
-                                        <span><i class="fas fa-book"></i> Ventas Cta. Cte.:</span>
-                                        <strong id="caja-ventas-cuenta-corriente">$ 0.00</strong>
-                                    </div>
                                     <div class="resumen-item total">
                                         <span><i class="fas fa-calculator"></i> Total Estimado:</span>
                                         <strong id="caja-total-estimado">$ 0.00</strong>
@@ -538,7 +506,7 @@
                 </div>
             </section>
 
-            <!-- Sección de Reportes (con filtro de sucursal añadido) -->
+            <!-- Sección de Reportes -->
             <section id="seccion-reportes" class="content-section">
                 <div class="section-header">
                     <h2><i class="fas fa-chart-bar"></i> Reportes y Ganancias</h2>
@@ -561,13 +529,6 @@
                         <div class="input-group">
                             <label for="reporte-fecha-fin">Fecha Fin:</label>
                             <input type="date" id="reporte-fecha-fin">
-                        </div>
-                        <!-- NUEVO: Selector de sucursal (solo visible para admin) -->
-                        <div class="input-group" id="grupo-sucursal-reporte">
-                            <label for="reporte-sucursal">Sucursal:</label>
-                            <select id="reporte-sucursal" class="form-control">
-                                <option value="">Todas las sucursales</option>
-                            </select>
                         </div>
                         <div class="input-group">
                             <label for="reporte-tipo">Tipo de Reporte:</label>
@@ -593,7 +554,7 @@
                 </div>
             </section>
 
-            <!-- Sección de Configuración (con tabs de Clientes y Sucursales añadidos) -->
+            <!-- Sección de Configuración -->
             <section id="seccion-configuracion" class="content-section">
                 <div class="section-header">
                     <h2><i class="fas fa-cog"></i> Configuración del Sistema</h2>
@@ -604,9 +565,6 @@
                         <button class="tab-btn active" data-tab="config-ticket">Ticket</button>
                         <button class="tab-btn" data-tab="config-permisos">Permisos</button>
                         <button class="tab-btn" data-tab="config-usuarios">Usuarios</button>
-                        <button class="tab-btn" data-tab="config-clientes">Clientes</button>
-                        <button class="tab-btn" data-tab="config-sucursales">Sucursales</button>
-                        <button class="tab-btn" data-tab="config-proveedores">Proveedores</button>
                     </div>
                     
                     <div class="tab-content active" id="config-ticket">
@@ -627,42 +585,6 @@
                         <h3>Usuarios del Sistema</h3>
                         <div id="config-usuarios-list">
                             <!-- Lista de usuarios se carga dinámicamente -->
-                        </div>
-                    </div>
-
-                    <!-- NUEVO: Tab de Clientes -->
-                    <div class="tab-content" id="config-clientes">
-                        <h3>Gestión de Clientes</h3>
-                        <button id="btn-nuevo-cliente-config" class="btn btn-primary mb-3" onclick="mostrarModalCliente()">
-                            <i class="fas fa-user-plus"></i> Nuevo Cliente
-                        </button>
-                        <div id="config-clientes-list">
-                            <!-- Lista de clientes se carga dinámicamente -->
-                        </div>
-                    </div>
-
-                    <!-- NUEVO: Tab de Sucursales -->
-                    <div class="tab-content" id="config-sucursales">
-                        <h3>Gestión de Sucursales</h3>
-                        <button id="btn-nueva-sucursal" class="btn btn-primary mb-3">
-                            <i class="fas fa-store"></i> Nueva Sucursal
-                        </button>
-                        <div id="sucursales-list">
-                            <!-- Lista de sucursales se carga dinámicamente -->
-                        </div>
-                    </div>
-
-                    <!-- Pestaña: Proveedores -->
-                    <div class="tab-content" id="config-proveedores">
-                        <div class="config-header">
-                            <h3><i class="fas fa-truck"></i> Proveedores</h3>
-                            <button id="btn-nuevo-proveedor" class="btn btn-primary">
-                                <i class="fas fa-plus"></i> Nuevo Proveedor
-                            </button>
-                        </div>
-                        <div id="proveedores-list" class="table-responsive">
-                            <!-- Aquí se cargará la lista de proveedores dinámicamente -->
-                            <p>Cargando proveedores...</p>
                         </div>
                     </div>
                 </div>
@@ -697,12 +619,11 @@
                     </div>
                     
                     <div class="table-container">
-                        <table class="data-table">
+                        <table id="tabla-buscador" class="data-table">
                             <thead>
                                 <tr>
                                     <th>Código</th>
                                     <th>Nombre</th>
-                                    <th>Unidad</th>
                                     <th>Precio</th>
                                     <th>Stock</th>
                                     <th>Acción</th>
@@ -736,24 +657,6 @@
                                 <input type="text" id="producto-nombre" required>
                             </div>
                             <div class="input-group">
-                                <label for="producto-marca">Marca</label>
-                                <input type="text" id="producto-marca" placeholder="Ej: Stanley, Bosch">
-                            </div>
-                            <div class="input-group">
-                                <label for="producto-unidad">Unidad *</label>
-                                <select id="producto-unidad" required>
-                                    <option value="UNIDAD">UNIDAD</option>
-                                    <option value="KILO">KILO</option>
-                                    <option value="LITRO">LITRO</option>
-                                    <option value="METRO">METRO</option>
-                                    <option value="CAJA">CAJA</option>
-                                    <option value="PAQUETE">PAQUETE</option>
-                                    <option value="BOLSA">BOLSA</option>
-                                    <option value="ROLLO">ROLLO</option>
-                                    <option value="PIEZA">PIEZA</option>
-                                </select>
-                            </div>
-                            <div class="input-group">
                                 <label for="producto-precio-costo">Precio Costo *</label>
                                 <input type="number" id="producto-precio-costo" step="0.01" min="0" required>
                             </div>
@@ -771,9 +674,7 @@
                             </div>
                             <div class="input-group">
                                 <label for="producto-proveedor">Proveedor</label>
-                                <select id="producto-proveedor">
-                                    <option value="">Sin proveedor</option>
-                                </select>
+                                <input type="text" id="producto-proveedor">
                             </div>
                             <div class="input-group">
                                 <label for="producto-activo">Estado</label>
@@ -837,31 +738,6 @@
             </div>
         </div>
 
-        <!-- Modal WhatsApp -->
-        <div id="modal-whatsapp" class="modal">
-            <div class="modal-content" style="max-width: 400px;">
-                <div class="modal-header">
-                    <h3><i class="fab fa-whatsapp"></i> Enviar por WhatsApp</h3>
-                    <button class="modal-close" onclick="cerrarModalWhatsapp()">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <div class="input-group">
-                        <label for="whatsapp-numero">Número de WhatsApp</label>
-                        <input type="text" id="whatsapp-numero" placeholder="Ej: 5493512345678">
-                        <small style="color: var(--text-tertiary);">Incluye código de país sin +</small>
-                    </div>
-                    <div class="form-actions">
-                        <button type="button" class="btn btn-success" onclick="enviarWhatsappConfirm()">
-                            <i class="fab fa-whatsapp"></i> Enviar
-                        </button>
-                        <button type="button" class="btn btn-secondary" onclick="cerrarModalWhatsapp()">
-                            Cancelar
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- Ticket para Impresión (oculto) -->
         <div id="ticket-impresion" class="ticket-container">
             <div class="ticket-content" id="ticket-content">
@@ -871,9 +747,10 @@
     </div>
 
     <!-- Scripts -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js"></script>
+
+    <!-- Nuestro app.js (debe ir después de Supabase) -->
     <script src="app.js"></script>
+    <!-- El manejo del tema y el icono se realiza completamente en app.js -->
     <script>
         // Feedback auditivo opcional para scanner (solo si el usuario acepta)
         let audioContext;

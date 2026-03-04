@@ -1554,283 +1554,81 @@ window.eliminarPagosPorMedio = function(medio) {
              btnFinalizar.classList.remove('loading');
          }
 
-         await cargarVentasDelDiaEnCaja();
-     }
+          await cargarVentasDelDiaEnCaja();
+      }
+  }
+
+ function actualizarCantidadCarrito() {
+
  }
 
-     if (appState.carrito.length === 0) {
+ function aplicarDescuento() {
+     const descuentoInput = document.getElementById('descuento-input');
+     const descuentoTipo = document.getElementById('descuento-tipo');
+
+     if (!descuentoInput || !descuentoTipo) return;
+
+     const valor = parseFloat(descuentoInput.value) || 0;
+     const tipo = descuentoTipo.value;
+
+     if (valor <= 0) {
+         showNotification('Ingrese un valor válido para el descuento', 'warning');
+         return;
+     }
+
+     if (tipo === 'porcentaje' && valor > 100) {
+         showNotification('El descuento porcentual no puede ser mayor a 100%', 'warning');
+         return;
+     }
+
+     if (!appState.carrito || appState.carrito.length === 0) {
          showNotification('El carrito está vacío', 'warning');
          return;
      }
 
-     const totalAPagarEl = document.getElementById('carrito-total');
-     if (!totalAPagarEl) return;
+     appState.descuento = {
+         tipo: tipo,
+         valor: valor
+     };
 
-     const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('$ ', ''));
-     const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
+     actualizarCarritoUI();
+     guardarEstadoCarrito();
 
-     if (totalPagado < totalAPagar) {
-         showNotification('El pago no cubre el total de la venta', 'error');
-         return;
-     }
+     const tipoTexto = tipo === 'porcentaje' ? `${valor}%` : `$ ${valor.toFixed(2)}`;
+     showNotification(`Descuento de ${tipoTexto} aplicado`, 'success');
+ }
 
-     const btnFinalizar = document.getElementById('btn-finalizar-venta');
-     if (!btnFinalizar) return;
-
-     btnFinalizar.disabled = true;
-     btnFinalizar.classList.add('loading');
-
-     // ✅ MAPA PARA GUARDAR STOCK ACTUAL Y FACILITAR ROLLBACK
-     const stockActualMap = new Map(); // productoId -> stock actual
-     const itemsConStockInsuficiente = [];
-
+ async function obtenerConfiguracionTicket() {
      try {
-         // ==================== FASE 1: VERIFICAR STOCK ACTUAL DE TODOS LOS ITEMS ====================
-         for (const item of appState.carrito) {
-             const { data: producto, error } = await supabaseClient
-                 .from('productos')
-                 .select('stock')
-                 .eq('id', item.producto.id)
-                 .single();
+         const { data: config, error } = await supabaseClient
+             .from('configuracion')
+             .select('*');
 
-             if (error) throw error;
+         if (error) throw error;
 
-             const stockActual = producto?.stock || 0;
-             stockActualMap.set(item.producto.id, stockActual);
-
-             if (stockActual < item.cantidad) {
-                 itemsConStockInsuficiente.push({
-                     nombre: item.producto.nombre,
-                     disponible: stockActual,
-                     solicitado: item.cantidad
-                 });
-             }
-         }
-
-         if (itemsConStockInsuficiente.length > 0) {
-             const errores = itemsConStockInsuficiente.map(i =>
-                 `${i.nombre}: ${i.disponible} disp. / ${i.solicitado} req.`
-             ).join('\n');
-             throw new Error(`Stock insuficiente:\n${errores}`);
-         }
-
-         // ==================== FASE 2: CREAR VENTA ====================
-         const subtotal = appState.carrito.reduce((sum, item) =>
-             sum + (item.cantidad * item.precioUnitario), 0);
-
-         const descuento = appState.descuento.valor > 0 ?
-             (appState.descuento.tipo === 'porcentaje' ?
-                 subtotal * (appState.descuento.valor / 100) :
-                 appState.descuento.valor) : 0;
-
-         const total = subtotal - descuento;
-
-         const hoy = new Date();
-         const fechaStr = hoy.toISOString().split('T')[0].replace(/-/g, '');
-
-         const { data: secuencia, error: secError } = await supabaseClient
-             .from('secuencia_tickets')
-             .select('siguiente_numero')
-             .eq('fecha', fechaStr)
-             .single();
-
-         let numero = 1;
-         if (secError) {
-             const { error: insertError } = await supabaseClient
-                 .from('secuencia_tickets')
-                 .insert([{ fecha: fechaStr, siguiente_numero: 2 }]);
-
-             if (insertError) throw insertError;
-         } else {
-             numero = secuencia.siguiente_numero;
-             const { error: updateError } = await supabaseClient
-                 .from('secuencia_tickets')
-                 .update({ siguiente_numero: numero + 1 })
-                 .eq('fecha', fechaStr);
-
-             if (updateError) throw updateError;
-         }
-
-         const ticketId = `T-${fechaStr}-${numero.toString().padStart(4, '0')}`;
-
-         const ventaData = {
-             ticket_id: ticketId,
-             caja_id: appState.cajaActiva.id,
-             usuario_id: appState.usuario.id,
-             subtotal: subtotal,
-             descuento: descuento,
-             total: total
-         };
-
-         const { data: venta, error: ventaError } = await supabaseClient
-             .from('ventas')
-             .insert([ventaData])
-             .select()
-             .single();
-
-         if (ventaError) throw ventaError;
-
-         // ==================== FASE 3: INSERTAR DETALLES Y ACTUALIZAR STOCK ====================
-         for (const item of appState.carrito) {
-             const detalleData = {
-                 venta_id: venta.id,
-                 producto_id: item.producto.id,
-                 cantidad: item.cantidad,
-                 precio_unitario: item.precioUnitario,
-                 subtotal: item.cantidad * item.precioUnitario
-             };
-
-             const { error: detalleError } = await supabaseClient
-                 .from('detalle_ventas')
-                 .insert([detalleData]);
-
-             if (detalleError) throw detalleError;
-
-             // ✅ REDUCIR STOCK USANDO VALOR ACTUAL VERIFICADO
-             const stockActual = stockActualMap.get(item.producto.id);
-             const nuevoStock = stockActual - item.cantidad;
-
-             // ✅ ACTUALIZACIÓN CONDICIONAL: solo si el stock no cambió desde que lo leímos
-             const { error: stockError, count } = await supabaseClient
-                 .from('productos')
-                 .update({ stock: nuevoStock })
-                 .eq('id', item.producto.id)
-                 .eq('stock', stockActual); // Evita race conditions
-
-             if (stockError || count === 0) {
-                 throw new Error(`No se pudo actualizar stock para ${item.producto.nombre}. Stock pudo haber cambiado o producto no existe.`);
-             }
-         }
-
-         // ==================== FASE 4: REGISTRAR PAGOS ====================
-         for (const pago of appState.pagos) {
-             const pagoData = {
-                 venta_id: venta.id,
-                 medio_pago: pago.medio,
-                 monto: pago.monto
-             };
-
-             const { error: pagoError } = await supabaseClient
-                 .from('pagos_venta')
-                 .insert([pagoData]);
-
-             if (pagoError) throw pagoError;
-         }
-
-         // ==================== FASE 5: IMPRESIÓN ====================
-         const configMap = await obtenerConfiguracionTicket();
-         const cambio = totalPagado - total;
-         const ticketESC = generarTicketESC(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
-
-         if (window.electronAPI && typeof window.electronAPI.imprimirTicket === 'function') {
-             try {
-                 await window.electronAPI.imprimirTicket(ticketESC);
-                 showNotification('Ticket impreso correctamente', 'success');
-             } catch (electronError) {
-                 console.error('Error en impresión Electron:', electronError);
-                 showNotification('Error al imprimir el ticket', 'error');
-             }
-         } else {
-             showNotification('No se puede imprimir: Electron no está disponible', 'error');
-         }
-
-         // ==================== FASE 6: LIMPIAR CARRITO ====================
-         appState.carrito = [];
-         appState.pagos = [];
-         appState.descuento = { tipo: 'porcentaje', valor: 0 };
-
-         const descuentoInput = document.getElementById('descuento-input');
-         const descuentoTipo = document.getElementById('descuento-tipo');
-
-         if (descuentoInput) descuentoInput.value = '';
-         if (descuentoTipo) descuentoTipo.value = 'porcentaje';
-
-         actualizarCarritoUI();
-         actualizarPagosUI();
-         limpiarEstadoCarrito();
-
-         await verificarCajaActiva();
-
-         showNotification(`Venta finalizada: ${ticketId}`, 'success');
-
-         const scannerInput = document.getElementById('scanner-input');
-         if (scannerInput) scannerInput.focus();
-
+         const configMap = {};
+         config.forEach(item => {
+             configMap[item.clave] = item.valor;
+         });
+         return configMap;
      } catch (error) {
-         console.error('Error finalizando venta:', error);
-
-         // ==================== ROLLBACK MANUAL ====================
-         try {
-             showNotification('Error en venta, intentando revertir stocks...', 'warning');
-
-             // Revertir stocks al estado original verificado
-             let reversionesExitosas = 0;
-             for (const [productoId, stockOriginal] of stockActualMap) {
-                 try {
-                     await supabaseClient
-                         .from('productos')
-                         .update({ stock: stockOriginal })
-                         .eq('id', productoId);
-                     reversionesExitosas++;
-                 } catch (reversionError) {
-                     console.error('Error revirtiendo stock para producto', productoId, reversionError);
-                 }
-             }
-
-             if (reversionesExitosas === stockActualMap.size) {
-                 showNotification('Stocks revertidos correctamente. Intente nuevamente.', 'info');
-             } else {
-                 showNotification(`ADVERTENCIA: Solo ${reversionesExitosas}/${stockActualMap.size} stocks revertidos. Contacte al administrador.`, 'error');
-             }
-         } catch (rollbackError) {
-             console.error('Error en rollback:', rollbackError);
-             showNotification('ERROR CRÍTICO: Stock pudo haberse modificado incorrectamente. Contacte al administrador.', 'error');
-         }
-
-         showNotification(`Error: ${error.message}`, 'error');
-     } finally {
-         if (btnFinalizar) {
-             btnFinalizar.disabled = false;
-             btnFinalizar.classList.remove('loading');
-         }
-
-         await cargarVentasDelDiaEnCaja();
+         console.error('Error obteniendo configuración:', error);
+         return {
+             ticket_encabezado: 'AFMSOLUTIONS',
+             ticket_encabezado_extra: 'SISTEMA POS',
+             empresa_direccion: 'LOCAL COMERCIAL',
+             ticket_pie: '¡Gracias por su compra!',
+             ticket_legal: 'Conserve su ticket',
+             empresa_contacto: ''
+         };
      }
  }
 
-// ==================== FUNCIONES DE IMPRESIÓN ESC/POS ====================
-
-async function obtenerConfiguracionTicket() {
-    try {
-        const { data: config, error } = await supabaseClient
-            .from('configuracion')
-            .select('*');
-
-        if (error) throw error;
-
-        const configMap = {};
-        config.forEach(item => {
-            configMap[item.clave] = item.valor;
-        });
-        return configMap;
-    } catch (error) {
-        console.error('Error obteniendo configuración:', error);
-        return {
-            ticket_encabezado: 'AFMSOLUTIONS',
-            ticket_encabezado_extra: 'SISTEMA POS',
-            empresa_direccion: 'LOCAL COMERCIAL',
-            ticket_pie: '¡Gracias por su compra!',
-            ticket_legal: 'Conserve su ticket',
-            empresa_contacto: ''
-        };
-    }
-}
-
-/**
- * Genera una cadena con comandos ESC/POS para impresora térmica 58mm (32 columnas).
- * @returns {string} Cadena binaria lista para enviar a la impresora.
- */
-function generarTicketESC(venta, configMap, carrito, pagos, usuario, cambio) {
+ /**
+  * Genera una cadena con comandos ESC/POS para impresora térmica 58mm (32 columnas).
+  * @returns {string} Cadena binaria lista para enviar a la impresora.
+  */
+ function generarTicketESC(venta, configMap, carrito, pagos, usuario, cambio) {
     // Inicialización de la impresora
     let ticket = '\x1B\x40'; // ESC @
 

@@ -19,14 +19,25 @@ let appState = {
 // ==================== PERSISTENCIA DEL CARRITO ====================
 const CARRITO_STORAGE_KEY = 'afm_pos_carrito';
 
-function guardarEstadoCarrito() {
-    const estado = {
-        carrito: appState.carrito,
-        pagos: appState.pagos,
-        descuento: appState.descuento
-    };
-    localStorage.setItem(CARRITO_STORAGE_KEY, JSON.stringify(estado));
-}
+ function guardarEstadoCarrito() {
+     try {
+         if (!appState.carrito || !Array.isArray(appState.carrito)) {
+             console.warn('No se puede guardar carrito: estructura inválida');
+             return;
+         }
+
+         const estado = {
+             carrito: appState.carrito,
+             pagos: appState.pagos || [],
+             descuento: appState.descuento || { tipo: 'porcentaje', valor: 0 }
+         };
+
+         localStorage.setItem('pos_carrito_estado', JSON.stringify(estado));
+     } catch (error) {
+         console.error('Error guardando estado del carrito:', error);
+         // No mostrar notificación al usuario para no interrumpir flujo
+     }
+ }
 
 function restaurarEstadoCarrito() {
     const saved = localStorage.getItem(CARRITO_STORAGE_KEY);
@@ -691,193 +702,351 @@ function setupKeyboardShortcuts() {
 }
 
 // ==================== GESTIÓN DE PRODUCTOS ====================
-async function buscarYAgregarProducto(codigo) {
-    if (!codigo || codigo.trim() === '') return;
+ async function buscarYAgregarProducto(codigo) {
+     if (!codigo || codigo.trim() === '') return;
 
-    try {
-        const { data: producto, error } = await supabaseClient
-            .from('productos')
-            .select('*')
-            .eq('codigo_barra', codigo.trim())
-            .eq('activo', true)
-            .single();
+     try {
+         const { data: producto, error } = await supabaseClient
+             .from('productos')
+             .select('*')
+             .eq('codigo_barra', codigo.trim())
+             .eq('activo', true)
+             .single();
 
-        if (error) {
-            if (error.code === 'PGRST116') {
-                showNotification('Producto no encontrado', 'warning');
-            } else {
-                throw error;
-            }
-            return;
-        }
+         if (error) {
+             if (error.code === 'PGRST116') {
+                 showNotification('Producto no encontrado', 'warning');
+             } else {
+                 throw error;
+             }
+             return;
+         }
 
-        if (producto) {
-            const index = appState.carrito.findIndex(item =>
-                item.producto.id === producto.id);
+         if (producto) {
+             // ✅ VALIDAR ESTRUCTURA DEL PRODUCTO
+             if (!producto.id) {
+                 console.error('Producto sin ID:', producto);
+                 showNotification('Error: producto inválido', 'error');
+                 return;
+             }
 
-            if (index !== -1) {
-                appState.carrito[index].cantidad += 1;
-                showNotification(`${producto.nombre} - Cantidad aumentada a ${appState.carrito[index].cantidad}`, 'success');
-            } else {
-                appState.carrito.push({
-                    producto: producto,
-                    cantidad: 1,
-                    precioUnitario: producto.precio_venta
-                });
-                showNotification(`${producto.nombre} agregado al carrito`, 'success');
-            }
+             // ✅ VALIDAR STOCK ANTES DE AGREGAR
+             if (producto.stock <= 0) {
+                 showNotification(`${producto.nombre} - Sin stock disponible`, 'error');
+                 return;
+             }
 
-            actualizarCarritoUI();
-            guardarEstadoCarrito();
+             const index = appState.carrito.findIndex(item =>
+                 item && item.producto && item.producto.id === producto.id);
 
-            const scannerInput = document.getElementById('scanner-input');
-            if (scannerInput) {
-                scannerInput.value = '';
-                scannerInput.focus();
-            }
+             if (index !== -1) {
+                 // ✅ VALIDAR ÍNDICE Y ESTRUCTURA
+                 if (index < 0 || index >= appState.carrito.length) {
+                     console.error('Índice fuera de rango:', index);
+                     return;
+                 }
 
-            if (typeof playScanSound === 'function') {
-                playScanSound();
-            }
-        }
-    } catch (error) {
-        console.error('Error buscando producto:', error);
-        showNotification('Error buscando producto', 'error');
-    }
-}
+                 const item = appState.carrito[index];
+                 // ✅ VALIDAR ESTRUCTURA DEL ITEM
+                 if (!item || typeof item.cantidad !== 'number') {
+                     console.error('Item de carrito inválido:', item);
+                     return;
+                 }
 
-function actualizarCarritoUI() {
-    const container = document.getElementById('carrito-items');
-    const subtotalEl = document.getElementById('carrito-subtotal');
-    const descuentoEl = document.getElementById('carrito-descuento');
-    const totalEl = document.getElementById('carrito-total');
-    const totalAPagarEl = document.getElementById('total-a-pagar');
-    const btnFinalizar = document.getElementById('btn-finalizar-venta');
+                 // ✅ VALIDAR STOCK DISPONIBLE ANTES DE INCREMENTAR
+                 if (item.cantidad >= producto.stock) {
+                     showNotification(`Stock insuficiente. Disponible: ${producto.stock}`, 'error');
+                     return;
+                 }
+                 item.cantidad += 1;
+                 showNotification(`${producto.nombre} - Cantidad aumentada a ${item.cantidad}`, 'success');
+             } else {
+                 appState.carrito.push({
+                     producto: producto,
+                     cantidad: 1,
+                     precioUnitario: producto.precio_venta || 0
+                 });
+                 showNotification(`${producto.nombre} agregado al carrito`, 'success');
+             }
 
-    if (!container || !subtotalEl || !descuentoEl || !totalEl || !totalAPagarEl || !btnFinalizar) return;
+             actualizarCarritoUI();
+             guardarEstadoCarrito();
 
-    if (appState.carrito.length === 0) {
-        container.innerHTML = `
-            <div class="empty-carrito">
-                <i class="fas fa-shopping-cart fa-3x"></i>
-                <p>El carrito está vacío</p>
-                <p>Escanee un producto o use F6 para buscar</p>
-            </div>
-        `;
+             const scannerInput = document.getElementById('scanner-input');
+             if (scannerInput) {
+                 scannerInput.value = '';
+                 scannerInput.focus();
+             }
 
-        subtotalEl.textContent = '$ 0.00';
-        descuentoEl.textContent = '$ 0.00';
-        totalEl.textContent = '$ 0.00';
-        totalAPagarEl.textContent = '$ 0.00';
+             if (typeof playScanSound === 'function') {
+                 playScanSound();
+             }
+         }
+     } catch (error) {
+         console.error('Error buscando producto:', error);
+         showNotification('Error buscando producto', 'error');
+     }
+ }
+             return;
+         }
 
-        actualizarPagosUI();
+         if (producto) {
+             // ✅ VALIDAR STOCK ANTES DE AGREGAR
+             if (producto.stock <= 0) {
+                 showNotification(`${producto.nombre} - Sin stock disponible`, 'error');
+                 return;
+             }
 
-        btnFinalizar.disabled = true;
-        return;
-    }
+             const index = appState.carrito.findIndex(item =>
+                 item.producto.id === producto.id);
 
-    let subtotal = 0;
+             if (index !== -1) {
+                 // ✅ VALIDAR STOCK DISPONIBLE ANTES DE INCREMENTAR
+                 const cantidadActual = appState.carrito[index].cantidad;
+                 if (cantidadActual >= producto.stock) {
+                     showNotification(`Stock insuficiente. Disponible: ${producto.stock}`, 'error');
+                     return;
+                 }
+                 appState.carrito[index].cantidad += 1;
+                 showNotification(`${producto.nombre} - Cantidad aumentada a ${appState.carrito[index].cantidad}`, 'success');
+             } else {
+                 appState.carrito.push({
+                     producto: producto,
+                     cantidad: 1,
+                     precioUnitario: producto.precio_venta
+                 });
+                 showNotification(`${producto.nombre} agregado al carrito`, 'success');
+             }
 
-    container.innerHTML = '';
+             actualizarCarritoUI();
+             guardarEstadoCarrito();
 
-    appState.carrito.forEach((item, index) => {
-        const itemTotal = item.cantidad * item.precioUnitario;
-        subtotal += itemTotal;
+             const scannerInput = document.getElementById('scanner-input');
+             if (scannerInput) {
+                 scannerInput.value = '';
+                 scannerInput.focus();
+             }
 
-        const div = document.createElement('div');
-        div.className = 'carrito-item';
-        div.innerHTML = `
-            <div class="carrito-item-info">
-                <div class="carrito-item-nombre">${item.producto.nombre}</div>
-                <div class="carrito-item-codigo">${item.producto.codigo_barra}</div>
-            </div>
-            <div class="carrito-item-precio">$ ${item.precioUnitario.toFixed(2)}</div>
-            <div class="carrito-item-cantidad">
-                <button class="btn btn-sm" onclick="actualizarCantidadCarrito(${index}, -1)">
-                    <i class="fas fa-minus"></i>
-                </button>
-                <span>${item.cantidad}</span>
-                <button class="btn btn-sm" onclick="actualizarCantidadCarrito(${index}, 1)">
-                    <i class="fas fa-plus"></i>
-                </button>
-            </div>
-            <div class="carrito-item-total">$ ${itemTotal.toFixed(2)}</div>
-            <button class="carrito-item-remove" onclick="eliminarDelCarrito(${index})">
-                <i class="fas fa-trash"></i>
-            </button>
-        `;
+             if (typeof playScanSound === 'function') {
+                 playScanSound();
+             }
+         }
+     } catch (error) {
+         console.error('Error buscando producto:', error);
+         showNotification('Error buscando producto', 'error');
+     }
+ }
 
-        container.appendChild(div);
-    });
+ function actualizarCarritoUI() {
+     const container = document.getElementById('carrito-items');
+     const subtotalEl = document.getElementById('carrito-subtotal');
+     const descuentoEl = document.getElementById('carrito-descuento');
+     const totalEl = document.getElementById('carrito-total');
+     const totalAPagarEl = document.getElementById('total-a-pagar');
+     const btnFinalizar = document.getElementById('btn-finalizar-venta');
 
-    let descuento = 0;
-    if (appState.descuento.valor > 0) {
-        if (appState.descuento.tipo === 'porcentaje') {
-            descuento = subtotal * (appState.descuento.valor / 100);
-        } else {
-            descuento = appState.descuento.valor;
-        }
-        if (descuento > subtotal) descuento = subtotal;
-    }
+     if (!container || !subtotalEl || !descuentoEl || !totalEl || !totalAPagarEl || !btnFinalizar) return;
 
-    const total = subtotal - descuento;
+     // ✅ VALIDAR QUE carrito ES UN ARRAY
+     if (!appState.carrito || !Array.isArray(appState.carrito) || appState.carrito.length === 0) {
+         container.innerHTML = `
+             <div class="empty-carrito">
+                 <i class="fas fa-shopping-cart fa-3x"></i>
+                 <p>El carrito está vacío</p>
+                 <p>Escanee un producto o use F6 para buscar</p>
+             </div>
+         `;
 
-    subtotalEl.textContent = `$ ${subtotal.toFixed(2)}`;
-    descuentoEl.textContent = `$ ${descuento.toFixed(2)}`;
-    totalEl.textContent = `$ ${total.toFixed(2)}`;
-    totalAPagarEl.textContent = `$ ${total.toFixed(2)}`;
+         subtotalEl.textContent = '$ 0.00';
+         descuentoEl.textContent = '$ 0.00';
+         totalEl.textContent = '$ 0.00';
+         totalAPagarEl.textContent = '$ 0.00';
 
-    actualizarPagosUI();
+         actualizarPagosUI();
+         btnFinalizar.disabled = true;
+         return;
+     }
 
-    const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
-    btnFinalizar.disabled = appState.carrito.length === 0 || totalPagado < total;
-}
+     let subtotal = 0;
+     let itemsHTML = [];
 
-window.actualizarCantidadCarrito = function(index, delta) {
-    const item = appState.carrito[index];
-    const nuevaCantidad = item.cantidad + delta;
+     container.innerHTML = '';
 
-    if (nuevaCantidad < 1) {
-        eliminarDelCarrito(index);
-        return;
-    }
+     // ✅ PROCESAR CADA ITEM CON VALIDACIONES
+     appState.carrito.forEach((item, index) => {
+         // Validar estructura del item
+         if (!item || !item.producto || typeof item.cantidad !== 'number' ||
+             typeof item.precioUnitario !== 'number') {
+             console.warn('Item de carrito con datos inválidos, omitiendo:', item, index);
+             return;
+         }
 
-    if (nuevaCantidad > item.producto.stock) {
-        showNotification(`Stock insuficiente. Disponible: ${item.producto.stock}`, 'error');
-        return;
-    }
+         const itemTotal = item.cantidad * item.precioUnitario;
+         subtotal += itemTotal;
 
-    item.cantidad = nuevaCantidad;
-    actualizarCarritoUI();
-    guardarEstadoCarrito();
-    showNotification(`${item.producto.nombre} - Cantidad: ${nuevaCantidad}`, 'info');
-};
+         const div = document.createElement('div');
+         div.className = 'carrito-item';
+         div.innerHTML = `
+             <div class="carrito-item-info">
+                 <div class="carrito-item-nombre">${item.producto.nombre || 'Producto sin nombre'}</div>
+                 <div class="carrito-item-codigo">${item.producto.codigo_barra || 'N/A'}</div>
+             </div>
+             <div class="carrito-item-precio">$ ${item.precioUnitario.toFixed(2)}</div>
+             <div class="carrito-item-cantidad">
+                 <button class="btn btn-sm" onclick="actualizarCantidadCarrito(${index}, -1)">
+                     <i class="fas fa-minus"></i>
+                 </button>
+                 <span>${item.cantidad}</span>
+                 <button class="btn btn-sm" onclick="actualizarCantidadCarrito(${index}, 1)">
+                     <i class="fas fa-plus"></i>
+                 </button>
+             </div>
+             <div class="carrito-item-total">$ ${itemTotal.toFixed(2)}</div>
+             <button class="carrito-item-remove" onclick="eliminarDelCarrito(${index})">
+                 <i class="fas fa-trash"></i>
+             </button>
+         `;
 
-window.eliminarDelCarrito = function(index) {
-    if (index >= 0 && index < appState.carrito.length) {
-        const productoNombre = appState.carrito[index].producto.nombre;
-        appState.carrito.splice(index, 1);
+         container.appendChild(div);
+     });
 
-        if (appState.carrito.length === 0) {
-            appState.descuento = { tipo: 'porcentaje', valor: 0 };
-            const descuentoInput = document.getElementById('descuento-input');
-            const descuentoTipo = document.getElementById('descuento-tipo');
-            if (descuentoInput) descuentoInput.value = '';
-            if (descuentoTipo) descuentoTipo.value = 'porcentaje';
-        }
+     let descuento = 0;
+     if (appState.descuento && appState.descuento.valor > 0) {
+         if (appState.descuento.tipo === 'porcentaje') {
+             descuento = subtotal * (appState.descuento.valor / 100);
+         } else {
+             descuento = appState.descuento.valor;
+         }
+         if (descuento > subtotal) descuento = subtotal;
+     }
 
-        actualizarCarritoUI();
-        guardarEstadoCarrito();
-        showNotification(`${productoNombre} eliminado del carrito`, 'info');
-    }
-};
+     const total = subtotal - descuento;
 
-function limpiarCarrito() {
-    if (appState.carrito.length === 0) return;
+     subtotalEl.textContent = `$ ${subtotal.toFixed(2)}`;
+     descuentoEl.textContent = `$ ${descuento.toFixed(2)}`;
+     totalEl.textContent = `$ ${total.toFixed(2)}`;
+     totalAPagarEl.textContent = `$ ${total.toFixed(2)}`;
 
-    if (!confirm('¿Está seguro de vaciar el carrito?')) {
-        return;
-    }
+     actualizarPagosUI();
+
+     // ✅ VALIDAR QUE pagos ES UN ARRAY
+     const totalPagado = (appState.pagos && Array.isArray(appState.pagos))
+         ? appState.pagos.reduce((sum, pago) => {
+             const monto = typeof pago?.monto === 'number' ? pago.monto : 0;
+             return sum + monto;
+         }, 0)
+         : 0;
+
+     btnFinalizar.disabled = appState.carrito.length === 0 || totalPagado < total;
+ }
+
+ window.actualizarCantidadCarrito = async function(index, delta) {
+     // ✅ VALIDAR ÍNDICE VÁLIDO
+     if (!appState.carrito || !Array.isArray(appState.carrito) ||
+         index < 0 || index >= appState.carrito.length) {
+         console.error('Índice de carrito inválido:', index);
+         return;
+     }
+
+     const item = appState.carrito[index];
+
+     // ✅ VALIDAR ESTRUCTURA DEL ITEM
+     if (!item || !item.producto || typeof item.cantidad !== 'number') {
+         console.error('Item de carrito con estructura inválida:', item);
+         return;
+     }
+
+     const nuevaCantidad = item.cantidad + delta;
+
+     if (nuevaCantidad < 1) {
+         eliminarDelCarrito(index);
+         return;
+     }
+
+     try {
+         // ✅ CONSULTAR STOCK ACTUAL EN BD (no usar cache)
+         const { data: productoActual, error } = await supabaseClient
+             .from('productos')
+             .select('stock')
+             .eq('id', item.producto.id)
+             .single();
+
+         if (error) throw error;
+
+         const stockDisponible = productoActual?.stock || 0;
+
+         if (nuevaCantidad > stockDisponible) {
+             showNotification(`Stock insuficiente. Disponible: ${stockDisponible}`, 'error');
+             return;
+         }
+
+         item.cantidad = nuevaCantidad;
+         actualizarCarritoUI();
+         guardarEstadoCarrito();
+         showNotification(`${item.producto.nombre} - Cantidad: ${nuevaCantidad}`, 'info');
+
+     } catch (error) {
+         console.error('Error verificando stock:', error);
+         showNotification('Error verificando stock', 'error');
+     }
+ };
+
+ window.eliminarDelCarrito = function(index) {
+     // ✅ VALIDAR ÍNDICE Y ESTRUCTURA
+     if (!appState.carrito || !Array.isArray(appState.carrito) ||
+         index < 0 || index >= appState.carrito.length) {
+         console.error('Índice de carrito inválido al eliminar:', index);
+         return;
+     }
+
+     const item = appState.carrito[index];
+     if (!item || !item.producto || !item.producto.nombre) {
+         console.error('Item de carrito inválido al eliminar:', item);
+         return;
+     }
+
+     const productoNombre = item.producto.nombre;
+     appState.carrito.splice(index, 1);
+
+     if (appState.carrito.length === 0) {
+         appState.descuento = { tipo: 'porcentaje', valor: 0 };
+         const descuentoInput = document.getElementById('descuento-input');
+         const descuentoTipo = document.getElementById('descuento-tipo');
+         if (descuentoInput) descuentoInput.value = '';
+         if (descuentoTipo) descuentoTipo.value = 'porcentaje';
+     }
+
+     actualizarCarritoUI();
+     guardarEstadoCarrito();
+     showNotification(`${productoNombre} eliminado del carrito`, 'info');
+ };
+
+ function limpiarCarrito() {
+     if (!appState.carrito || !Array.isArray(appState.carrito) || appState.carrito.length === 0) return;
+
+     if (!confirm('¿Está seguro de vaciar el carrito?')) {
+         return;
+     }
+
+     appState.carrito = [];
+     appState.pagos = [];
+     appState.descuento = { tipo: 'porcentaje', valor: 0 };
+
+     const descuentoInput = document.getElementById('descuento-input');
+     const descuentoTipo = document.getElementById('descuento-tipo');
+
+     if (descuentoInput) descuentoInput.value = '';
+     if (descuentoTipo) descuentoTipo.value = 'porcentaje';
+
+     const pagoMonto = document.getElementById('pago-monto');
+     if (pagoMonto) pagoMonto.value = '';
+
+     actualizarCarritoUI();
+     actualizarPagosUI();
+     guardarEstadoCarrito();
+
+     showNotification('Carrito vaciado correctamente', 'info');
+ }
 
     appState.carrito = [];
     appState.pagos = [];
@@ -966,335 +1135,736 @@ window.eliminarPagosPorMedio = function(medio) {
     showNotification(`Pagos de ${medio} eliminados`, 'info');
 };
 
-function agregarPago() {
-    const medioElement = document.querySelector('.btn-pago.active');
-    if (!medioElement) {
-        showNotification('Seleccione un medio de pago primero', 'warning');
-        return;
-    }
+ function agregarPago() {
+     const medioElement = document.querySelector('.btn-pago.active');
+     if (!medioElement) {
+         showNotification('Seleccione un medio de pago primero', 'warning');
+         return;
+     }
 
-    const medio = medioElement.dataset.medio;
-    const pagoMonto = document.getElementById('pago-monto');
-    if (!pagoMonto) return;
+     const medio = medioElement.dataset.medio;
+     const pagoMonto = document.getElementById('pago-monto');
+     if (!pagoMonto) return;
 
-    let monto = parseFloat(pagoMonto.value);
+     let monto = parseFloat(pagoMonto.value);
 
-    if (!monto || monto <= 0) {
-        const totalAPagarEl = document.getElementById('carrito-total');
-        if (!totalAPagarEl) return;
+     // ✅ VALIDAR QUE monto ES UN NÚMERO VÁLIDO
+     if (isNaN(monto) || monto <= 0) {
+         const totalAPagarEl = document.getElementById('carrito-total');
+         if (!totalAPagarEl) return;
 
-        const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('$ ', ''));
-        const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
-        const falta = totalAPagar - totalPagado;
+         let totalAPagar = 0;
+         try {
+             const totalTexto = totalAPagarEl.textContent.replace('$ ', '').trim();
+             totalAPagar = parseFloat(totalTexto);
+             if (isNaN(totalAPagar)) totalAPagar = 0;
+         } catch (error) {
+             console.error('Error parseando total a pagar:', error);
+             totalAPagar = 0;
+         }
 
-        if (falta <= 0) {
-            showNotification('Ya se pagó el total completo', 'warning');
-            return;
-        }
+         // ✅ VALIDAR QUE pagos ES UN ARRAY
+         const totalPagado = (appState.pagos && Array.isArray(appState.pagos))
+             ? appState.pagos.reduce((sum, pago) => {
+                 const montoPago = typeof pago?.monto === 'number' ? pago.monto : 0;
+                 return sum + montoPago;
+             }, 0)
+             : 0;
 
-        monto = falta;
-    }
+         const falta = totalAPagar - totalPagado;
 
-    if (monto <= 0) {
-        showNotification('Ingrese un monto válido', 'warning');
-        return;
-    }
+         if (falta <= 0) {
+             showNotification('Ya se pagó el total completo', 'warning');
+             return;
+         }
 
-    appState.pagos.push({ medio, monto });
+         monto = falta;
+     }
 
-    actualizarPagosUI();
-    guardarEstadoCarrito();
+     if (!monto || monto <= 0 || isNaN(monto)) {
+         showNotification('Ingrese un monto válido', 'warning');
+         return;
+     }
 
-    pagoMonto.value = '';
-    pagoMonto.focus();
+     // ✅ VALIDAR QUE pagos ES UN ARRAY
+     if (!appState.pagos || !Array.isArray(appState.pagos)) {
+         appState.pagos = [];
+     }
 
-    showNotification(`Pago de $ ${monto.toFixed(2)} agregado (${medio})`, 'success');
-}
+     appState.pagos.push({ medio, monto });
 
-function actualizarPagosUI() {
-    const container = document.getElementById('pagos-lista');
-    const totalPagadoEl = document.getElementById('total-pagado');
-    const cambioEl = document.getElementById('total-cambio');
-    const btnFinalizar = document.getElementById('btn-finalizar-venta');
+     actualizarPagosUI();
+     guardarEstadoCarrito();
 
-    if (!container || !totalPagadoEl || !cambioEl || !btnFinalizar) return;
+     pagoMonto.value = '';
+     pagoMonto.focus();
 
-    if (appState.pagos.length === 0) {
-        container.innerHTML = `
-            <div class="empty-pagos">
-                <i class="fas fa-receipt fa-2x"></i>
-                <p>No hay pagos registrados</p>
-            </div>
-        `;
+     showNotification(`Pago de $ ${monto.toFixed(2)} agregado (${medio})`, 'success');
+ }
 
-        totalPagadoEl.textContent = '$ 0.00';
-        cambioEl.textContent = '$ 0.00';
-        btnFinalizar.disabled = true;
-        return;
-    }
+ function actualizarPagosUI() {
+     const container = document.getElementById('pagos-lista');
+     const totalPagadoEl = document.getElementById('total-pagado');
+     const cambioEl = document.getElementById('total-cambio');
+     const btnFinalizar = document.getElementById('btn-finalizar-venta');
 
-    const pagosAgrupados = {};
-    let totalPagado = 0;
+     if (!container || !totalPagadoEl || !cambioEl || !btnFinalizar) return;
 
-    appState.pagos.forEach(pago => {
-        if (!pagosAgrupados[pago.medio]) {
-            pagosAgrupados[pago.medio] = 0;
-        }
-        pagosAgrupados[pago.medio] += pago.monto;
-        totalPagado += pago.monto;
-    });
+     // ✅ VALIDAR QUE pagos ES UN ARRAY
+     if (!appState.pagos || !Array.isArray(appState.pagos) || appState.pagos.length === 0) {
+         container.innerHTML = `
+             <div class="empty-pagos">
+                 <i class="fas fa-receipt fa-2x"></i>
+                 <p>No hay pagos registrados</p>
+             </div>
+         `;
 
-    const totalAPagarEl = document.getElementById('carrito-total');
-    if (!totalAPagarEl) return;
+         totalPagadoEl.textContent = '$ 0.00';
+         cambioEl.textContent = '$ 0.00';
+         btnFinalizar.disabled = true;
+         return;
+     }
 
-    const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('$ ', ''));
-    const cambio = totalPagado - totalAPagar;
+     const pagosAgrupados = {};
+     let totalPagado = 0;
 
-    container.innerHTML = '';
+     // ✅ PROCESAR CADA PAGO CON VALIDACIONES
+     appState.pagos.forEach(pago => {
+         // Validar estructura del pago
+         if (!pago || typeof pago.medio !== 'string' || typeof pago.monto !== 'number') {
+             console.warn('Pago con datos inválidos, omitiendo:', pago);
+             return;
+         }
 
-    Object.entries(pagosAgrupados).forEach(([medio, monto], index) => {
-        const div = document.createElement('div');
-        div.className = 'pago-item';
-        div.innerHTML = `
-            <div class="pago-medio">
-                <i class="${getMedioPagoIcon(medio)}"></i>
-                <strong>${medio}</strong>
-            </div>
-            <div class="pago-monto">
-                $ ${monto.toFixed(2)}
-            </div>
-            <button class="pago-item-remove" onclick="eliminarPagosPorMedio('${medio}')" title="Eliminar todos los pagos de ${medio}">
-                <i class="fas fa-times"></i>
-            </button>
-        `;
+         if (!pagosAgrupados[pago.medio]) {
+             pagosAgrupados[pago.medio] = 0;
+         }
+         pagosAgrupados[pago.medio] += pago.monto;
+         totalPagado += pago.monto;
+     });
 
-        container.appendChild(div);
-    });
+     const totalAPagarEl = document.getElementById('carrito-total');
+     if (!totalAPagarEl) return;
 
-    totalPagadoEl.textContent = `$ ${totalPagado.toFixed(2)}`;
+     let totalAPagar = 0;
+     try {
+         const totalTexto = totalAPagarEl.textContent.replace('$ ', '').trim();
+         totalAPagar = parseFloat(totalTexto);
+         if (isNaN(totalAPagar)) totalAPagar = 0;
+     } catch (error) {
+         console.error('Error parseando total a pagar:', error);
+         totalAPagar = 0;
+     }
 
-    if (cambio >= 0) {
-        cambioEl.textContent = `$ ${cambio.toFixed(2)}`;
-        cambioEl.className = 'cambio-positivo';
-    } else {
-        cambioEl.textContent = `$ ${Math.abs(cambio).toFixed(2)}`;
-        cambioEl.className = 'cambio-negativo';
-    }
+     const cambio = totalPagado - totalAPagar;
 
-    const puedeFinalizar = appState.carrito.length > 0 && totalPagado >= totalAPagar;
-    btnFinalizar.disabled = !puedeFinalizar;
+     container.innerHTML = '';
 
-    const pagoMontoInput = document.getElementById('pago-monto');
-    if (pagoMontoInput) {
-        if (cambio < 0) {
-            pagoMontoInput.placeholder = `Falta: $ ${Math.abs(cambio).toFixed(2)}`;
-        } else if (cambio > 0) {
-            pagoMontoInput.placeholder = `Vuelto: $ ${cambio.toFixed(2)}`;
-        } else {
-            const medioActivo = document.querySelector('.btn-pago.active');
-            pagoMontoInput.placeholder = medioActivo ? `Monto en ${medioActivo.dataset.medio}` : 'Monto a pagar';
-        }
-    }
+     Object.entries(pagosAgrupados).forEach(([medio, monto], index) => {
+         const div = document.createElement('div');
+         div.className = 'pago-item';
+         div.innerHTML = `
+             <div class="pago-medio">
+                 <i class="${getMedioPagoIcon(medio)}"></i>
+                 <strong>${medio}</strong>
+             </div>
+             <div class="pago-monto">
+                 $ ${monto.toFixed(2)}
+             </div>
+             <button class="pago-item-remove" onclick="eliminarPagosPorMedio('${medio}')" title="Eliminar todos los pagos de ${medio}">
+                 <i class="fas fa-times"></i>
+             </button>
+         `;
 
-    if (puedeFinalizar) {
-        setTimeout(() => btnFinalizar.focus(), 100);
-    }
+         container.appendChild(div);
+     });
 
-    if (pagoMontoInput) {
-        pagoMontoInput.value = '';
-    }
-}
+     totalPagadoEl.textContent = `$ ${totalPagado.toFixed(2)}`;
+
+     if (cambio >= 0) {
+         cambioEl.textContent = `$ ${cambio.toFixed(2)}`;
+         cambioEl.className = 'cambio-positivo';
+     } else {
+         cambioEl.textContent = `$ ${Math.abs(cambio).toFixed(2)}`;
+         cambioEl.className = 'cambio-negativo';
+     }
+
+     // ✅ VALIDAR QUE carrito ES UN ARRAY
+     const carritoLength = (appState.carrito && Array.isArray(appState.carrito))
+         ? appState.carrito.length
+         : 0;
+
+     const puedeFinalizar = carritoLength > 0 && totalPagado >= totalAPagar;
+     btnFinalizar.disabled = !puedeFinalizar;
+
+     const pagoMontoInput = document.getElementById('pago-monto');
+     if (pagoMontoInput) {
+         if (cambio < 0) {
+             pagoMontoInput.placeholder = `Falta: $ ${Math.abs(cambio).toFixed(2)}`;
+         } else if (cambio > 0) {
+             pagoMontoInput.placeholder = `Vuelto: $ ${cambio.toFixed(2)}`;
+         } else {
+             const medioActivo = document.querySelector('.btn-pago.active');
+             pagoMontoInput.placeholder = medioActivo ? `Monto en ${medioActivo.dataset.medio}` : 'Monto a pagar';
+         }
+     }
+
+     if (puedeFinalizar) {
+         setTimeout(() => btnFinalizar.focus(), 100);
+     }
+
+     if (pagoMontoInput) {
+         pagoMontoInput.value = '';
+     }
+ }
 
 // ==================== FINALIZACIÓN DE VENTA ====================
-async function finalizarVenta() {
-    if (!appState.cajaActiva) {
-        showNotification('No hay caja activa. Abra una caja primero.', 'error');
-        showSection('caja');
-        return;
-    }
+ async function finalizarVenta() {
+     if (!appState.cajaActiva) {
+         showNotification('No hay caja activa. Abra una caja primero.', 'error');
+         showSection('caja');
+         return;
+     }
 
-    if (appState.carrito.length === 0) {
-        showNotification('El carrito está vacío', 'warning');
-        return;
-    }
+     // ✅ VALIDAR QUE cajaActiva tiene id
+     if (!appState.cajaActiva || !appState.cajaActiva.id) {
+         showNotification('Error: datos de caja inválidos', 'error');
+         return;
+     }
 
-    const totalAPagarEl = document.getElementById('carrito-total');
-    if (!totalAPagarEl) return;
+     // ✅ VALIDAR QUE carrito ES UN ARRAY
+     if (!appState.carrito || !Array.isArray(appState.carrito) || appState.carrito.length === 0) {
+         showNotification('El carrito está vacío', 'warning');
+         return;
+     }
 
-    const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('$ ', ''));
-    const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
+     const totalAPagarEl = document.getElementById('carrito-total');
+     if (!totalAPagarEl) return;
 
-    if (totalPagado < totalAPagar) {
-        showNotification('El pago no cubre el total de la venta', 'error');
-        return;
-    }
+     const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('$ ', ''));
+     if (isNaN(totalAPagar) || totalAPagar <= 0) {
+         showNotification('Error calculando total de venta', 'error');
+         return;
+     }
 
-    const btnFinalizar = document.getElementById('btn-finalizar-venta');
-    if (!btnFinalizar) return;
+     // ✅ VALIDAR QUE pagos ES UN ARRAY
+     const totalPagado = (appState.pagos && Array.isArray(appState.pagos))
+         ? appState.pagos.reduce((sum, pago) => {
+             const monto = typeof pago?.monto === 'number' ? pago.monto : 0;
+             return sum + monto;
+         }, 0)
+         : 0;
 
-    btnFinalizar.disabled = true;
-    btnFinalizar.classList.add('loading');
+     if (totalPagado < totalAPagar) {
+         showNotification('El pago no cubre el total de la venta', 'error');
+         return;
+     }
 
-    try {
-        for (const item of appState.carrito) {
-            const { data: producto, error } = await supabaseClient
-                .from('productos')
-                .select('stock')
-                .eq('id', item.producto.id)
-                .single();
+     // ✅ VALIDAR QUE usuario tiene id
+     if (!appState.usuario || !appState.usuario.id) {
+         showNotification('Error: usuario no autenticado', 'error');
+         return;
+     }
 
-            if (error) throw error;
+     const btnFinalizar = document.getElementById('btn-finalizar-venta');
+     if (!btnFinalizar) return;
 
-            if (producto.stock < item.cantidad) {
-                throw new Error(`Stock insuficiente para ${item.producto.nombre}. Stock actual: ${producto.stock}`);
-            }
-        }
+     btnFinalizar.disabled = true;
+     btnFinalizar.classList.add('loading');
 
-        const subtotal = appState.carrito.reduce((sum, item) =>
-            sum + (item.cantidad * item.precioUnitario), 0);
+     // ✅ MAPA PARA GUARDAR STOCK ACTUAL Y FACILITAR ROLLBACK
+     const stockActualMap = new Map(); // productoId -> stock actual
+     const itemsConStockInsuficiente = [];
 
-        const descuento = appState.descuento.valor > 0 ?
-            (appState.descuento.tipo === 'porcentaje' ?
-                subtotal * (appState.descuento.valor / 100) :
-                appState.descuento.valor) : 0;
+     try {
+         // ==================== FASE 1: VERIFICAR STOCK ACTUAL DE TODOS LOS ITEMS ====================
+         for (const item of appState.carrito) {
+             // ✅ VALIDAR ESTRUCTURA DEL ITEM
+             if (!item || !item.producto || !item.producto.id || typeof item.cantidad !== 'number') {
+                 throw new Error(`Item de carrito con datos inválidos`);
+             }
 
-        const total = subtotal - descuento;
+             const { data: producto, error } = await supabaseClient
+                 .from('productos')
+                 .select('stock')
+                 .eq('id', item.producto.id)
+                 .single();
 
-        const hoy = new Date();
-        const fechaStr = hoy.toISOString().split('T')[0].replace(/-/g, '');
+             if (error) throw error;
 
-        const { data: secuencia, error: secError } = await supabaseClient
-            .from('secuencia_tickets')
-            .select('siguiente_numero')
-            .eq('fecha', fechaStr)
-            .single();
+             const stockActual = producto?.stock || 0;
+             stockActualMap.set(item.producto.id, stockActual);
 
-        let numero = 1;
-        if (secError) {
-            const { error: insertError } = await supabaseClient
-                .from('secuencia_tickets')
-                .insert([{ fecha: fechaStr, siguiente_numero: 2 }]);
+             if (stockActual < item.cantidad) {
+                 itemsConStockInsuficiente.push({
+                     nombre: item.producto.nombre || 'Producto',
+                     disponible: stockActual,
+                     solicitado: item.cantidad
+                 });
+             }
+         }
 
-            if (insertError) throw insertError;
-        } else {
-            numero = secuencia.siguiente_numero;
-            const { error: updateError } = await supabaseClient
-                .from('secuencia_tickets')
-                .update({ siguiente_numero: numero + 1 })
-                .eq('fecha', fechaStr);
+         if (itemsConStockInsuficiente.length > 0) {
+             const errores = itemsConStockInsuficiente.map(i =>
+                 `${i.nombre}: ${i.disponible} disp. / ${i.solicitado} req.`
+             ).join('\n');
+             throw new Error(`Stock insuficiente:\n${errores}`);
+         }
 
-            if (updateError) throw updateError;
-        }
+         // ==================== FASE 2: CREAR VENTA ====================
+         let subtotal = 0;
+         for (const item of appState.carrito) {
+             if (typeof item.cantidad === 'number' && typeof item.precioUnitario === 'number') {
+                 subtotal += item.cantidad * item.precioUnitario;
+             }
+         }
 
-        const ticketId = `T-${fechaStr}-${numero.toString().padStart(4, '0')}`;
+         let descuento = 0;
+         if (appState.descuento && appState.descuento.valor > 0) {
+             if (appState.descuento.tipo === 'porcentaje') {
+                 descuento = subtotal * (appState.descuento.valor / 100);
+             } else {
+                 descuento = appState.descuento.valor;
+             }
+             if (descuento > subtotal) descuento = subtotal;
+         }
 
-        const ventaData = {
-            ticket_id: ticketId,
-            caja_id: appState.cajaActiva.id,
-            usuario_id: appState.usuario.id,
-            subtotal: subtotal,
-            descuento: descuento,
-            total: total
-        };
+         const total = subtotal - descuento;
 
-        const { data: venta, error: ventaError } = await supabaseClient
-            .from('ventas')
-            .insert([ventaData])
-            .select()
-            .single();
+         if (total <= 0) {
+             throw new Error('El total de la venta debe ser mayor a cero');
+         }
 
-        if (ventaError) throw ventaError;
+         const hoy = new Date();
+         const fechaStr = hoy.toISOString().split('T')[0].replace(/-/g, '');
 
-        for (const item of appState.carrito) {
-            const detalleData = {
-                venta_id: venta.id,
-                producto_id: item.producto.id,
-                cantidad: item.cantidad,
-                precio_unitario: item.precioUnitario,
-                subtotal: item.cantidad * item.precioUnitario
-            };
+         const { data: secuencia, error: secError } = await supabaseClient
+             .from('secuencia_tickets')
+             .select('siguiente_numero')
+             .eq('fecha', fechaStr)
+             .single();
 
-            const { error: detalleError } = await supabaseClient
-                .from('detalle_ventas')
-                .insert([detalleData]);
+         let numero = 1;
+         if (secError) {
+             const { error: insertError } = await supabaseClient
+                 .from('secuencia_tickets')
+                 .insert([{ fecha: fechaStr, siguiente_numero: 2 }]);
 
-            if (detalleError) throw detalleError;
+             if (insertError) throw insertError;
+         } else {
+             numero = secuencia.siguiente_numero;
+             const { error: updateError } = await supabaseClient
+                 .from('secuencia_tickets')
+                 .update({ siguiente_numero: numero + 1 })
+                 .eq('fecha', fechaStr);
 
-            const { error: stockError } = await supabaseClient
-                .from('productos')
-                .update({ stock: item.producto.stock - item.cantidad })
-                .eq('id', item.producto.id);
+             if (updateError) throw updateError;
+         }
 
-            if (stockError) throw stockError;
-        }
+         const ticketId = `T-${fechaStr}-${numero.toString().padStart(4, '0')}`;
 
-        for (const pago of appState.pagos) {
-            const pagoData = {
-                venta_id: venta.id,
-                medio_pago: pago.medio,
-                monto: pago.monto
-            };
+         const ventaData = {
+             ticket_id: ticketId,
+             caja_id: appState.cajaActiva.id,
+             usuario_id: appState.usuario.id,
+             subtotal: subtotal,
+             descuento: descuento,
+             total: total
+         };
 
-            const { error: pagoError } = await supabaseClient
-                .from('pagos_venta')
-                .insert([pagoData]);
+         const { data: venta, error: ventaError } = await supabaseClient
+             .from('ventas')
+             .insert([ventaData])
+             .select()
+             .single();
 
-            if (pagoError) throw pagoError;
-        }
+         if (ventaError) throw ventaError;
 
-        const configMap = await obtenerConfiguracionTicket();
-        const cambio = totalPagado - total;
+         // ==================== FASE 3: INSERTAR DETALLES Y ACTUALIZAR STOCK ====================
+         for (const item of appState.carrito) {
+             // ✅ VALIDAR ESTRUCTURA DEL ITEM
+             if (!item.producto || !item.producto.id) {
+                 throw new Error(`Producto inválido en carrito`);
+             }
 
-        // --- Generar el ticket como cadena ESC/POS ---
-        const ticketESC = generarTicketESC(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
+             const detalleData = {
+                 venta_id: venta.id,
+                 producto_id: item.producto.id,
+                 cantidad: item.cantidad,
+                 precio_unitario: item.precioUnitario,
+                 subtotal: item.cantidad * item.precioUnitario
+             };
 
-        // --- Enviar a Electron ---
-        if (window.electronAPI && typeof window.electronAPI.imprimirTicket === 'function') {
-            try {
-                await window.electronAPI.imprimirTicket(ticketESC);
-                showNotification('Ticket impreso correctamente', 'success');
-            } catch (electronError) {
-                console.error('Error en impresión Electron:', electronError);
-                showNotification('Error al imprimir el ticket', 'error');
-            }
-        } else {
-            // Si no hay Electron, mostramos error (la impresión ESC/POS requiere backend)
-            showNotification('No se puede imprimir: Electron no está disponible', 'error');
-        }
+             const { error: detalleError } = await supabaseClient
+                 .from('detalle_ventas')
+                 .insert([detalleData]);
 
-        appState.carrito = [];
-        appState.pagos = [];
-        appState.descuento = { tipo: 'porcentaje', valor: 0 };
+             if (detalleError) throw detalleError;
 
-        const descuentoInput = document.getElementById('descuento-input');
-        const descuentoTipo = document.getElementById('descuento-tipo');
+             // ✅ REDUCIR STOCK USANDO VALOR ACTUAL VERIFICADO
+             const stockActual = stockActualMap.get(item.producto.id);
+             const nuevoStock = stockActual - item.cantidad;
 
-        if (descuentoInput) descuentoInput.value = '';
-        if (descuentoTipo) descuentoTipo.value = 'porcentaje';
+             // ✅ ACTUALIZACIÓN CONDICIONAL: solo si el stock no cambió desde que lo leímos
+             const { error: stockError, count } = await supabaseClient
+                 .from('productos')
+                 .update({ stock: nuevoStock })
+                 .eq('id', item.producto.id)
+                 .eq('stock', stockActual); // Evita race conditions
 
-        actualizarCarritoUI();
-        actualizarPagosUI();
-        limpiarEstadoCarrito();
+             if (stockError || count === 0) {
+                 throw new Error(`No se pudo actualizar stock para ${item.producto.nombre}. Stock pudo haber cambiado o producto no existe.`);
+             }
+         }
 
-        await verificarCajaActiva();
+         // ==================== FASE 4: REGISTRAR PAGOS ====================
+         // ✅ VALIDAR QUE pagos ES UN ARRAY
+         if (appState.pagos && Array.isArray(appState.pagos)) {
+             for (const pago of appState.pagos) {
+                 // ✅ VALIDAR ESTRUCTURA DEL PAGO
+                 if (!pago || !pago.medio || typeof pago.monto !== 'number') {
+                     console.warn('Pago con datos inválidos, omitiendo:', pago);
+                     continue;
+                 }
 
-        showNotification(`Venta finalizada: ${ticketId}`, 'success');
+                 const pagoData = {
+                     venta_id: venta.id,
+                     medio_pago: pago.medio,
+                     monto: pago.monto
+                 };
 
-        const scannerInput = document.getElementById('scanner-input');
-        if (scannerInput) scannerInput.focus();
+                 const { error: pagoError } = await supabaseClient
+                     .from('pagos_venta')
+                     .insert([pagoData]);
 
-    } catch (error) {
-        console.error('Error finalizando venta:', error);
-        showNotification(`Error: ${error.message}`, 'error');
-    } finally {
-        if (btnFinalizar) {
-            btnFinalizar.disabled = false;
-            btnFinalizar.classList.remove('loading');
-        }
+                 if (pagoError) throw pagoError;
+             }
+         }
 
-        await cargarVentasDelDiaEnCaja();
-    }
-}
+         // ==================== FASE 5: IMPRESIÓN ====================
+         const configMap = await obtenerConfiguracionTicket();
+         const cambio = totalPagado - total;
+
+         // --- Generar el ticket como cadena ESC/POS ---
+         const ticketESC = generarTicketESC(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
+
+         // --- Enviar a Electron ---
+         if (window.electronAPI && typeof window.electronAPI.imprimirTicket === 'function') {
+             try {
+                 await window.electronAPI.imprimirTicket(ticketESC);
+                 showNotification('Ticket impreso correctamente', 'success');
+             } catch (electronError) {
+                 console.error('Error en impresión Electron:', electronError);
+                 showNotification('Error al imprimir el ticket', 'error');
+             }
+         } else {
+             // Si no hay Electron, mostramos error (la impresión ESC/POS requiere backend)
+             showNotification('No se puede imprimir: Electron no está disponible', 'error');
+         }
+
+         // ==================== FASE 6: LIMPIAR CARRITO ====================
+         appState.carrito = [];
+         appState.pagos = [];
+         appState.descuento = { tipo: 'porcentaje', valor: 0 };
+
+         const descuentoInput = document.getElementById('descuento-input');
+         const descuentoTipo = document.getElementById('descuento-tipo');
+
+         if (descuentoInput) descuentoInput.value = '';
+         if (descuentoTipo) descuentoTipo.value = 'porcentaje';
+
+         actualizarCarritoUI();
+         actualizarPagosUI();
+         limpiarEstadoCarrito();
+
+         await verificarCajaActiva();
+
+         showNotification(`Venta finalizada: ${ticketId}`, 'success');
+
+         const scannerInput = document.getElementById('scanner-input');
+         if (scannerInput) scannerInput.focus();
+
+     } catch (error) {
+         console.error('Error finalizando venta:', error);
+
+         // ==================== ROLLBACK MANUAL ====================
+         try {
+             showNotification('Error en venta, intentando revertir stocks...', 'warning');
+
+             // Revertir stocks al estado original verificado
+             let reversionesExitosas = 0;
+             for (const [productoId, stockOriginal] of stockActualMap) {
+                 try {
+                     await supabaseClient
+                         .from('productos')
+                         .update({ stock: stockOriginal })
+                         .eq('id', productoId);
+                     reversionesExitosas++;
+                 } catch (reversionError) {
+                     console.error('Error revirtiendo stock para producto', productoId, reversionError);
+                 }
+             }
+
+             if (reversionesExitosas === stockActualMap.size) {
+                 showNotification('Stocks revertidos correctamente. Intente nuevamente.', 'info');
+             } else {
+                 showNotification(`ADVERTENCIA: Solo ${reversionesExitosas}/${stockActualMap.size} stocks revertidos. Contacte al administrador.`, 'error');
+             }
+         } catch (rollbackError) {
+             console.error('Error en rollback:', rollbackError);
+             showNotification('ERROR CRÍTICO: Stock pudo haberse modificado incorrectamente. Contacte al administrador.', 'error');
+         }
+
+         showNotification(`Error: ${error.message}`, 'error');
+     } finally {
+         if (btnFinalizar) {
+             btnFinalizar.disabled = false;
+             btnFinalizar.classList.remove('loading');
+         }
+
+         await cargarVentasDelDiaEnCaja();
+     }
+ }
+
+     if (appState.carrito.length === 0) {
+         showNotification('El carrito está vacío', 'warning');
+         return;
+     }
+
+     const totalAPagarEl = document.getElementById('carrito-total');
+     if (!totalAPagarEl) return;
+
+     const totalAPagar = parseFloat(totalAPagarEl.textContent.replace('$ ', ''));
+     const totalPagado = appState.pagos.reduce((sum, pago) => sum + pago.monto, 0);
+
+     if (totalPagado < totalAPagar) {
+         showNotification('El pago no cubre el total de la venta', 'error');
+         return;
+     }
+
+     const btnFinalizar = document.getElementById('btn-finalizar-venta');
+     if (!btnFinalizar) return;
+
+     btnFinalizar.disabled = true;
+     btnFinalizar.classList.add('loading');
+
+     // ✅ MAPA PARA GUARDAR STOCK ACTUAL Y FACILITAR ROLLBACK
+     const stockActualMap = new Map(); // productoId -> stock actual
+     const itemsConStockInsuficiente = [];
+
+     try {
+         // ==================== FASE 1: VERIFICAR STOCK ACTUAL DE TODOS LOS ITEMS ====================
+         for (const item of appState.carrito) {
+             const { data: producto, error } = await supabaseClient
+                 .from('productos')
+                 .select('stock')
+                 .eq('id', item.producto.id)
+                 .single();
+
+             if (error) throw error;
+
+             const stockActual = producto?.stock || 0;
+             stockActualMap.set(item.producto.id, stockActual);
+
+             if (stockActual < item.cantidad) {
+                 itemsConStockInsuficiente.push({
+                     nombre: item.producto.nombre,
+                     disponible: stockActual,
+                     solicitado: item.cantidad
+                 });
+             }
+         }
+
+         if (itemsConStockInsuficiente.length > 0) {
+             const errores = itemsConStockInsuficiente.map(i =>
+                 `${i.nombre}: ${i.disponible} disp. / ${i.solicitado} req.`
+             ).join('\n');
+             throw new Error(`Stock insuficiente:\n${errores}`);
+         }
+
+         // ==================== FASE 2: CREAR VENTA ====================
+         const subtotal = appState.carrito.reduce((sum, item) =>
+             sum + (item.cantidad * item.precioUnitario), 0);
+
+         const descuento = appState.descuento.valor > 0 ?
+             (appState.descuento.tipo === 'porcentaje' ?
+                 subtotal * (appState.descuento.valor / 100) :
+                 appState.descuento.valor) : 0;
+
+         const total = subtotal - descuento;
+
+         const hoy = new Date();
+         const fechaStr = hoy.toISOString().split('T')[0].replace(/-/g, '');
+
+         const { data: secuencia, error: secError } = await supabaseClient
+             .from('secuencia_tickets')
+             .select('siguiente_numero')
+             .eq('fecha', fechaStr)
+             .single();
+
+         let numero = 1;
+         if (secError) {
+             const { error: insertError } = await supabaseClient
+                 .from('secuencia_tickets')
+                 .insert([{ fecha: fechaStr, siguiente_numero: 2 }]);
+
+             if (insertError) throw insertError;
+         } else {
+             numero = secuencia.siguiente_numero;
+             const { error: updateError } = await supabaseClient
+                 .from('secuencia_tickets')
+                 .update({ siguiente_numero: numero + 1 })
+                 .eq('fecha', fechaStr);
+
+             if (updateError) throw updateError;
+         }
+
+         const ticketId = `T-${fechaStr}-${numero.toString().padStart(4, '0')}`;
+
+         const ventaData = {
+             ticket_id: ticketId,
+             caja_id: appState.cajaActiva.id,
+             usuario_id: appState.usuario.id,
+             subtotal: subtotal,
+             descuento: descuento,
+             total: total
+         };
+
+         const { data: venta, error: ventaError } = await supabaseClient
+             .from('ventas')
+             .insert([ventaData])
+             .select()
+             .single();
+
+         if (ventaError) throw ventaError;
+
+         // ==================== FASE 3: INSERTAR DETALLES Y ACTUALIZAR STOCK ====================
+         for (const item of appState.carrito) {
+             const detalleData = {
+                 venta_id: venta.id,
+                 producto_id: item.producto.id,
+                 cantidad: item.cantidad,
+                 precio_unitario: item.precioUnitario,
+                 subtotal: item.cantidad * item.precioUnitario
+             };
+
+             const { error: detalleError } = await supabaseClient
+                 .from('detalle_ventas')
+                 .insert([detalleData]);
+
+             if (detalleError) throw detalleError;
+
+             // ✅ REDUCIR STOCK USANDO VALOR ACTUAL VERIFICADO
+             const stockActual = stockActualMap.get(item.producto.id);
+             const nuevoStock = stockActual - item.cantidad;
+
+             // ✅ ACTUALIZACIÓN CONDICIONAL: solo si el stock no cambió desde que lo leímos
+             const { error: stockError, count } = await supabaseClient
+                 .from('productos')
+                 .update({ stock: nuevoStock })
+                 .eq('id', item.producto.id)
+                 .eq('stock', stockActual); // Evita race conditions
+
+             if (stockError || count === 0) {
+                 throw new Error(`No se pudo actualizar stock para ${item.producto.nombre}. Stock pudo haber cambiado o producto no existe.`);
+             }
+         }
+
+         // ==================== FASE 4: REGISTRAR PAGOS ====================
+         for (const pago of appState.pagos) {
+             const pagoData = {
+                 venta_id: venta.id,
+                 medio_pago: pago.medio,
+                 monto: pago.monto
+             };
+
+             const { error: pagoError } = await supabaseClient
+                 .from('pagos_venta')
+                 .insert([pagoData]);
+
+             if (pagoError) throw pagoError;
+         }
+
+         // ==================== FASE 5: IMPRESIÓN ====================
+         const configMap = await obtenerConfiguracionTicket();
+         const cambio = totalPagado - total;
+         const ticketESC = generarTicketESC(venta, configMap, appState.carrito, appState.pagos, appState.usuario, cambio);
+
+         if (window.electronAPI && typeof window.electronAPI.imprimirTicket === 'function') {
+             try {
+                 await window.electronAPI.imprimirTicket(ticketESC);
+                 showNotification('Ticket impreso correctamente', 'success');
+             } catch (electronError) {
+                 console.error('Error en impresión Electron:', electronError);
+                 showNotification('Error al imprimir el ticket', 'error');
+             }
+         } else {
+             showNotification('No se puede imprimir: Electron no está disponible', 'error');
+         }
+
+         // ==================== FASE 6: LIMPIAR CARRITO ====================
+         appState.carrito = [];
+         appState.pagos = [];
+         appState.descuento = { tipo: 'porcentaje', valor: 0 };
+
+         const descuentoInput = document.getElementById('descuento-input');
+         const descuentoTipo = document.getElementById('descuento-tipo');
+
+         if (descuentoInput) descuentoInput.value = '';
+         if (descuentoTipo) descuentoTipo.value = 'porcentaje';
+
+         actualizarCarritoUI();
+         actualizarPagosUI();
+         limpiarEstadoCarrito();
+
+         await verificarCajaActiva();
+
+         showNotification(`Venta finalizada: ${ticketId}`, 'success');
+
+         const scannerInput = document.getElementById('scanner-input');
+         if (scannerInput) scannerInput.focus();
+
+     } catch (error) {
+         console.error('Error finalizando venta:', error);
+
+         // ==================== ROLLBACK MANUAL ====================
+         try {
+             showNotification('Error en venta, intentando revertir stocks...', 'warning');
+
+             // Revertir stocks al estado original verificado
+             let reversionesExitosas = 0;
+             for (const [productoId, stockOriginal] of stockActualMap) {
+                 try {
+                     await supabaseClient
+                         .from('productos')
+                         .update({ stock: stockOriginal })
+                         .eq('id', productoId);
+                     reversionesExitosas++;
+                 } catch (reversionError) {
+                     console.error('Error revirtiendo stock para producto', productoId, reversionError);
+                 }
+             }
+
+             if (reversionesExitosas === stockActualMap.size) {
+                 showNotification('Stocks revertidos correctamente. Intente nuevamente.', 'info');
+             } else {
+                 showNotification(`ADVERTENCIA: Solo ${reversionesExitosas}/${stockActualMap.size} stocks revertidos. Contacte al administrador.`, 'error');
+             }
+         } catch (rollbackError) {
+             console.error('Error en rollback:', rollbackError);
+             showNotification('ERROR CRÍTICO: Stock pudo haberse modificado incorrectamente. Contacte al administrador.', 'error');
+         }
+
+         showNotification(`Error: ${error.message}`, 'error');
+     } finally {
+         if (btnFinalizar) {
+             btnFinalizar.disabled = false;
+             btnFinalizar.classList.remove('loading');
+         }
+
+         await cargarVentasDelDiaEnCaja();
+     }
+ }
 
 // ==================== FUNCIONES DE IMPRESIÓN ESC/POS ====================
 
@@ -3308,46 +3878,77 @@ async function buscarProductosManual() {
     }
 }
 
-window.agregarDesdeBuscador = async function(id) {
-    try {
-        const { data: producto, error } = await supabaseClient
-            .from('productos')
-            .select('*')
-            .eq('id', id)
-            .eq('activo', true)
-            .single();
+ window.agregarDesdeBuscador = async function(id) {
+     try {
+         const { data: producto, error } = await supabaseClient
+             .from('productos')
+             .select('*')
+             .eq('id', id)
+             .eq('activo', true)
+             .single();
 
-        if (error) throw error;
+         if (error) throw error;
 
-        const index = appState.carrito.findIndex(item =>
-            item.producto.id === producto.id);
+         // ✅ VALIDAR ESTRUCTURA DEL PRODUCTO
+         if (!producto || !producto.id) {
+             console.error('Producto inválido:', producto);
+             showNotification('Error: producto inválido', 'error');
+             return;
+         }
 
-        if (index !== -1) {
-            appState.carrito[index].cantidad += 1;
-            showNotification(`${producto.nombre} - Cantidad aumentada a ${appState.carrito[index].cantidad}`, 'success');
-        } else {
-            appState.carrito.push({
-                producto: producto,
-                cantidad: 1,
-                precioUnitario: producto.precio_venta
-            });
-            showNotification(`${producto.nombre} agregado al carrito`, 'success');
-        }
+         // ✅ VALIDAR STOCK ANTES DE AGREGAR
+         if (producto.stock <= 0) {
+             showNotification(`${producto.nombre} - Sin stock disponible`, 'error');
+             return;
+         }
 
-        actualizarCarritoUI();
-        guardarEstadoCarrito();
+         const index = appState.carrito.findIndex(item =>
+             item && item.producto && item.producto.id === producto.id);
 
-        const modal = document.getElementById('modal-buscador');
-        if (modal) modal.classList.remove('active');
+         if (index !== -1) {
+             // ✅ VALIDAR ÍNDICE Y ESTRUCTURA
+             if (index < 0 || index >= appState.carrito.length) {
+                 console.error('Índice fuera de rango:', index);
+                 return;
+             }
 
-        const scannerInput = document.getElementById('scanner-input');
-        if (scannerInput) scannerInput.focus();
+             const item = appState.carrito[index];
+             // ✅ VALIDAR ESTRUCTURA DEL ITEM
+             if (!item || typeof item.cantidad !== 'number') {
+                 console.error('Item de carrito inválido:', item);
+                 return;
+             }
 
-    } catch (error) {
-        console.error('Error cargando producto:', error);
-        showNotification('Error cargando producto', 'error');
-    }
-};
+             // ✅ VALIDAR STOCK DISPONIBLE ANTES DE INCREMENTAR
+             if (item.cantidad >= producto.stock) {
+                 showNotification(`Stock insuficiente. Disponible: ${producto.stock}`, 'error');
+                 return;
+             }
+             item.cantidad += 1;
+             showNotification(`${producto.nombre} - Cantidad aumentada a ${item.cantidad}`, 'success');
+         } else {
+             appState.carrito.push({
+                 producto: producto,
+                 cantidad: 1,
+                 precioUnitario: producto.precio_venta || 0
+             });
+             showNotification(`${producto.nombre} agregado al carrito`, 'success');
+         }
+
+         actualizarCarritoUI();
+         guardarEstadoCarrito();
+
+         const modal = document.getElementById('modal-buscador');
+         if (modal) modal.classList.remove('active');
+
+         const scannerInput = document.getElementById('scanner-input');
+         if (scannerInput) scannerInput.focus();
+
+     } catch (error) {
+         console.error('Error cargando producto:', error);
+         showNotification('Error cargando producto', 'error');
+     }
+ };
 
 // ==================== REPORTES ====================
 function inicializarFechasReportes() {

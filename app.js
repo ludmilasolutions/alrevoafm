@@ -782,15 +782,11 @@ function setupKeyboardShortcuts() {
                  playScanSound();
              }
          }
-     } catch (error) {
-         console.error('Error buscando producto:', error);
-         showNotification('Error buscando producto', 'error');
-     }
- }
-             return;
-         }
-
-         if (producto) {
+      } catch (error) {
+          console.error('Error buscando producto:', error);
+          showNotification('Error buscando producto', 'error');
+      }
+  }
              // ✅ VALIDAR STOCK ANTES DE AGREGAR
              if (producto.stock <= 0) {
                  showNotification(`${producto.nombre} - Sin stock disponible`, 'error');

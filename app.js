@@ -999,26 +999,7 @@ function setupKeyboardShortcuts() {
      showNotification('Carrito vaciado correctamente', 'info');
  }
 
-    appState.carrito = [];
-    appState.pagos = [];
-    appState.descuento = { tipo: 'porcentaje', valor: 0 };
-
-    const descuentoInput = document.getElementById('descuento-input');
-    const descuentoTipo = document.getElementById('descuento-tipo');
-
-    if (descuentoInput) descuentoInput.value = '';
-    if (descuentoTipo) descuentoTipo.value = 'porcentaje';
-
-    const pagoMonto = document.getElementById('pago-monto');
-    if (pagoMonto) pagoMonto.value = '';
-
-    actualizarCarritoUI();
-    actualizarPagosUI();
-    guardarEstadoCarrito();
-    showNotification('Carrito vaciado', 'info');
-}
-
-function aplicarDescuento() {
+ function aplicarDescuento() {
     const descuentoInput = document.getElementById('descuento-input');
     const descuentoTipo = document.getElementById('descuento-tipo');
 

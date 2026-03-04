@@ -787,51 +787,6 @@ function setupKeyboardShortcuts() {
           showNotification('Error buscando producto', 'error');
       }
   }
-             // ✅ VALIDAR STOCK ANTES DE AGREGAR
-             if (producto.stock <= 0) {
-                 showNotification(`${producto.nombre} - Sin stock disponible`, 'error');
-                 return;
-             }
-
-             const index = appState.carrito.findIndex(item =>
-                 item.producto.id === producto.id);
-
-             if (index !== -1) {
-                 // ✅ VALIDAR STOCK DISPONIBLE ANTES DE INCREMENTAR
-                 const cantidadActual = appState.carrito[index].cantidad;
-                 if (cantidadActual >= producto.stock) {
-                     showNotification(`Stock insuficiente. Disponible: ${producto.stock}`, 'error');
-                     return;
-                 }
-                 appState.carrito[index].cantidad += 1;
-                 showNotification(`${producto.nombre} - Cantidad aumentada a ${appState.carrito[index].cantidad}`, 'success');
-             } else {
-                 appState.carrito.push({
-                     producto: producto,
-                     cantidad: 1,
-                     precioUnitario: producto.precio_venta
-                 });
-                 showNotification(`${producto.nombre} agregado al carrito`, 'success');
-             }
-
-             actualizarCarritoUI();
-             guardarEstadoCarrito();
-
-             const scannerInput = document.getElementById('scanner-input');
-             if (scannerInput) {
-                 scannerInput.value = '';
-                 scannerInput.focus();
-             }
-
-             if (typeof playScanSound === 'function') {
-                 playScanSound();
-             }
-         }
-     } catch (error) {
-         console.error('Error buscando producto:', error);
-         showNotification('Error buscando producto', 'error');
-     }
- }
 
  function actualizarCarritoUI() {
      const container = document.getElementById('carrito-items');

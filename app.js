@@ -960,11 +960,20 @@ function setupKeyboardShortcuts() {
      appState.carrito.splice(index, 1);
 
      if (appState.carrito.length === 0) {
+         appState.pagos = []; // ✅ LIMPIAR PAGOS CUANDO CARRITO QUEDA VACÍO
          appState.descuento = { tipo: 'porcentaje', valor: 0 };
+         
+         // ✅ LIMPIAR INPUTS
          const descuentoInput = document.getElementById('descuento-input');
          const descuentoTipo = document.getElementById('descuento-tipo');
+         const pagoMonto = document.getElementById('pago-monto');
+         
          if (descuentoInput) descuentoInput.value = '';
          if (descuentoTipo) descuentoTipo.value = 'porcentaje';
+         if (pagoMonto) {
+             pagoMonto.value = '';
+             pagoMonto.placeholder = 'Monto a pagar';
+         }
      }
 
      actualizarCarritoUI();
@@ -983,14 +992,24 @@ function setupKeyboardShortcuts() {
      appState.pagos = [];
      appState.descuento = { tipo: 'porcentaje', valor: 0 };
 
+     // ✅ LIMPIAR TODOS LOS INPUTS RELACIONADOS
      const descuentoInput = document.getElementById('descuento-input');
      const descuentoTipo = document.getElementById('descuento-tipo');
+     const pagoMonto = document.getElementById('pago-monto');
+     const totalPagadoEl = document.getElementById('total-pagado');
+     const cambioEl = document.getElementById('total-cambio');
 
      if (descuentoInput) descuentoInput.value = '';
      if (descuentoTipo) descuentoTipo.value = 'porcentaje';
-
-     const pagoMonto = document.getElementById('pago-monto');
-     if (pagoMonto) pagoMonto.value = '';
+     if (pagoMonto) {
+         pagoMonto.value = '';
+         pagoMonto.placeholder = 'Monto a pagar';
+     }
+     if (totalPagadoEl) totalPagadoEl.textContent = '$ 0.00';
+     if (cambioEl) {
+         cambioEl.textContent = '$ 0.00';
+         cambioEl.className = '';
+     }
 
      actualizarCarritoUI();
      actualizarPagosUI();
@@ -1143,19 +1162,26 @@ window.eliminarPagosPorMedio = function(medio) {
      if (!container || !totalPagadoEl || !cambioEl || !btnFinalizar) return;
 
      // ✅ VALIDAR QUE pagos ES UN ARRAY
-     if (!appState.pagos || !Array.isArray(appState.pagos) || appState.pagos.length === 0) {
-         container.innerHTML = `
-             <div class="empty-pagos">
-                 <i class="fas fa-receipt fa-2x"></i>
-                 <p>No hay pagos registrados</p>
-             </div>
-         `;
+      if (!appState.pagos || !Array.isArray(appState.pagos) || appState.pagos.length === 0) {
+          container.innerHTML = `
+              <div class="empty-pagos">
+                  <i class="fas fa-receipt fa-2x"></i>
+                  <p>No hay pagos registrados</p>
+              </div>
+          `;
 
-         totalPagadoEl.textContent = '$ 0.00';
-         cambioEl.textContent = '$ 0.00';
-         btnFinalizar.disabled = true;
-         return;
-     }
+          totalPagadoEl.textContent = '$ 0.00';
+          cambioEl.textContent = '$ 0.00';
+          cambioEl.className = '';
+          btnFinalizar.disabled = true;
+          
+          // ✅ LIMPIAR PLACEHOLDER CUANDO NO HAY PAGOS
+          const pagoMontoInput = document.getElementById('pago-monto');
+          if (pagoMontoInput) {
+              pagoMontoInput.placeholder = 'Monto a pagar';
+          }
+          return;
+      }
 
      const pagosAgrupados = {};
      let totalPagado = 0;

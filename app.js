@@ -4064,20 +4064,32 @@ async function generarReporteGeneral(ventas, productos, cajas, fechaInicio, fech
             </div>
         </div>
 
-        <div class="mt-4 p-3 bg-light rounded">
-            <h4><i class="fas fa-info-circle"></i> Resumen del Período</h4>
-            <div class="row">
-                <div class="col-md-4">
-                    <p><strong>Total Descuentos:</strong> $ ${totalDescuentos.toFixed(2)}</p>
-                    <p><strong>Total Cajas:</strong> ${cajas?.length || 0}</p>
+        <div class="resumen-periodo">
+            <h4><i class="fas fa-chart-pie"></i> Resumen del Período</h4>
+            <div class="resumen-periodo-grid">
+                <div class="resumen-periodo-item">
+                    <label>Total Descuentos</label>
+                    <span class="valor dinero">$ ${totalDescuentos.toFixed(2)}</span>
                 </div>
-                <div class="col-md-4">
-                    <p><strong>Días con Ventas:</strong> ${diasOrdenados.length}</p>
-                    <p><strong>Productos Diferentes:</strong> ${Object.keys(productosVendidos).length}</p>
+                <div class="resumen-periodo-item">
+                    <label>Total Cajas</label>
+                    <span class="valor numero">${cajas?.length || 0}</span>
                 </div>
-                <div class="col-md-4">
-                    <p><strong>Ventas/Día Promedio:</strong> $ ${diasOrdenados.length > 0 ? (totalVentas / diasOrdenados.length).toFixed(2) : '0'}</p>
-                    <p><strong>Productos/Venta Promedio:</strong> ${ventas?.length > 0 ? (totalProductosVendidos / ventas.length).toFixed(1) : '0'}</p>
+                <div class="resumen-periodo-item">
+                    <label>Días con Ventas</label>
+                    <span class="valor numero">${diasOrdenados.length}</span>
+                </div>
+                <div class="resumen-periodo-item">
+                    <label>Productos Diferentes</label>
+                    <span class="valor numero">${Object.keys(productosVendidos).length}</span>
+                </div>
+                <div class="resumen-periodo-item">
+                    <label>Ventas/Día Promedio</label>
+                    <span class="valor dinero">$ ${diasOrdenados.length > 0 ? (totalVentas / diasOrdenados.length).toFixed(2) : '0.00'}</span>
+                </div>
+                <div class="resumen-periodo-item">
+                    <label>Productos/Venta</label>
+                    <span class="valor numero">${ventas?.length > 0 ? (totalProductosVendidos / ventas.length).toFixed(1) : '0'}</span>
                 </div>
             </div>
         </div>

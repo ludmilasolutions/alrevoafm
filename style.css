@@ -1818,6 +1818,75 @@ body {
   font-style: italic;
 }
 
+/* Resumen del Período - Estilo mejorado */
+.resumen-periodo {
+  background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-xl);
+  margin-top: var(--spacing-xl);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-md);
+}
+
+.resumen-periodo h4 {
+  color: var(--text-primary);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--spacing-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.resumen-periodo h4 i {
+  color: var(--primary-500);
+  font-size: var(--font-size-xl);
+}
+
+.resumen-periodo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-lg);
+}
+
+.resumen-periodo-item {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  text-align: center;
+  border: 1px solid var(--border-light);
+  transition: all var(--transition-base);
+}
+
+.resumen-periodo-item:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--primary-300);
+}
+
+.resumen-periodo-item label {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.resumen-periodo-item .valor {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--primary-600);
+}
+
+.resumen-periodo-item .valor.dinero {
+  color: var(--success-600);
+}
+
+.resumen-periodo-item .valor.numero {
+  color: var(--primary-600);
+}
+
 /* Tarjetas de resumen mejoradas con efecto vidrio */
 .reporte-resumen {
   display: grid;

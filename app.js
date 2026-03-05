@@ -547,10 +547,33 @@ function setupEventListeners() {
         });
     });
 
-    const btnBuscarProductos = document.getElementById('btn-buscar-productos');
-    if (btnBuscarProductos) {
-        btnBuscarProductos.addEventListener('click', buscarProductosManual);
-    }
+     const btnBuscarProductos = document.getElementById('btn-buscar-productos');
+     if (btnBuscarProductos) {
+         btnBuscarProductos.addEventListener('click', buscarProductosManual);
+     }
+
+     // ✅ BÚSQUEDA EN TIEMPO REAL (mientras escribe)
+     const buscadorCodigo = document.getElementById('buscador-codigo');
+     const buscadorNombre = document.getElementById('buscador-nombre');
+     const buscadorProveedor = document.getElementById('buscador-proveedor');
+
+     let debounceTimer;
+     const iniciarBusquedaTiempoReal = () => {
+         clearTimeout(debounceTimer);
+         debounceTimer = setTimeout(() => {
+             buscarProductosManual();
+         }, 300); // 300ms de retraso
+     };
+
+     if (buscadorCodigo) {
+         buscadorCodigo.addEventListener('input', iniciarBusquedaTiempoReal);
+     }
+     if (buscadorNombre) {
+         buscadorNombre.addEventListener('input', iniciarBusquedaTiempoReal);
+     }
+     if (buscadorProveedor) {
+         buscadorProveedor.addEventListener('change', buscarProductosManual);
+     }
 
     const formProducto = document.getElementById('form-producto');
     if (formProducto) {
@@ -808,14 +831,20 @@ function setupKeyboardShortcuts() {
              </div>
          `;
 
-         subtotalEl.textContent = '$ 0.00';
-         descuentoEl.textContent = '$ 0.00';
-         totalEl.textContent = '$ 0.00';
-         totalAPagarEl.textContent = '$ 0.00';
+      subtotalEl.textContent = '$ 0.00';
+      descuentoEl.textContent = '$ 0.00';
+      totalEl.textContent = '$ 0.00';
+      totalAPagarEl.textContent = '$ 0.00';
+      
+      // ✅ LIMPIAR TOTAL FINAL EN LA PARTE INFERIOR
+      const totalFinalEl = document.getElementById('carrito-total-final');
+      if (totalFinalEl) {
+          totalFinalEl.textContent = '$ 0.00';
+      }
 
-         actualizarPagosUI();
-         btnFinalizar.disabled = true;
-         return;
+      actualizarPagosUI();
+      btnFinalizar.disabled = true;
+      return;
      }
 
      let subtotal = 0;
@@ -873,10 +902,16 @@ function setupKeyboardShortcuts() {
 
      const total = subtotal - descuento;
 
-     subtotalEl.textContent = `$ ${subtotal.toFixed(2)}`;
-     descuentoEl.textContent = `$ ${descuento.toFixed(2)}`;
-     totalEl.textContent = `$ ${total.toFixed(2)}`;
-     totalAPagarEl.textContent = `$ ${total.toFixed(2)}`;
+      subtotalEl.textContent = `$ ${subtotal.toFixed(2)}`;
+      descuentoEl.textContent = `$ ${descuento.toFixed(2)}`;
+      totalEl.textContent = `$ ${total.toFixed(2)}`;
+      totalAPagarEl.textContent = `$ ${total.toFixed(2)}`;
+      
+      // ✅ ACTUALIZAR TOTAL FINAL EN LA PARTE INFERIOR
+      const totalFinalEl = document.getElementById('carrito-total-final');
+      if (totalFinalEl) {
+          totalFinalEl.textContent = `$ ${total.toFixed(2)}`;
+      }
 
      actualizarPagosUI();
 
@@ -3570,7 +3605,11 @@ function showBuscadorManual() {
     if (modal) {
         modal.classList.add('active');
         const buscadorCodigo = document.getElementById('buscador-codigo');
-        if (buscadorCodigo) buscadorCodigo.focus();
+        if (buscadorCodigo) {
+            buscadorCodigo.focus();
+            // ✅ CARGAR PRODUCTOS AL ABRIR EL BUSCADOR
+            buscarProductosManual();
+        }
     }
 }
 
